@@ -72,11 +72,6 @@ export interface CurationRouteDeps {
 /**
  * Apply the shared mapper's result to a Fastify reply. Encapsulates the
  * `reply.status(...).send(...)` glue so every route shares one call shape.
- * Unknown-error 500s are NOT re-thrown to the global handler here: the
- * shared mapper already produces the canonical SYSTEM_INTERNAL_ERROR /
- * SYSTEM_SERVICE_UNAVAILABLE envelopes byte-identical to what the global
- * handler would emit (see `backend/src/middleware/error-handler.ts`), and
- * surfacing them from this layer keeps REST and MCP error codes in lockstep.
  */
 function sendError(
   err: unknown,
@@ -84,13 +79,6 @@ function sendError(
   logger: Logger
 ): FastifyReply {
   const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
-  // Infra / unknown faults (logLevel "error": pg unavailable, unhandled
-  // exceptions) have their `err.message` masked in the envelope. Log the
-  // original server-side so the cause is not lost — before the BR-30 refactor
-  // these errors were re-thrown to the global handler, which logged them with
-  // this same shape (see middleware/error-handler.ts). Expected client-driven
-  // faults (logLevel "warn": business / validation / not-found) are NOT logged
-  // here, matching the pre-refactor behaviour and avoiding log noise.
   if (logLevel === "error") {
     logger.error(
       {
@@ -123,16 +111,6 @@ export async function registerCurationRoutes(
   );
 
   // ---------------------------------------------------------------------
-  // BR-33: GET /metrics — read-only §16 calibration snapshot.
-  //
-  // Wraps the shared mapper with a graceful-degradation override: ANY residual
-  // 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front
-  // spec MetricsStrip (R1) can fall back to per-kind totals from /queue. 401
-  // auth failures and 2xx responses are NEVER degraded.
-  //
-  // The original `error_class` is preserved in the server-side WARN log via
-  // sendError's existing `logLevel: "error"` branch (no silent swallow —
-  // CLAUDE.md Rule 12 "Fail Loud").
   // ---------------------------------------------------------------------
   app.get(
     "/metrics",
@@ -142,15 +120,8 @@ export async function registerCurationRoutes(
           pool: deps.pool,
           logger: deps.logger,
         });
-        // Bare success body — consistent with every other curation REST
-        // endpoint (queue/confirm/reject/...). The SPA's httpCuration returns
-        // the raw 2xx JSON, so an `{ ok, result }` wrapper here would surface
-        // as all-undefined fields client-side (toCurationMetrics → parseIso
-        // throws on `computed_at`). Error/degraded paths stay enveloped below.
         return reply.status(200).send(result);
       } catch (err) {
-        // Apply the shared mapper first to get the canonical envelope; THEN
-        // re-map residual 500 → 503 per BR-33's graceful-degradation contract.
         const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
         const degradedStatus = statusCode === 500 ? 503 : statusCode;
         const degradedEnvelope =
@@ -163,9 +134,6 @@ export async function registerCurationRoutes(
                 },
               }
             : envelope;
-        // Preserve "Fail Loud" — log the original cause server-side for the
-        // 503 and 500-mapped-to-503 cases (the masked envelope hides it from
-        // the client). The shared mapper's logLevel decides WARN vs ERROR.
         if (logLevel === "error" || statusCode === 500) {
           deps.logger.warn(
             {

@@ -179,14 +179,6 @@ export async function registerComplianceAuditRoutes(
 // Error mapping
 // ---------------------------------------------------------------------------
 
-/**
- * Translate ZodError into our standard envelope. Two special-case mappings:
- *  - issue.message === 'VALIDATION_OUT_OF_RANGE' (from `superRefine` for
- *    semi-open range guards) -> error.code: VALIDATION_OUT_OF_RANGE.
- *  - empty / missing `reason` or `raw_information_id` -> the most specific
- *    code we can infer (VALIDATION_REQUIRED_FIELD vs VALIDATION_OUT_OF_RANGE).
- *  - anything else -> VALIDATION_INVALID_FORMAT.
- */
 /** HTTP status for all validation (`VALIDATION_*`) failures on these routes. */
 const VALIDATION_STATUS = 422;
 
@@ -236,9 +228,6 @@ function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
       },
     });
   }
-  // Priority 3 — `reason` length / trim violations. We can detect those by
-  // the path being "reason" and the issue being `too_small` (empty after
-  // trim) or `too_big` (> 1000 chars). Both map to OUT_OF_RANGE.
   if (
     err.issues.some(
       (i) =>

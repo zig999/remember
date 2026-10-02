@@ -8,13 +8,6 @@
 //   success -> { ok: true,  result: { outcome, deletion } }
 //   failure -> { ok: false, error: { code, message, details? } }
 //
-// Per BR-15 (P2.1 canonical taxonomy — same codes on REST and MCP):
-//   - Zod parse failure -> VALIDATION_REQUIRED_FIELD | VALIDATION_INVALID_FORMAT
-//                         | VALIDATION_OUT_OF_RANGE (Zod-discriminated)
-//   - raw_information_id resolves to no row -> RESOURCE_NOT_FOUND
-//   - UC-01 alt 4c legacy orphan -> SYSTEM_INTERNAL_ERROR
-//   - Any unhandled exception -> SYSTEM_INTERNAL_ERROR
-//
 // Failure envelopes are produced through the shared `renderErrorEnvelope`
 // helper (`src/shared/error-mapping.ts`), the single source of truth for
 // code → HTTP-status resolution. The MCP path ignores `statusCode` (all MCP
@@ -46,9 +39,7 @@ export interface ComplianceToolsetDeps {
 }
 
 /**
- * Tool result envelope returned to the MCP transport. Mirrors the design
- * principle of §14 ("business outcomes are not errors"): idempotent no-op is
- * a successful `ok: true` envelope with `outcome: noop_already_deleted`.
+ * Tool result envelope returned to the MCP transport.
  */
 type McpEnvelope =
   | { ok: true; result: unknown }
@@ -66,8 +57,6 @@ type McpEnvelope =
  *   2. Missing / undefined field -> `VALIDATION_REQUIRED_FIELD`. Zod v4 surfaces
  *      this as `invalid_type` with `received === "undefined"` on the issue
  *      (message also contains "received undefined").
- *   3. `reason` length / trim violation (`too_small` / `too_big` on the `reason`
- *      path) -> `VALIDATION_OUT_OF_RANGE`.
  *   4. Everything else -> `VALIDATION_INVALID_FORMAT`.
  */
 function mapZodErrorToEnvelope(err: ZodError): ErrorEnvelope {

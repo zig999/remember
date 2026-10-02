@@ -48,15 +48,6 @@ export const LlmRunSummarySchema = z.object({
   disputed: z.number().int().nonnegative(),
   rejected: z.number().int().nonnegative(),
   error: z.number().int().nonnegative(),
-  /**
-   * Fragments proposed by this run that carry NO provenance row — i.e. the
-   * LLM extracted them but never cited them in any consolidated link/attribute.
-   * Such fragments stay `status='proposed'` and are excluded from the partial
-   * FTS index (`WHERE status='accepted'`), so they are unsearchable: a silent
-   * recall gap. Defined identically to the retry orphan-cleanup (BR-10). For a
-   * still-running run this is a live snapshot (a fragment may yet be cited), so
-   * it is only conclusive once the run reaches a terminal status.
-   */
   orphaned_fragments: z.number().int().nonnegative(),
 });
 export type LlmRunSummary = z.infer<typeof LlmRunSummarySchema>;
@@ -77,17 +68,6 @@ export const AffectedNodeSchema = z.object({
 });
 export type AffectedNode = z.infer<typeof AffectedNodeSchema>;
 
-/**
- * Response of `GET /llm-runs/{id}` and `POST /llm-runs/{id}/retry`.
- *
- * `affected_nodes` (BR-33, v1.3.0) is OPTIONAL — attached ONLY when
- * `status === 'completed'`. Empty array is a valid completed-run payload (a
- * run can complete with only `rejected` outcomes); ABSENT means the run is
- * `running` / `failed` OR the best-effort batched lookup could not produce
- * the list. Serializers MUST omit the key entirely when undefined (never
- * emit `null` on the wire). Additive change — existing consumers that do
- * not read the field are unaffected.
- */
 export const LlmRunResponseSchema = z.object({
   id: z.string().uuid(),
   model: z.string(),

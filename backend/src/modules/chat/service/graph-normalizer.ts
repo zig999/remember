@@ -10,26 +10,11 @@
 //   - list_nodes -> N nodes + 0 links.
 //   - search     -> hydrate items(kind=node) -> N nodes + 0 links.
 //
-// Every other tool (`list_node_types`, `list_link_types`, `list_attribute_keys`,
-// `get_history_*`, `get_provenance_*`) returns `null` from the dispatcher — a
-// quiet no-op, NOT an empty delta. The route handler must NOT emit a
-// `graph_delta` frame when the normalizer returns `null` (the diff between
-// "no graph data" and "empty graph data" is meaningful for the front-end).
-//
 // Purity. `traverse`, `get_node`, and `list_nodes` are synchronous pure
 // functions of (result, catalog) — no DB access. Only `search` needs a
 // `PoolClient` to hydrate `items[]` (which carry just `id`, not the node
 // row) via `findNodesByIds` (1 query, no N+1 — graph.repository.ts:346).
 // The route obtains the client via `withReadOnly(...)`.
-//
-// Catalog. The wire shape includes `is_temporal` on every link (drives the
-// front-end edge style — temporal = solid, stable = dashed). The tool result
-// only carries `link_type` (the slug), so the normalizer resolves
-// `is_temporal` via `catalog.linkTypeByName.get(name)?.is_temporal`. If the
-// name is missing from the snapshot (a stale catalog cache vs a brand-new
-// link-type, or a developer error in tool payload shape), the normalizer
-// falls back to `is_temporal: false` rather than crashing — the front-end
-// gracefully renders a dashed edge, which is the conservative default.
 //
 // Type-narrowing. Inputs are `unknown` (the chat loop captures whatever the
 // MCP tool returned as `toolEnvelope.result`). Each normalizer uses small
@@ -38,8 +23,7 @@
 // SearchResponse) that are already validated upstream by the MCP toolset. The
 // guards exist to reject obviously-malformed input (defensive: a future tool
 // version changes its return shape) without paying for a full Zod parse on
-// every tool call. A guard miss returns an empty delta (`{nodes:[], links:[]}`)
-// rather than throwing, so a broken tool result never crashes the SSE stream.
+// every tool call.
 //
 // Boundary note (intentional divergence from chat.back.md §1.1).
 //   The back spec §1.1 says: "Nothing inside `chat/` imports from
@@ -78,13 +62,6 @@ export interface GraphLinkWire {
   readonly source_node_id: string;
   readonly target_node_id: string;
   readonly link_type: string;
-  /**
-   * Optional pt-BR display label of the LinkType, projected server-side from
-   * the catalog row (`link_type.label`). Additive in v2.4.0 — OMITTED when
-   * the slug is not present in the catalog snapshot (open-ontology fallback);
-   * the SPA then humanizes the slug client-side. The slug (`link_type`)
-   * remains the stable wire identifier; `link_type_label` is presentation-only.
-   */
   readonly link_type_label?: string;
   readonly is_temporal: boolean;
   readonly is_in_effect?: boolean;
@@ -206,16 +183,9 @@ function pickLinkWire(
   if (typeof link_type !== "string") return undefined;
 
   const linkTypeRow = catalog.linkTypeByName.get(link_type);
-  // Fallback `false`: assumptions_allowed[2] of the TC explicitly permits
-  // this. A missing link-type name in the catalog is a developer/migration
-  // bug, not a runtime crash condition for the SSE stream.
   const is_temporal = linkTypeRow?.is_temporal ?? false;
 
   // Optional fields — pass through when present + well-typed; otherwise omit.
-  // `link_type_label` (openapi v2.4.0, additive) projects the catalog's pt-BR
-  // label so the SPA can render the human form without a static slug->label
-  // table. When the slug is missing from the snapshot (open-ontology fallback)
-  // the field is OMITTED and the SPA humanizes the slug client-side.
   const out: GraphLinkWire = {
     id,
     source_node_id,
@@ -376,9 +346,6 @@ export async function normalizeSearch(
   for (const id of ids) {
     const node = byId.get(id);
     if (node !== undefined) nodes.push(node);
-    // If `byId.get(id)` is undefined, the node was deleted between the
-    // search and the hydration (rare race) — we just drop it. The front-end
-    // never knew about it; no need to surface a placeholder.
   }
   return { source_tool: "search", nodes, links: [] };
 }
@@ -407,9 +374,7 @@ export async function normalizeSearch(
  *      and `valid_from_basis: "stated"`), so on creation they cannot land
  *      in `needs_review` / `merged` / `deleted` — those statuses arise from
  *      resolution paths or compliance actions the directed path does not
- *      trigger. If `run.affected_nodes` is absent, `nodes = []` and the
- *      frame still emits (an empty `{nodes:[], links:[]}` delta is
- *      contractual — BR-41 v2.11).
+ *      trigger.
  *
  *   2. **Links** — a link is emitted for every `report[]` entry with
  *      `kind === "link"` AND `ACCEPTED_DIRECTED_STATUSES.has(status)` AND
@@ -433,19 +398,6 @@ export async function normalizeSearch(
  *      are resolved via the SAME `CatalogSnapshot.linkTypeByName` lookup
  *      used by `pickLinkWire` (traverse arm). Miss -> `is_temporal: false`,
  *      `link_type_label` OMITTED — same fallback contract as `traverse`.
- *
- *   4. **Omitted fields** — `is_in_effect`, `status` (assertion_status),
- *      and `flags` are OMITTED from every link on the directed path. These
- *      are view-derived (`knowledge_link_resolved`) and the freshly
- *      persisted link does not yet carry them here; a follow-up `traverse`
- *      surfaces them if the Owner asks for them on a later turn (BR-41
- *      v2.11).
- *
- *   5. **Envelope guard** — if `result` is not a well-formed object return
- *      `null` (the other arms return an empty delta on this branch, but
- *      BR-41 v2.11 says return `null` for the ingest_directed path — the
- *      malformed envelope means "no graph data", not "empty graph data",
- *      so the route MUST NOT emit a frame at all).
  *
  * Purity. Pure, synchronous — no PoolClient parameter (unlike `search`).
  * The directed envelope already carries `canonical_name` / `node_type` on
@@ -476,7 +428,6 @@ export function normalizeIngestDirected(
       id,
       node_type,
       canonical_name,
-      // Forced: directed items are stated-by-construction (BR-43 v2.8).
       status: "active",
     });
   }
@@ -530,8 +481,6 @@ export function normalizeIngestDirected(
     }
 
     const linkTypeRow = catalog.linkTypeByName.get(link_type);
-    // Same fallback as `pickLinkWire`: miss -> `is_temporal: false`, label
-    // OMITTED. SPA humanizes the slug client-side when the label is absent.
     const is_temporal = linkTypeRow?.is_temporal ?? false;
 
     const out: GraphLinkWire = {
@@ -541,9 +490,6 @@ export function normalizeIngestDirected(
       link_type,
       ...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {}),
       is_temporal,
-      // OMITTED on the directed path (BR-41 v2.11): is_in_effect, status,
-      // flags — view-derived and not yet materialised on the freshly
-      // persisted link.
     };
     links.push(out);
   }

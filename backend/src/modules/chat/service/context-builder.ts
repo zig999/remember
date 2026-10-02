@@ -8,10 +8,6 @@
 // (BR-29 step 3). This module reads:
 //
 //   1. The (already-loaded) conversation row, to access `summary_rolling`.
-//   2. The last `env.CHAT_RECENT_WINDOW` REAL TURNS via
-//      `repository.listRecentRealTurns` (BR-31 v2.9 — turn-based, not row-
-//      based; returns every row of each selected turn including scaffolding,
-//      already sorted ASC by the repo).
 //
 // And assembles the Anthropic-shaped context:
 //
@@ -83,21 +79,7 @@ export interface BuildModelContextInput {
    * normally passes `new Date()` at the start of the turn.
    */
   readonly now: Date;
-  /**
-   * IANA timezone id used to render BlockB (BR-47 step 3) — typically
-   * `env.OWNER_TZ` (default `"America/Sao_Paulo"`). `loadEnv` validates the
-   * zone at boot (BR-47 step 4), so the value reaching this function in the
-   * production path is always a known-good zone.
-   */
   readonly ownerTz: string;
-  /**
-   * Number of recent REAL TURNS to include (BR-31 v2.9 — TURN-based, not
-   * row-based; typically `env.CHAT_RECENT_WINDOW`, default 6). A real turn is
-   * one user `chat_message` row with `idempotency_key IS NOT NULL`; the
-   * repository returns ALL rows of each selected turn (anchor + scaffolding +
-   * terminal assistant). Must be >= 1; smaller values are a programmer error
-   * and would defeat the point of the builder.
-   */
   readonly recentLimit: number;
 }
 
@@ -126,10 +108,6 @@ export interface ModelContext {
  *   1. `system[0]` (BlockA): caller-supplied prompt string, wrapped as a
  *      `TextBlockParam` with `cache_control: { type: "ephemeral" }` (BR-47
  *      step 1 — Anthropic prefix-cache invariant).
- *   2. `system[1]` (BlockB): `renderDatetimeBlockB(now, ownerTz)` — a SHORT
- *      pt-BR string of the exact shape `"Data/hora atual do dono: <ISO-8601
- *      with offset> (<tz-id>)"`. NO `cache_control` (BR-47 step 2 — dynamic
- *      per turn).
  *   3. If `conversation.summary_rolling !== null`: prepend a synthetic
  *      `{ role: "user", content: [{ type: "text", text: <prefix><summary> }] }`
  *      block. The prefix is the constant exported above.

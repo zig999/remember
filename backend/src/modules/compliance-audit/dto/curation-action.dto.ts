@@ -1,14 +1,7 @@
-// DTO schemas for the curation_action audit endpoints (UC-04, UC-05).
-//
-// Mirrors the openapi.yaml shapes. The `action` filter is validated at the API
-// layer ONLY (BR-10) — the underlying DB column is plain `text` (schema line
-// 454).
-
 import { z } from "zod";
 
 import { UuidSchema } from "./compliance-delete.dto.js";
 
-/** 7 curation-tool names of §14.4 (BR-10). */
 export const CurationActionNameSchema = z.enum([
   "resolve_entity_match",
   "merge_nodes",
@@ -30,11 +23,6 @@ export const TargetKindSchema = z.enum([
 ]);
 export type TargetKind = z.infer<typeof TargetKindSchema>;
 
-/**
- * Query string for GET /api/v1/audit/curation-actions (UC-04). BR-09 semi-open
- * time-range honored (`from` inclusive, `to` exclusive); BR-10 action enum
- * validated here.
- */
 export const ListCurationActionsQuerySchema = z
   .object({
     action: CurationActionNameSchema.optional(),

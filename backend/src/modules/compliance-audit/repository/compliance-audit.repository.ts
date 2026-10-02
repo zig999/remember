@@ -46,18 +46,6 @@ export async function loadRawInformationForUpdate(
  * BR-04 + BR-05 + BR-18 — single UPDATE redacts content, the v1.3.0
  * `original_input` column (chat verbatim capture), sets the compliance flag in
  * metadata (shallow JSON merge), and transitions status + superseded_at.
- * content_hash is intentionally left untouched (BR-04).
- *
- * The `[REDACTED]` literal is hardcoded — never read from config (constraint
- * "[REDACTED] literal is hardcoded in the service").
- *
- * BR-18 — `original_input` is redacted in the SAME UPDATE statement using a
- * CASE expression so null stays null (rows never ingested through the
- * directed-chat path) and non-null is rewritten to the 10-character literal
- * `[REDACTED]`. The CASE preserves the audit-honest distinction between
- * "this row never carried a captured chat turn" (null after tombstone) and
- * "this row did carry a verbatim chat turn, which has been redacted under §11"
- * (`[REDACTED]` after tombstone). Atomic with `content` redaction.
  */
 export async function tombstoneRawInformation(
   client: PoolClient,
@@ -83,8 +71,7 @@ export async function tombstoneRawInformation(
 
 /**
  * Tombstone every raw_chunk anchored to the deleted raw. RETURNING.id count
- * feeds `affected.chunks` (BR-16). Spec UC-01 step 6 cascades BOTH
- * `status = 'deleted'` and `superseded_at = now()`.
+ * feeds `affected.chunks` (BR-16).
  */
 export async function tombstoneRawChunksOfRaw(
   client: PoolClient,
@@ -103,9 +90,6 @@ export async function tombstoneRawChunksOfRaw(
 }
 
 /**
- * BR-06 — tombstones every fragment whose `fragment_source` chain anchors
- * ONLY chunks of the deleted raw. Cross-source fragments survive.
- *
  * RETURNING.id count feeds `affected.fragments` (BR-16). Spec UC-01 step 6
  * cascades BOTH `status = 'deleted'` and `superseded_at = now()`.
  */
@@ -137,9 +121,6 @@ export async function tombstoneCascadedFragments(
 }
 
 /**
- * BR-07 — tombstones every knowledge_link whose provenance chain ALL points
- * to fragments anchored exclusively in the deleted raw.
- *
  * RETURNING.id count feeds `affected.links` (BR-16).
  */
 export async function tombstoneCascadedLinks(
@@ -172,9 +153,6 @@ export async function tombstoneCascadedLinks(
 }
 
 /**
- * BR-07 — tombstones every node_attribute whose provenance chain ALL points
- * to fragments anchored exclusively in the deleted raw.
- *
  * RETURNING.id count feeds `affected.attributes` (BR-16).
  */
 export async function tombstoneCascadedAttributes(
@@ -303,10 +281,6 @@ export interface ListComplianceDeletionsResult {
   readonly total: number;
 }
 
-/**
- * UC-02 — list ComplianceDeletion rows newest-first with optional filters.
- * BR-09: `executed_from` inclusive, `executed_to` exclusive (semi-open).
- */
 export async function listComplianceDeletions(
   client: PoolClient,
   f: ListComplianceDeletionsFilters
@@ -367,10 +341,6 @@ export interface CurationActionRow {
   readonly created_at: Date;
 }
 
-/**
- * BR-08 — inserts the one CurationAction row per UC-01 `deleted` outcome.
- * Reused by the future `curation` domain for the other six tool actions.
- */
 export async function insertCurationAction(
   client: PoolClient,
   args: CurationActionInsertArgs
@@ -423,10 +393,6 @@ export interface ListCurationActionsResult {
   readonly total: number;
 }
 
-/**
- * UC-04 — list CurationAction rows newest-first with optional filters.
- * BR-09 semi-open range, BR-10 enum already enforced at API layer.
- */
 export async function listCurationActions(
   client: PoolClient,
   f: ListCurationActionsFilters

@@ -267,17 +267,10 @@ export type ListRecentIngestionsMcpInput = z.infer<
 //
 // The caller (typically the chat agentic loop, but any MCP client may use it)
 // supplies a fully-structured payload of fragments + nodes + optional
-// attributes + optional links carrying LOCAL `ref` identifiers — the server
-// opens a `RawInformation` + `LLMRun` (sentinels `model='directed'`,
-// `prompt_version='directed-v1'`), then dispatches the items in dependency
-// order through the existing `propose_*` handlers. No Anthropic round-trip.
+// attributes + optional links carrying LOCAL `ref` identifiers.
 //
 // Schema constraints (BR-34, v1.4.1):
 //   - `ref` strings are local to the call (1..120 chars, must be non-empty).
-//   - `confidence` is DELIBERATELY ABSENT from every item — the server forces
-//     `confidence = 1.0` on every dispatched `propose_*` (BR-34 step 4 + the
-//     contract: a directed payload is a stated fact by construction; callers
-//     cannot lower confidence here).
 //   - `valid_from_basis` is restricted to the public `'stated' | 'document'`
 //     enum (the `'received'` fallback is server-internal, never accepted from
 //     callers — BR-16).

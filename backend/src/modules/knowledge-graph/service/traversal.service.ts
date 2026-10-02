@@ -4,15 +4,6 @@
 //   - Per-hop materialisation (NOT recursive CTE) — the merged-node
 //     substitution + decay scoring require service-layer work between hops
 //     (back spec §7 / BR-13 / BR-14).
-//   - `depth ∈ [1, 3]`; out-of-range -> `InvalidTraverseDepthError`
-//     (BR-05).
-//   - `direction = both` decomposes into two independent BFS halves
-//     (outbound + inbound) merged by `link.id` after dedup (BR-22).
-//   - Score = `TRAVERSAL_DECAY ** hop` (BR-14).
-//   - Merged endpoints are substituted to their survivor BEFORE being
-//     added to the response or enqueued for further expansion
-//     (BR-13). Merged nodes themselves are NEVER expanded.
-//   - The starting node is included in the result `nodes` list.
 //   - link_types[] are resolved to UUIDs in the catalog cache BEFORE BFS
 //     starts (BR-04).
 //
@@ -73,9 +64,6 @@ export interface TraverseInput {
  *   - UnknownLinkTypeError (BR-04) — element of `linkTypeNames` not in catalog.
  *   - ResourceNotFoundError — starting node id absent.
  *   - NodeDeletedError (BR-11) — starting node tombstoned.
- *
- * On a `merged` starting node, the result substitutes the survivor as the
- * starting node id (BR-13) — the response includes the survivor in `nodes`.
  */
 export async function traverseNodeService(
   client: PoolClient,
@@ -96,9 +84,6 @@ export async function traverseNodeService(
     throw new NodeDeletedError(input.startingNodeId);
   }
 
-  // Merged starting node — follow the pointer once. The survivor is always
-  // ACTIVE (BR-13 path-compression invariant); we re-fetch to obtain the
-  // canonical_name / status the response surfaces.
   let startingResolved = starting;
   if (
     starting.status === "merged" &&
@@ -168,10 +153,6 @@ export async function traverseNodes(
   const nodesById = new Map<string, KnowledgeNodeRow>();
   const linksById = new Map<string, TraversalLinkResponse>();
 
-  // Seed the node accumulator with the starting nodes (UC-06 contract: the
-  // response `nodes` list includes the starting node, BR-13 says the
-  // substitution is transparent — `startingNodeIds` is the caller's
-  // responsibility to substitute survivors).
   const seedRows = await findNodesByIds(client, input.startingNodeIds);
   for (const row of seedRows) {
     nodesById.set(row.id, row);
@@ -229,11 +210,6 @@ export async function traverseNodes(
     const fetched = await findNodesByIds(client, unknownIds);
     for (const row of fetched) nodesById.set(row.id, row);
 
-    // BR-13 — merged-node substitution. Any candidate whose `status =
-    // 'merged'` must be transparently swapped for `merged_into_node_id`
-    // (always ACTIVE by invariant). We fetch the survivors in a second
-    // batched query so the response `nodes` list contains BOTH the survivor
-    // (visible) and never the merged loser (hidden from the envelope).
     const substitution = await buildMergedSubstitution(
       client,
       candidateNodeIds,
@@ -247,18 +223,10 @@ export async function traverseNodes(
       const sourceId = substitution.get(row.source_node_id) ?? row.source_node_id;
       const targetId = substitution.get(row.target_node_id) ?? row.target_node_id;
 
-      // Skip self-edges that emerged purely because of merged substitution
-      // (both endpoints collapsed to the same survivor) — they convey no
-      // graph information beyond what the survivor itself already provides.
-      // A pre-existing self-loop (source === target in the raw row) is a
-      // legitimate edge in the underlying graph and is preserved.
       const isSubstitutionInducedSelfLoop =
         sourceId === targetId && row.source_node_id !== row.target_node_id;
       if (isSubstitutionInducedSelfLoop) continue;
 
-      // Dedup links by underlying knowledge_link.id (BR-22). Keep the
-      // SMALLEST hop number seen so far (BFS guarantees the first sight is
-      // the minimum hop), so we only insert on first encounter.
       if (linksById.has(row.id)) continue;
 
       const substitutedRow: LinkResolvedRow = {
@@ -277,10 +245,6 @@ export async function traverseNodes(
       });
     }
 
-    // Build the next frontier: substituted node ids that are NOT already
-    // visited AND whose row is NOT deleted/merged (merged are never
-    // enqueued — survivor takes over; deleted never reached because the
-    // hop SQL excludes deleted links).
     const nextFrontier: string[] = [];
     for (const id of candidateNodeIds) {
       const substituted = substitution.get(id) ?? id;
@@ -289,7 +253,7 @@ export async function traverseNodes(
       const row = nodesById.get(substituted);
       if (row === undefined) continue;
       if (row.status === "deleted") continue;
-      if (row.status === "merged") continue; // defensive — survivor is the one we follow
+      if (row.status === "merged") continue;
       nextFrontier.push(substituted);
     }
     frontier = nextFrontier;
@@ -317,12 +281,6 @@ export async function traverseNodes(
     finalLinks.push({ ...partial, provenance: provenance.slice() });
   }
 
-  // Final node list: every entry in `nodesById` whose id appears in
-  // `visitedNodeIds` (i.e. seen as a link endpoint or as a starting node),
-  // and that is NOT merged (merged nodes are silently hidden — only their
-  // survivor is exposed). Deleted nodes were never enqueued; if one slipped
-  // in via the starting-node path, the caller has already mapped to 410
-  // before reaching here.
   const finalNodes: KnowledgeNodeRow[] = [];
   for (const id of visitedNodeIds) {
     const row = nodesById.get(id);

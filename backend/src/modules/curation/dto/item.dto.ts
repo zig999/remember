@@ -18,7 +18,6 @@ export const ConfirmItemBodySchema = z.object({
 });
 export type ConfirmItemBody = z.infer<typeof ConfirmItemBodySchema>;
 
-/** reject_item — reason mandatory (destructive, BR-11). */
 export const RejectItemBodySchema = z.object({
   item_kind: ItemKindSchema,
   item_id: UuidSchema,
@@ -50,7 +49,6 @@ export const CorrectItemBodySchema = z
   .superRefine((body, ctx) => {
     const c = body.corrected;
 
-    // BR-18: at least one of value/target_node_id/valid_from/valid_to.
     const someProvided =
       (c.value !== undefined && c.value !== null) ||
       (c.target_node_id !== undefined && c.target_node_id !== null) ||
@@ -64,7 +62,6 @@ export const CorrectItemBodySchema = z
       });
     }
 
-    // Cross-field: value only on attribute, target_node_id only on link.
     if (body.item_kind === "link" && c.value !== undefined && c.value !== null) {
       ctx.addIssue({
         code: "custom",
@@ -84,7 +81,6 @@ export const CorrectItemBodySchema = z
       });
     }
 
-    // valid_from change requires valid_from_source.
     if (c.valid_from !== undefined && c.valid_from !== null) {
       if (
         c.valid_from_source === undefined ||
@@ -109,7 +105,6 @@ export const CorrectItemBodySchema = z
       }
     }
 
-    // Semi-open invariant on the new pair when both supplied.
     if (
       c.valid_from !== undefined &&
       c.valid_from !== null &&

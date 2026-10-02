@@ -5,9 +5,7 @@
 // Surface: `POST /api/v1/mcp/curation`, mounted under the auth-protected scope.
 // Exposes 8 tools: the 7 owned by this domain (CURATION_TOOL_NAMES) plus
 // `compliance_delete` (owned by compliance-audit, registered under the same
-// `curation` toolset key on the shared registry). NO X-LLM-Run-Id — both the
-// owner (REST) and the LLM (MCP) drive the SAME service layer; the write-side
-// `curation_action` audit happens INSIDE the service (withTransaction), not here.
+// `curation` toolset key on the shared registry).
 //
 // Validation is the handlers' (the curation DTOs encode the BR-30 BUSINESS_*
 // cross-field rules via superRefine): the kernel delegates raw args to the

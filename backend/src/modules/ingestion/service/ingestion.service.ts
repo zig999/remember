@@ -77,20 +77,10 @@ export interface IngestRawInformationResult {
  * Implementation of `POST /api/v1/ingest/raw-information`.
  *
  * Happy path (UC-01):
- *   1. Compute `content_hash = sha256(content)`.
- *   2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
  *   3. INSERT raw_information; on UNIQUE violation (content_hash), branch to the no-op path.
  *   4. Chunk via `chunkV1`; bulk INSERT raw_chunk.
  *   5. INSERT llm_run with the precomputed key.
  *   6. Return 201 with the new identifiers and the persisted chunk refs.
- *
- * Idempotent no-op path (UC-01 alt 4a):
- *   - Re-read the existing raw_information by content_hash.
- *   - Re-read the existing llm_run by idempotency_key. If not found (e.g.
- *     concurrent insert raced and we lost), surface as 500 — the DB is
- *     inconsistent in a way the spec does not anticipate (BR-09 assumes the
- *     run row is present whenever the raw_information row is).
- *   - Return 200 with `outcome = "noop_existing"` and empty `chunks` array.
  *
  * Caller is responsible for `BEGIN`/`COMMIT`. We never `ROLLBACK` here; we
  * either return a result or throw, and the route handler decides.

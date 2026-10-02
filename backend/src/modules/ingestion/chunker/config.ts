@@ -2,9 +2,6 @@
 //
 // Changing any of these requires bumping `CHUNKING_VERSION` and writing a new
 // chunker module (BR-03). The constants are not configurable per request.
-//
-// Units: Unicode code points (BR-05) — we measure block size by code-point
-// count, not by UTF-16 units or bytes.
 
 /** Identifier of the chunking strategy persisted in `raw_chunk.chunking_version`. */
 export const CHUNKING_VERSION = "v1" as const;
@@ -18,7 +15,6 @@ export const CHUNKING_VERSION = "v1" as const;
  */
 export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
 
-/** Hard ceiling on a single chunk. A block above this size is sentence-split. */
 export const CHUNK_HARD_MAX = 4000 as const;
 
 /**

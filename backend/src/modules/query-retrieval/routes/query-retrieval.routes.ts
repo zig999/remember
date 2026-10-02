@@ -1,9 +1,5 @@
 // Fastify routes for the query-retrieval REST endpoints.
 //
-// Mounted under `/api/v1/*` by the bootstrap (`app.ts`). The parent scope
-// already enforces Neon Auth JWT (BR-01); individual handlers do NOT
-// re-check the token.
-//
 // Endpoints (TC-06 + TC-be-002):
 //   - GET  /api/v1/search                              (UC-01)
 //   - GET  /api/v1/provenance/links/{link_id}          (UC-07)
@@ -156,10 +152,7 @@ export async function registerQueryRetrievalRoutes(
 
   // ---------------------------------------------------------------
   // GET /fragments/accepted  (TC-be-002, openapi v1.3.0)
-  //
-  // Lists `information_fragment` rows with `status = 'accepted'`
-  // filtered by `llm_run_id` and/or `raw_information_id` (at least
-  // one required). Tombstoned sources are silently omitted.
+  // Tombstoned sources are silently omitted.
   // ---------------------------------------------------------------
   app.get(
     "/fragments/accepted",
@@ -183,19 +176,6 @@ export async function registerQueryRetrievalRoutes(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Error mappers — route-side wrappers around the shared envelope mapper.
-//
-// BR-24 (knowledge-graph.back.md / query-retrieval.back.md): both REST and MCP
-// transports surface IDENTICAL error codes / messages for any thrown service
-// error. The classification core lives in
-// `backend/src/modules/knowledge-graph/mcp/error-envelope.ts`; the route
-// wrappers below recognise which thrown values are KNOWN business sentinels
-// and delegate to the shared mapper, re-throwing everything else so it
-// reaches the Fastify global error handler (which logs + maps pg / unknown
-// errors to their canonical envelopes). Behaviour is preserved verbatim from
-// the previous inline cascade.
-// ---------------------------------------------------------------------------
 
 function isMappableSearchError(err: unknown): boolean {
   return (

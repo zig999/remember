@@ -107,8 +107,7 @@ export class McpServer {
   }
 
   /**
-   * Look up a tool by fully-qualified key. Returns `undefined` for unknown
-   * keys; the transport layer turns that into a `NOT_FOUND` envelope.
+   * Look up a tool by fully-qualified key.
    */
   public getTool(toolset: ToolsetName, name: string): McpTool | undefined {
     return this.tools.get(qualifiedKey(toolset, name));

@@ -1,14 +1,3 @@
-// Shared merge mechanics used by UC-02 (resolveEntityMatch merge_into)
-// and UC-04 (mergeNodes).
-//
-// Steps inside the open transaction (BR-13 layered validation):
-//   1. SELECT ... FOR UPDATE on both rows (BR-26).
-//   2. Inspect status: 404 if missing, 410 if deleted, 409/422 mismatch.
-//   3. Enforce node_type match (BR-06).
-//   4. UPDATE absorbed node: status='merged', merged_into_node_id=survivor.
-//   5. Path compression (BR-07).
-//   6. Alias copy (BR-08).
-//   7. Repoint links / attributes (BR-09).
 
 import type { PoolClient } from "pg";
 
@@ -60,7 +49,6 @@ export async function performMerge(
     );
   }
 
-  // BR-26: lock both rows.
   const locked = await loadNodesForUpdate(client, [
     args.survivorId,
     args.absorbedId,
@@ -78,7 +66,6 @@ export async function performMerge(
     });
   }
 
-  // BR-12: 410 for tombstones; explicit before 409/422 status checks.
   if (survivor.status === "deleted") {
     throw new NodeDeletedError(
       "KnowledgeNode tombstoned by compliance_delete",
@@ -92,7 +79,6 @@ export async function performMerge(
     );
   }
 
-  // Survivor must be active.
   if (survivor.status !== "active") {
     throw new BusinessError(
       "BUSINESS_INVALID_TARGET_NODE",

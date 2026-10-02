@@ -1,15 +1,8 @@
-// MCP `query` toolset registration — nine read-only tools mirroring the REST
-// surface 1:1 (knowledge-graph.back.md BR-23, BR-25).
-//
 // Each tool wraps the SAME service-layer function that the REST handler in
-// `routes/knowledge-graph.routes.ts` invokes, opens its own short
-// `BEGIN READ ONLY` transaction (BR-23 rule 4), and returns the canonical MCP
+// `routes/knowledge-graph.routes.ts` invokes and returns the canonical MCP
 // envelope:
 //   success -> { ok: true,  result: <service return value> }
 //   failure -> { ok: false, error: { code, message, details? } }
-// The failure branch is built by the shared `mapErrorToEnvelope` from TC-01
-// (BR-24) so REST and MCP surface byte-identical error codes for the same
-// thrown sentinel.
 //
 // The MCP tool input schema for each tool is the SAME Zod schema as the REST
 // DTO (`dto/queries.dto.ts`); for endpoints that combine URL path params and
@@ -69,8 +62,7 @@ export interface QueryToolsetDeps {
 // ---------------------------------------------------------------------------
 // Per-tool input schemas. For endpoints that combine path + query params on
 // REST, the MCP schemas flatten them into a single object (MCP tool input is
-// a single JSON object; no URL path segments). Each schema is `.strict()` —
-// any unknown property surfaces as `VALIDATION_INVALID_FORMAT`.
+// a single JSON object; no URL path segments).
 // ---------------------------------------------------------------------------
 
 /** `get_node` (UC-05) — `node_id` + the GET /nodes/{id} query params. */

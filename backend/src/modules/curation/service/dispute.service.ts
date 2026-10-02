@@ -64,7 +64,6 @@ export async function resolveDisputeService(
       });
     }
 
-    // BR-22: every row must be `disputed`.
     for (const row of locked) {
       if (row.status !== "disputed") {
         throw new ConflictError(
@@ -75,7 +74,6 @@ export async function resolveDisputeService(
       }
     }
 
-    // BR-14: all items must share the same conflict scope.
     assertSameScope(body.item_kind, locked);
 
     if (body.decision === "keep_disputed") {
@@ -205,8 +203,6 @@ export async function resolveDisputeService(
       );
     }
 
-    // BR-16: functional-scope predicate — at most one row may end with
-    // valid_to = NULL when the scope's `allows_multiple_current = false`.
     const allowsMultipleCurrent = scopeAllowsMultipleCurrent(
       body.item_kind,
       locked,
@@ -282,7 +278,6 @@ export async function resolveDisputeService(
   });
 }
 
-/** BR-14: all items must share the same conflict scope. */
 function assertSameScope(
   itemKind: ItemKind,
   rows: readonly ItemLockedRow[]

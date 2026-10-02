@@ -4,33 +4,7 @@
 //
 //   - Block 4A ONTOLOGY — PRESERVED VERBATIM from v3 (deterministic catalog
 //     rendering — same byte-stability + cache-control invariant).
-//   - Block 4B SEARCH DISCIPLINE — PRESERVED VERBATIM from v3.
-//   - Block 4C DIRECTED INGESTION (NEW, v2.8) — REPLACES v3's
-//     `start_async_ingestion` + `get_ingestion_status` post-ingestion playbook
-//     with directives for the deterministic `ingest_directed` tool:
-//       (1) `ingest_directed` is the SINGLE write-bearing entry from chat,
-//           used ONLY on explicit Owner request (signal phrases:
-//           "crie", "registre", "linke", "ingerir esta informação");
-//       (2) the model emits a typed payload with `ref` strings LOCAL to the
-//           call (`fragments[]`/`nodes[]`/`attributes[]`/`links[]`) and MAY
-//           use the `node_id` pin on a node item to re-affirm a known entity
-//           it just retrieved via `query`;
-//       (3) when a temporal link/attribute REQUIRES `valid_from` and the
-//           Owner did NOT state a date, the model MUST ASK the Owner — never
-//           silently fall back to the `received` basis;
-//       (4) after the dispatcher returns, the model MUST REPORT the per-item
-//           result inline (`accepted` / `consolidated` / `needs_review` /
-//           `rejected` / `dependency_failed`);
-//       (5) NO auto-loop — each command is a single `ingest_directed` call
-//           followed by the natural-language answer; the v2/v3 auto-polling
-//           directive on `get_ingestion_status` is RETIRED because the tool
-//           is no longer on the chat catalog.
-//     The v3 post-ingestion playbook (`affected_nodes` → `get_node` /
-//     `traverse`; one-name-per-`search` fallback) is PRESERVED INSIDE
-//     block 4C for the case where the Owner asks about prior ingestions —
-//     `ingest_directed.result.run.affected_nodes` feeds the same recipe
-//     INLINE (no polling required, synchronous dispatch).
-//
+//   - Block 4B SEARCH DISCIPLINE — PRESERVED VERBATIM from v3.//
 // Marker token is REUSED VERBATIM from v1 (BR-20 stable across versions).
 //
 // Cache-control invariant (chat.back.md §12 v2.8):

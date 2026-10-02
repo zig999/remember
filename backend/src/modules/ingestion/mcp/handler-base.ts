@@ -5,11 +5,6 @@
 //      `tool_call` row is written in that case.
 //   2. Open ONE transaction (BR-19), run the layered validation (BR-13), do
 //      the business writes.
-//   3. Write the `tool_call` row in the same transaction on success.
-//   4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
-//      short TX to write the audit `tool_call` row (BR-23).
-//   5. On uncaught error: ROLLBACK, write `tool_call` with `error`, surface
-//      `SYSTEM_INTERNAL_ERROR` envelope.
 //
 // The MCP envelope is `{ ok: true, result } | { ok: false, error }`.
 
@@ -55,13 +50,6 @@ export type HandlerBusinessOutcome<R> = {
 /**
  * Map a service-layer success envelope to a `validation_outcome` for the
  * `tool_call` audit row.
- *
- * Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
- * branch returns this), the audit row is `'rejected'` per BR-17. Every other
- * `ok:true` envelope is `'accepted'`. Full graph-consolidation outcomes
- * (`consolidated` / `superseded_previous` / `disputed` / `needs_review` /
- * `uncertain`) become reachable in TC-010 / TC-011; this helper recognises
- * them by their `outcome` field.
  */
 export function deriveValidationOutcome<R>(
   envelope: { ok: true; result: R }
@@ -125,9 +113,6 @@ export async function assertRunIsRunning(
 /**
  * Run a handler's business logic inside a single TX, persist the `tool_call`
  * audit row, and wrap the outcome in the canonical MCP envelope.
- *
- * BR-23: even when the business transaction rolls back, the audit row is
- * written via a SEPARATE short transaction (`insertToolCallStandalone`).
  */
 export async function runIngestHandler<I, R>(args: {
   deps: IngestHandlerDeps;

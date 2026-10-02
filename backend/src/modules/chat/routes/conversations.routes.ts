@@ -19,13 +19,6 @@
 //   - Kill-switch short-circuit on every endpoint (BR-14).
 //   - Conversation lookup + archived check on every conversation-scoped path (BR-22 / BR-25).
 //   - Idempotency check + turn-registry check on `sendMessage` (BR-27 / BR-28).
-//   - The BR-29 persistence sequencing:
-//       1. validate -> 2. load conv -> 3. archived -> 4. turn registry ->
-//       5. idempotency -> 6. insertUserMessage tx -> 7. buildModelContext ->
-//       8. reply.hijack() + SSE headers -> 9. runTurn loop ->
-//      10. reply.raw.end() + release registry -> 11. insertAssistantMessage tx +
-//          attachToolCallsToMessage -> 12. pino INFO -> 13. fire-and-forget
-//          distillation (BR-33/BR-34).
 //   - Mapping the typed chat sentinel errors to the REST envelope (BR-23 pre-stream).
 //
 // What this file does NOT own:
@@ -148,10 +141,8 @@ export interface ChatRouteDeps {
   /**
    * Optional catalog snapshot (TC-be-002). Required for the `graph_delta` SSE
    * projection — every link in a `graph_delta` carries `is_temporal` which the
-   * normalizer resolves via `catalog.linkTypeByName`. When the catalog is
-   * absent (e.g. tests that do not load it) the route silently skips graph
-   * normalization: tool_result frames still emit, but no `graph_delta` frame
-   * is generated. The eight non-SSE endpoints do NOT need the catalog.
+   * normalizer resolves via `catalog.linkTypeByName`.
+   * The eight non-SSE endpoints do NOT need the catalog.
    */
   readonly catalog?: CatalogSnapshot;
   /**
@@ -967,10 +958,7 @@ export async function registerChatRoutes(
           // it is a pure projection of the preceding `tool_result.result`,
           // owned by the route handler so the service stays free of SSE
           // framing concerns. Order is contractual (plan §4.1): graph_delta
-          // ALWAYS follows the tool_result for the same tool call. Skipped
-          // entirely when the tool failed (ok:false), when the catalog
-          // snapshot is unavailable, or when the normalizer returns null
-          // (non-graph-producing tool).
+          // ALWAYS follows the tool_result for the same tool call.
           if (evt.type === "tool_result" && evt.ok && deps.catalog !== undefined) {
             const graphDelta = await projectGraphDelta(
               evt.tool,
@@ -1137,10 +1125,6 @@ async function handleIdempotentReplay(
   if (storedText.length > 0) {
     tryWrite(reply, frameJson("text_delta", { delta: storedText }), deps.logger);
   }
-  // We surface the stored stop_reason on the done frame. Synthetic
-  // `provider_error` / `internal_error` markers are mapped back to
-  // `end_turn` on the wire (BR-29 / openapi.yaml DoneEvent.stop_reason
-  // does not include the synthetic markers — they only live on the row).
   const storedStop = mapStoredStopReason(assistantRow.stop_reason);
   tryWrite(
     reply,
@@ -1268,8 +1252,7 @@ function emitChatBootLog(deps: ChatRouteDeps): void {
     "chat module routes registered"
   );
 
-  // BR-31 v2.9: CHAT_RECENT_WINDOW changed UNIT (rows -> turns) and DEFAULT
-  // (10 -> 6) in chat-context-fidelity TC-01. The shift is breaking for
+  // The shift is breaking for
   // operators — emit a dedicated INFO line so a grep on
   // `event=chat.recent_window_resolved` makes the resolved K explicit at boot.
   deps.logger.info(
@@ -1303,9 +1286,7 @@ function emitChatBootLog(deps: ChatRouteDeps): void {
     );
   }
   // chat.back.md BR-47 step 4 — emit `chat.owner_tz_resolved { tz }` at boot
-  // AFTER `loadEnv` has validated the value. The log is emitted unconditionally
-  // because `OWNER_TZ` carries a fail-closed default (`America/Sao_Paulo`) —
-  // every running process has a resolved value.
+  // AFTER `loadEnv` has validated the value.
   deps.logger.info(
     {
       event: "chat.owner_tz_resolved",
@@ -1537,12 +1518,6 @@ function resolveAssistantStopReason(args: {
   return "internal_error";
 }
 
-/**
- * Map a stored `stop_reason` column value back to a wire-safe `DoneStopReason`
- * (the synthetic `provider_error` / `internal_error` markers are NOT in the
- * OpenAPI DoneEvent enum — see openapi.yaml v2.0.0 DoneEvent description).
- * Used on the replay path.
- */
 function mapStoredStopReason(
   stored: string | null
 ): DoneStopReason {

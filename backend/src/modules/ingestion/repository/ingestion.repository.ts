@@ -149,9 +149,6 @@ export async function findRawInformationById(
 /**
  * Bulk-insert chunks for a `raw_information_id`. Uses `unnest(...)` so the
  * statement size is independent of N — one round trip, parameterized arrays.
- *
- * Returns the inserted rows ordered by `chunk_index` ascending. That ordering
- * is the contract of the calling route (the response chunk array is sorted).
  */
 export async function insertRawChunks(
   client: PoolClient,
@@ -178,10 +175,6 @@ export async function insertRawChunks(
   return result.rows.sort((a, b) => a.chunk_index - b.chunk_index);
 }
 
-/**
- * Find every `raw_chunk` of the given `raw_information_id`, ordered by
- * `chunk_index` ascending. Used by GET .../chunks.
- */
 export async function findChunksByRawInformationId(
   client: PoolClient,
   rawInformationId: string

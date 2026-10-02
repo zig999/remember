@@ -14,12 +14,6 @@
 // only hands over the document; the inviolable rule that the LLM never touches
 // the DB directly is preserved (every write still goes through the validated
 // propose-* path the orchestrator calls).
-//
-// Idempotency (BR-08): if the same content was already ingested,
-// `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
-// (the existing run is completed, or running, and re-running would either no-op
-// or 409). The tool reports `already_ingested` with the existing ids — never an
-// error.
 
 import type { Pool } from "pg";
 import type { Logger } from "pino";
@@ -38,14 +32,6 @@ import { DEFAULT_PROMPT_VERSION } from "../prompts/index.js";
 import { isPgUnavailable } from "../../../shared/error-mapping.js";
 import type { IngestDocumentMcpInput } from "./mcp-schemas.js";
 
-/**
- * Hard-coded fallback extraction model used only when the caller omits `model`
- * AND no `ingestModel` is wired (e.g. a bare test harness). Production threads
- * `env.INGEST_MODEL` through `deps.ingestModel`. Cost-optimized to Sonnet 4.6 —
- * extraction is structured tool-calling steered by the closed catalog (Opus 4.8
- * was the original functional-E2E-validated model). Override per call (the
- * `model` arg) or via the INGEST_MODEL env (no recompile).
- */
 export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";
 
 /** Canonical MCP envelope the toolset handlers return. */
@@ -65,8 +51,6 @@ export interface IngestDocumentDeps {
   /** Ingestion catalog snapshot — required by the extraction orchestrator. */
   readonly catalog: CatalogSnapshot;
   readonly anthropicApiKey: string;
-  /** Default extraction model when `input.model` is omitted (wired from
-   *  `env.INGEST_MODEL`). Falls back to `DEFAULT_INGEST_MODEL` if unset. */
   readonly ingestModel?: string;
   /** Test seam — forwarded to the orchestrator. Production omits it. */
   readonly anthropicFactory?: RunExtractionDeps["anthropicFactory"];
@@ -156,11 +140,6 @@ export async function ingestDocumentHandler(
 
   // Step 2 — idempotent short-circuit: already ingested, do not re-extract.
   if (outcome === "noop_existing") {
-    // Surface the existing run's status so the caller is NOT told a failed run
-    // "succeeded" (fail loud). `noopExisting` does not return the status, so we
-    // read it best-effort; a non-`completed` run means the prior extraction did
-    // not finish and recovery requires re-running that LLMRun (no retry tool is
-    // exposed over MCP yet — see BR-30).
     const runStatus = await runStatusReader(deps.pool, llm_run_id);
     const completed = runStatus === "completed";
     deps.logger.info(

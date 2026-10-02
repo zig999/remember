@@ -42,7 +42,6 @@ export async function resolveEntityMatchService(
   nodeId: string,
   body: ResolveEntityMatchBody
 ): Promise<ResolveEntityMatchResult> {
-  // BR-23 defence in depth on resolveEntityMatch (target == self).
   if (
     body.decision === "merge_into" &&
     body.target_node_id !== null &&
@@ -57,7 +56,6 @@ export async function resolveEntityMatchService(
 
   return withTransaction(deps.pool, async (client) => {
     if (body.decision === "keep_separate") {
-      // BR-26: lock node and assert needs_review.
       const locked = await loadNodesForUpdate(client, [nodeId]);
       const node = locked.find((r) => r.id === nodeId);
       if (!node) {
@@ -87,7 +85,6 @@ export async function resolveEntityMatchService(
           { node_id: nodeId }
         );
       }
-      // BR-10: drop review-context rows.
       await deleteEntityMatchReviewByNode(client, nodeId);
 
       const action = await insertCurationAction(client, {

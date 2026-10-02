@@ -46,7 +46,6 @@ export const IsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be ISO date `YYYY-MM-DD`");
 
-/** Reason — trim + min(1) ensures whitespace-only strings are rejected. */
 export const ReasonRequiredSchema = z.string().trim().min(1);
 export const ReasonOptionalSchema = z
   .string()

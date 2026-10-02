@@ -1,47 +1,3 @@
-// Fastify routes for the ingestion REST endpoints.
-//
-// Mounted under `/api/v1/ingest/*` from the BFF bootstrap. The parent scope
-// (set in `app.ts`) already enforces Neon Auth JWT, so individual handlers
-// here do NOT re-check the token.
-//
-// Endpoints implemented:
-//   - POST /api/v1/ingest/raw-information
-//   - GET  /api/v1/ingest/raw-information/:rawInformationId
-//   - GET  /api/v1/ingest/raw-information/:rawInformationId/chunks
-//   - GET  /api/v1/ingest/llm-runs/:llmRunId
-//   - GET  /api/v1/ingest/llm-runs/:llmRunId/tool-calls
-//   - POST /api/v1/ingest/llm-runs/:llmRunId/retry
-//   - POST /api/v1/ingest/llm-runs/:llmRunId/propose-fragment   (TC-13)
-//   - POST /api/v1/ingest/llm-runs/:llmRunId/propose-node       (TC-13)
-//   - POST /api/v1/ingest/llm-runs/:llmRunId/propose-link       (TC-13)
-//   - POST /api/v1/ingest/llm-runs/:llmRunId/propose-attribute  (TC-13)
-//
-// Transaction boundary (BR-19): each handler opens exactly one transaction
-// via `pool.connect()` + `BEGIN`, calls the service, and commits or rolls
-// back. The Fastify error handler converts thrown errors to the canonical
-// envelope.
-//
-// TC-13 specifics (BR-28 / UC-08..UC-11 alt 1a REST branch): the four
-// propose-* mirrors are HTTP entry points over the same transport-agnostic
-// service functions used by the MCP `ingest` toolset. They:
-//   1. Zod-parse the request body using the same schemas the MCP transport
-//      uses (`dto/index.ts`) — Zod failure -> HTTP 422 via the global error
-//      handler.
-//   2. Perform a run-state pre-check inside the open transaction that
-//      distinguishes 404 (`RESOURCE_NOT_FOUND`, llm_run row absent) from 409
-//      (`BUSINESS_RUN_NOT_RUNNING`, row present but `status != 'running'`).
-//      REST and MCP now emit the SAME namespaced code on the second case
-//      (`BUSINESS_RUN_NOT_RUNNING`) — REST surfaces it as HTTP 409, MCP as
-//      `isError: true` inside the tool-call result (P2.1 parity).
-//   3. Delegate the business work to the transport-agnostic service function
-//      (`proposeFragmentService`, etc. — `service/propose-*.service.ts`),
-//      which is the same function the MCP handler shell invokes. No business
-//      logic is duplicated.
-//   4. Return HTTP 200 for any reachable handler. The `ok: true/false` flag on
-//      the body is the outcome indicator — a layered-validation rejection
-//      (ValidationFailure) is a *business result*, not a transport error, and
-//      surfaces as `{ ok: false, error: { code, message, details } }` with
-//      HTTP 200. The open transaction is rolled back in that case.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
@@ -406,25 +362,6 @@ export async function registerIngestionRoutes(
     }
   );
 
-  // --- propose-* REST mirrors (TC-13 / UC-08..UC-11 REST branch) --------
-  //
-  // BR-28: dual-transport exposure of the four `ingest` tools (MCP + REST).
-  // Each route:
-  //   1. Zod-parses the request body (Zod failure -> 422 via global handler).
-  //   2. Opens a single transaction (BR-19) and within it loads the llm_run
-  //      row to distinguish 404 (unknown id) from 409 (status != 'running').
-  //   3. Calls the transport-agnostic propose-* service from the service
-  //      layer — the same function the MCP handler shell calls.
-  //   4. Returns the MCP envelope verbatim with HTTP 200; any layered-
-  //      validation rejection (ValidationFailure) is mapped to an
-  //      `{ ok: false, error: { code, message, details } }` envelope, still
-  //      HTTP 200, per BR-28.
-  //
-  // The propose-node / propose-link / propose-attribute routes require the
-  // catalog snapshot. When `deps.catalog` is missing the bootstrap is in
-  // "no-catalog mode" (test apps that don't exercise these endpoints) and
-  // we skip registering these three mirrors. The propose-fragment mirror
-  // does not need the catalog, so it is always registered.
 
   app.post(
     "/llm-runs/:llmRunId/propose-fragment",
@@ -481,20 +418,6 @@ export async function registerIngestionRoutes(
   }
 }
 
-/**
- * Shared shell for the four propose-* REST mirrors.
- *
- * Opens ONE transaction (BR-19), loads the `llm_run` row first to distinguish
- * 404 (unknown id) vs 409 (status != 'running'), and invokes the supplied
- * service `call`. Maps:
- *   - `ResourceNotFoundError` -> HTTP 404 with `RESOURCE_NOT_FOUND` envelope.
- *   - `RunNotRunningError`    -> HTTP 409 with `BUSINESS_RUN_NOT_RUNNING` envelope.
- *   - `ValidationFailure`     -> HTTP 200 with `{ ok: false, error: ... }`
- *                                envelope (BR-28 envelope semantics) AND
- *                                ROLLBACK of the open transaction.
- *
- * Any other error re-throws and surfaces via the global error handler (500).
- */
 async function handleProposeMirror<R>(
   deps: IngestionRouteDeps,
   reply: FastifyReply,

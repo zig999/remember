@@ -68,17 +68,6 @@ export function isPgUniqueViolation(err: unknown): boolean {
 
 // ---------------------------------------------------------------------------
 // Canonical code → HTTP status registry (P2.1, `docs/specs/_global/error-codes.md`).
-// ---------------------------------------------------------------------------
-//
-// Single source of truth for the REST rendering. MCP transports IGNORE this
-// map (they wrap the same `error.code` inside `content` + `isError: true` on
-// HTTP 200 at the SDK kernel), but every domain sentinel MUST publish its code
-// here so REST + MCP surface byte-identical codes on the same business
-// condition (P2.1 parity contract).
-//
-// Business OUTCOMES (`already_ingested`, `noop_already_deleted`, disputed /
-// uncertain / consolidated proposals, …) are NOT errors and MUST NOT appear
-// here — they surface as `ok: true` on both transports.
 export const codeToHttpStatus: Record<string, number> = {
   // Authentication — enforced by middleware before any handler runs.
   AUTH_TOKEN_EXPIRED: 401,
@@ -191,7 +180,6 @@ export function serviceUnavailableError(): MappedError {
   );
 }
 
-/** 500 — generic internal error. NEVER leaks `err.message` to the client. */
 export function internalError(): MappedError {
   return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
 }

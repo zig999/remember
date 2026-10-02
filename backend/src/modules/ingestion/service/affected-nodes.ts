@@ -23,11 +23,6 @@
 //   not in a state that supports the field, OR the read path could not produce
 //   the list (e.g. transient DB outage on the batched lookup — best-effort,
 //   not transactional).
-//
-// `rejected` and `error` validation outcomes do NOT contribute (they did not
-// touch the graph). De-dup is by `node_id`; first-write-wins on the entry.
-// Iteration order on the final list is insertion order (deterministic by
-// per-chunk tool-use order).
 
 import type { PoolClient } from "pg";
 
@@ -69,21 +64,8 @@ export interface AffectedNodeCollector {
   ids(): string[];
 }
 
-/**
- * Whether an `ok:true` envelope's `outcome` is one of the affected-node-
- * contributing buckets (BR-33 "Collection" — `rejected` and `error` do NOT
- * contribute).
- */
 function isContributingOutcome(outcome: unknown): boolean {
   if (typeof outcome !== "string") return false;
-  // Closed list per BR-33 / BR-27.
-  //   propose_node:     created_new | matched_existing | needs_review
-  //   propose_link:     accepted | consolidated | superseded_previous | disputed
-  //   propose_attribute: accepted | consolidated | superseded_previous | disputed
-  // We intentionally accept the union — the dispatch table (which tool emitted
-  // which outcome) is already enforced by the service layer; collecting the
-  // union is what the spec says ("any `{ ok: true }` outcome that surfaces a
-  // node id, excluding `rejected`").
   switch (outcome) {
     case "created_new":
     case "matched_existing":
@@ -222,13 +204,6 @@ export function __clearAffectedNodesCacheForTests(): void {
  * Behaviour per BR-33:
  *   - One batched query against `knowledge_node JOIN node_type` with
  *     `WHERE kn.id = ANY($1::uuid[])`.
- *   - Rows whose `knowledge_node.status = 'merged_into'` are resolved
- *     transparently to the surviving node via `merged_into_node_id`. We do
- *     ONE extra batched lookup for the survivors (depth-1 path compression on
- *     write keeps this normally enough).
- *   - Ids the lookup does not find at all (e.g. a node compliance-deleted
- *     between the tool call and run-completion) are skipped silently — they
- *     are not the run's responsibility to resurrect.
  *
  * Empty `ids` array → empty result without issuing a query.
  */

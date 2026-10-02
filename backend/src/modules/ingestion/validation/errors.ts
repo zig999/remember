@@ -23,10 +23,6 @@
 //   DATE_UNJUSTIFIED         -> BUSINESS_DATE_UNJUSTIFIED
 //   NOT_FOUND                -> RESOURCE_NOT_FOUND
 //   INTERNAL                 -> SYSTEM_INTERNAL_ERROR
-//
-// The extra `BUSINESS_RUN_NOT_RUNNING` code is emitted by the MCP handler
-// guard when the ambient `llm_run_id` points to a row whose `status` is not
-// `'running'` (BR-21 / catalog Ingestion section).
 
 export type McpEnvelopeErrorCode =
   // Validation layer — Zod / structural discrimination.

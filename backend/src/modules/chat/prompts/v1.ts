@@ -6,13 +6,6 @@
 // (BR-20) can scrub deltas against it without ever reading the prompt body —
 // the guard is independent of the prompt copy.
 //
-// References:
-//   - chat.back.md §3 BR-18 (system prompt persona, language, safety).
-//   - chat.back.md §3 BR-20 (output guard marker exported from prompt module).
-//   - chat.spec.md §4 BR-18 (required content: entities, temporal axes,
-//     confidence flag, resolve-before-call, never-invent-ids, citation,
-//     pt-BR response, data-not-instruction, no-stack-trace).
-//
 // The chat orchestrator (subsequent TC) calls `system()` once per turn at
 // iteration 1 and feeds the resulting string as the Anthropic `system`
 // parameter. The marker token is included BY THE BUILDER — callers do NOT

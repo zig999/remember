@@ -11,16 +11,6 @@
 //      step 6) AND must drive behaviour. Without a registry the version field
 //      becomes vestigial: the audit claims a version the prompt never honored.
 //      The registry closes that gap.
-//   2. Boot-time fast failure — an unknown `CHAT_SUMMARY_PROMPT_VERSION` is a
-//      configuration error, NEVER a silent fallback. `selectChatSummaryPromptModule`
-//      throws `UnknownChatSummaryPromptVersionError`; the route registrar (or
-//      a tighter boot probe) runs it so a misconfigured deployment refuses to
-//      mount the chat route rather than silently substituting a different
-//      prompt.
-//
-// `v2` is the incremental fold (BR-46, default — selected by BR-33 v2.9).
-// `v1` is the legacy single-input summariser of v2.0 (registered for back-
-// compat tests but NOT reachable via BR-33 v2.9).
 
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -53,12 +43,6 @@ export interface ChatSummaryPromptModule {
   ): Anthropic.Messages.MessageParam[];
 }
 
-/**
- * Recommended default for NEW deployments — used when env is unset. v2.9
- * makes `v2` the default (incremental fold). `v1` continues to resolve
- * through the registry for backward-compatibility (legacy single-input
- * summariser; not reachable via BR-33 v2.9 but kept registered).
- */
 export const DEFAULT_CHAT_SUMMARY_PROMPT_VERSION: string = v2.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, ChatSummaryPromptModule>> = {

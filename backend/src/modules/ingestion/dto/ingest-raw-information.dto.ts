@@ -13,9 +13,6 @@ import { SourceTypeSchema } from "./source-type.js";
 /**
  * Body of `POST /api/v1/ingest/raw-information`.
  *
- * - `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
- *    in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
- *    coarser pre-filter; this Zod check is the precise contract from A5.
  * - `storage_ref`: nullable; must be `null` in v1.0.0 (BR carve-out, A5).
  * - `metadata`: free-form bag; `document_date` (if present) is consumed by
  *    future temporal validation (A14 / §6.5).
@@ -34,8 +31,7 @@ export const IngestRawInformationRequestSchema = z.object({
   prompt_version: z.string().min(1, "prompt_version is required"),
   /**
    * Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
-   * BR-34). Omitted (or explicit `null`) on every non-chat path. Never
-   * factored into `content_hash`. Capped at 10 MiB to match `content`.
+   * BR-34). Omitted (or explicit `null`) on every non-chat path.
    */
   original_input: z
     .string()

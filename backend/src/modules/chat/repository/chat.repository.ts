@@ -203,14 +203,6 @@ export interface ChatRepository {
     limit: number
   ): Promise<MessageRow[]>;
 
-  // BR-31 v2.9: turn-based recent window. Returns every chat_message row that
-  // belongs to one of the last `turn_count` REAL turns (a real turn is anchored
-  // by a `role='user' AND idempotency_key IS NOT NULL` row), in chronological
-  // ASC order — including all scaffolding rows (intermediate
-  // `assistant[tool_use]` rows and synthetic `user[tool_result]` rows) and the
-  // terminal assistant row of each selected turn. When fewer than `turn_count`
-  // real turns exist, all rows from the available turns are returned (no error,
-  // no padding).
   listRecentRealTurns(
     client: PoolClient,
     conversation_id: string,
@@ -240,14 +232,6 @@ export interface ChatRepository {
     exclude_recent: number
   ): Promise<MessageRow[]>;
 
-  // BR-33 v2.9 step 2: bounded overlap slice for the incremental-fold
-  // refresh. Returns the rows OLDER than the K-real-turn boundary (same pivot
-  // as `listRecentRealTurns` / `countRealTurnsOlderThanRecentWindow`), capped
-  // at the most recent `overlap_m` rows, with the START cut on a REAL-TURN
-  // anchor so the slice is always Anthropic-valid (no leading orphan
-  // `tool_result`). When the cap would land mid-turn the slicer shrinks the
-  // start FORWARD to the nearest anchor row — fewer rows is acceptable; an
-  // invalid sequence is not. Returns rows in chronological ASC order.
   listOlderMessagesForSummaryBounded(
     client: PoolClient,
     conversation_id: string,
@@ -350,11 +334,6 @@ export async function getConversationById(
   return res.rows[0] ?? null;
 }
 
-// BR-35: cursor-paginated DESC list. `cursor` is the (created_at, id) pair of
-// the previous page's last row. The composite key tuple comparison `(a, b) <
-// (c, d)` lets the query plan walk `idx_chat_conversation_created_at_id_desc`
-// directly. We fetch `limit + 1` rows to detect a next page without a second
-// COUNT round-trip.
 export async function listConversations(
   client: PoolClient,
   input: {
@@ -653,24 +632,6 @@ export async function listRecentMessages(
   return res.rows;
 }
 
-// BR-31 v2.9: turn-based recent-window selection. Two-phase plan, both phases
-// scoped to ONE conversation and bounded:
-//   Phase 1 — DESC scan over the `(conversation_id, created_at, id)` index
-//     filtered on the REAL-turn anchor predicate
-//     `role='user' AND idempotency_key IS NOT NULL`, LIMIT `turn_count`. The
-//     row at the bottom of the result (or NULL when fewer than `turn_count`
-//     anchors exist) gives the inclusive boundary `created_at` from which the
-//     window starts.
-//   Phase 2 — bounded range scan over the same index returning ALL rows whose
-//     `created_at >= boundary` (so scaffolding rows persisted between the
-//     anchor and the terminal assistant row are included by construction; see
-//     BR-29 v2.2 faithful multi-row persistence), ordered ASC.
-// When `turn_count <= 0` we return an empty list defensively — callers
-// shouldn't pass that, but the guard avoids an OFFSET-style edge case in the
-// boundary subquery. When the conversation has 0 real turns the boundary
-// subquery returns NULL and the outer WHERE evaluates `created_at >= NULL ->
-// UNKNOWN`, filtering everything out; for that case we short-circuit too so
-// the caller never has to reason about it.
 export async function listRecentRealTurns(
   client: PoolClient,
   conversation_id: string,
@@ -758,9 +719,6 @@ export async function countRealTurnsOlderThanRecentWindow(
   return Number(res.rows[0]?.count ?? "0");
 }
 
-// BR-39: ASC pagination with optional `before` cursor (walks backwards in
-// time so the SPA can lazy-load older messages). Fetch `limit + 1` to detect
-// next page.
 export async function listMessagesPaginated(
   client: PoolClient,
   conversation_id: string,
@@ -776,14 +734,6 @@ export async function listMessagesPaginated(
   params.push(limit + 1);
   const limitParam = `$${params.length}`;
 
-  // v2.2: this is the human-facing conversation view (SPA). It returns ONLY
-  // the DISPLAY rows — real user turns (`idempotency_key IS NOT NULL`) and
-  // TERMINAL assistant answers (`stop_reason IS NOT NULL`). The intermediate
-  // tool-scaffolding rows added by faithful multi-row persistence (assistant
-  // `[tool_use]` + synthetic user `[tool_result]`) are hidden — they exist for
-  // the model's context replay, not for display, and the structured per-call
-  // payload lives in `chat_tool_call` (BR-32). Live tool activity is shown via
-  // the `tool_start`/`tool_result` SSE frames during streaming.
   const displayFilter =
     " AND ((role = 'user' AND idempotency_key IS NOT NULL)" +
     " OR (role = 'assistant' AND stop_reason IS NOT NULL))";
@@ -843,30 +793,6 @@ export async function listOlderMessagesForSummary(
   return res.rows;
 }
 
-// BR-33 v2.9 step 2: bounded overlap slice. Returns the rows OLDER than the
-// K-real-turn boundary (same pivot as `listRecentRealTurns` /
-// `countRealTurnsOlderThanRecentWindow`), capped at the most recent
-// `overlap_m` rows, with the START cut on a REAL-TURN ANCHOR so the slice is
-// always Anthropic-valid (no leading orphan `tool_result`).
-//
-// Algorithm (single round-trip; the planner pushes the CTEs into the same
-// `(conversation_id, created_at, id)` index scans):
-//   1. `boundary`: the K-real-turn anchor's `created_at` (LIMIT 1 OFFSET K-1
-//      on the DESC real-turn-anchor scan) — the start of the recent window.
-//      Rows with `created_at < boundary` are the "older" rows.
-//   2. `older_cap_start`: take the most recent `overlap_m` older rows by
-//      `(created_at DESC, id DESC)`, then in those rows pick the OLDEST
-//      anchor row (`role='user' AND idempotency_key IS NOT NULL`) by
-//      `(created_at ASC, id ASC)` — that anchor's `created_at` is the slice
-//      start. If no anchor exists inside the M-row tail, the slice is empty
-//      (the older history is all scaffolding without any anchor — defensive;
-//      should never happen because the boundary itself is an anchor).
-//   3. Final result: every "older" row with `created_at >= older_cap_start`,
-//      ordered ASC. By construction the slice starts on an anchor row and the
-//      row count is ≤ `overlap_m` (it can be LESS — the shrink-forward step
-//      may drop the leading non-anchor rows of the M-row tail; that is the
-//      intended behaviour per BR-33 v2.9 step 2.c).
-//
 // Defensive edge cases:
 //   - `turn_count <= 0` or `overlap_m <= 0` -> return [].
 //   - Conversation has ≤ K real turns -> no older rows -> return [].

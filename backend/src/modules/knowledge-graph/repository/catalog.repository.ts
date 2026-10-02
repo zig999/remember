@@ -157,7 +157,6 @@ export interface AttributeValidValueJoined {
 /**
  * List closed-domain values (optionally restricted to one `node_type_id`,
  * joined through `attribute_key`). Rows are grouped per key by the service.
- * Keys with no rows here have an OPEN domain and get no `valid_values`.
  */
 export async function listAttributeValidValues(
   client: PoolClient,

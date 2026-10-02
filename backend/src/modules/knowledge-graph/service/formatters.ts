@@ -96,12 +96,6 @@ function toSourceType(s: string): SourceType {
   throw new InvariantError(`Unexpected source_type from DB: ${s}`);
 }
 
-/**
- * Derive the display flags surfaced in `LinkDetail.flags` and
- * `AttributeDetail.flags`. Today this mirrors the storage `status` for
- * `uncertain` / `disputed`; `low_confidence` is reserved for a future
- * threshold-based flag.
- */
 export function deriveFlags(status: AssertionStatus): AssertionFlag[] {
   const flags: AssertionFlag[] = [];
   if (status === "uncertain") flags.push("uncertain");

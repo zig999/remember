@@ -6,11 +6,6 @@
 // JWKS, cache the JWKS in process for the configured TTL (default 10 min, per
 // knowledge-graph.back.md §1), and refuse to dispatch the route on any failure.
 //
-// Error mapping (registered in docs/specs/_global/error-codes.md):
-//   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
-//   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
-//   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
-//
 // Provider note: Neon Auth (powered by Stack Auth) issues asymmetric access
 // tokens — EdDSA (Ed25519) by default — served via a JWKS endpoint derived from
 // `NEON_AUTH_URL`. `jose` selects the verification algorithm from the JWKS key,
@@ -107,10 +102,6 @@ export function buildNeonAuth(
       cooldownDuration: 30_000,
     });
 
-  // DEV-ONLY local operator bypass (see config/env.ts LOCAL_OPERATOR_TOKEN).
-  // Resolved once at build time: enabled only when running in development AND a
-  // token is configured. In any other mode this is `null` and the bypass branch
-  // below is dead — production never trusts a static bearer.
   const localOperatorToken: string | null =
     env.NODE_ENV === "development" &&
     typeof env.LOCAL_OPERATOR_TOKEN === "string" &&
@@ -129,11 +120,6 @@ export function buildNeonAuth(
         );
       }
 
-      // DEV-ONLY bypass: a bearer equal (constant-time) to the configured local
-      // operator token is accepted as the owner WITHOUT JWKS verification — the
-      // convenience path for local MCP clients (e.g. Claude Desktop via
-      // mcp-remote) that cannot run the Neon Auth OAuth flow. A non-matching
-      // token simply falls through to real JWKS verification below.
       if (localOperatorToken !== null && constantTimeEqual(token, localOperatorToken)) {
         request.user = {
           id: "local-operator",
@@ -179,11 +165,6 @@ export function extractBearer(header: string | undefined): string | null {
   return match[1] ?? null;
 }
 
-/**
- * Constant-time string comparison for the DEV-ONLY local operator token. Avoids
- * leaking length/prefix information through timing; returns false on any length
- * mismatch (timingSafeEqual requires equal-length buffers).
- */
 function constantTimeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");

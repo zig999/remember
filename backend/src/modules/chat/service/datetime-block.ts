@@ -1,9 +1,7 @@
 // Datetime BlockB renderer — chat.back.md BR-47 v2.9.
 //
 // Renders the dynamic, non-cached SECOND system block fed into the Anthropic
-// `system` array on every chat turn. The output is a SHORT pt-BR string of
-// the EXACT shape `"Data/hora atual do dono: <ISO-8601 with offset> (<tz-id>)"`
-// (e.g. `"Data/hora atual do dono: 2026-06-26T11:00:00-03:00 (America/Sao_Paulo)"`).
+// `system` array on every chat turn.
 //
 // Why a separate file: the renderer is a pure utility (no DB, no env, no
 // logger). Keeping it isolated lets the context-builder import it without

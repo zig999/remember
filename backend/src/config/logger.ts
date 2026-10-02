@@ -3,21 +3,11 @@
 // TC-01 acceptance criterion: pino emits JSON to stdout regardless of NODE_ENV.
 // We do NOT install pino-pretty in production paths; humans reading logs
 // locally can pipe stdout through `pino-pretty` themselves.
-//
-// PII rule (CLAUDE.md "Security"): the `content`, `text`, and `value` fields
-// of any logged object are redacted at every nesting depth — they may carry
-// the user's raw documents or personal attribute values.
 
 import pino, { type Logger, type LoggerOptions } from "pino";
 
 import type { Env } from "./env.js";
 
-/**
- * Paths under which the pino redaction engine must blank values. Wildcards
- * apply at every nesting level. Listed paths cover the field names used by
- * the data model (`raw_information.content`, `raw_chunk.text`,
- * `information_fragment.text`, `node_attribute.value`).
- */
 const REDACT_PATHS: readonly string[] = [
   "content",
   "text",

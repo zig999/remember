@@ -49,9 +49,8 @@ export interface ConversationCursor {
 
 /**
  * Thrown by `decodeCursor` when the input string is not valid base64url JSON
- * with the expected `{ created_at, id }` shape (BR-35). The route handler
- * surfaces this as 422 `VALIDATION_INVALID_FORMAT` with
- * `details.param = "cursor"`. We use a dedicated class so the route layer
+ * with the expected `{ created_at, id }` shape (BR-35).
+ * We use a dedicated class so the route layer
  * can branch on it without parsing the underlying JSON error.
  */
 export class InvalidCursorError extends Error {
@@ -118,7 +117,6 @@ export interface CreateConversationInput {
 }
 
 export interface ListConversationsInput {
-  /** Route layer enforces [1, 100], default 20 (BR-35). */
   readonly limit: number;
   /** Opaque base64url JSON cursor; `null` for the first page. */
   readonly cursor: string | null;
@@ -183,8 +181,7 @@ export async function listConversations(
 
 /**
  * Read a single conversation (UC-04 / BR-22). Maps the repository's null
- * return to `ConversationNotFoundError`, which the route handler renders as
- * 404 `RESOURCE_NOT_FOUND`.
+ * return to `ConversationNotFoundError`.
  */
 export async function getConversation(
   pool: Pool,

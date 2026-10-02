@@ -1,36 +1,6 @@
 // Graph consolidation service — implements §6.5 of `remember-modelagem-v7.md`
 // and BR-25 of `ingestion.spec.md` / BR-27 of `ingestion.back.md`.
 //
-// Responsibility: given a fully-validated `propose_link` / `propose_attribute`
-// call (5-layer validation already passed), look up the vigent row(s) under
-// `SELECT ... FOR UPDATE` (A11) and decide between the five branches of
-// §6.5:
-//
-//   * consolidated      — same value / same valid_from / change_hint='none'
-//                         AND a vigent row already exists: no new main row,
-//                         provenance accumulates on the existing row (§6.5
-//                         step 1).
-//   * superseded_previous — functional type (allows_multiple_current=false),
-//                         different value, succession signal in fragment
-//                         texts AND/OR change_hint='succession': close the
-//                         vigent row (valid_to, superseded_at, status=
-//                         'superseded') and insert the new row chained via
-//                         supersedes_* (§6.5 flow A).
-//   * correction        — change_hint='correction' with errata signal
-//                         (already verified by validateTemporal in layer 3):
-//                         close the vigent row (superseded_at=now(),
-//                         status='superseded'; valid_to untouched) and
-//                         insert the new row chained via supersedes_*.
-//                         Outcome is 'accepted' per BR-25 (the audit trail
-//                         lives in supersedes_* and tool_call.result).
-//   * disputed          — vigent row exists; same period; different value;
-//                         no succession / correction signal: UPDATE the
-//                         vigent row to status='disputed', INSERT the new
-//                         row also as 'disputed' (§6.5 flow C).
-//   * accepted (new)    — no vigent row in scope OR non-functional scope
-//                         with non-overlapping period: INSERT a brand-new
-//                         row with status from BR-17 (active|uncertain).
-//
 // In every branch where a (new or existing) main row id ends up being the
 // provenance target, the service inserts one provenance row per fragment
 // with ON CONFLICT DO NOTHING (the UNIQUE(link_id, fragment_id) and
@@ -79,7 +49,6 @@ import { ValidationFailure } from "../validation/errors.js";
 
 import type { RunContext } from "./propose.types.js";
 
-/** A textual succession marker — case-insensitive substring on any fragment. */
 const SUCCESSION_MARKERS = [
   "deixou de",
   "passou a",
@@ -207,10 +176,6 @@ function isDupGuardViolation(err: unknown, guard: string): boolean {
 /**
  * Insert provenance rows for a (link_id | attribute_id, fragment_id) pair
  * set. `ON CONFLICT DO NOTHING` makes re-affirmation idempotent (§18).
- *
- * Creating a Provenance row is the §6.6 trigger that promotes each cited
- * fragment `proposed -> accepted`, so each inserter follows the write with
- * `promoteFragmentsToAccepted` in the same transaction.
  */
 async function insertLinkProvenance(
   client: PoolClient,
@@ -240,15 +205,6 @@ async function insertAttributeProvenance(
   await promoteFragmentsToAccepted(client, fragmentIds);
 }
 
-/**
- * §6.6 state machine: an InformationFragment cited by an accepted
- * consolidation (a `Provenance` row was just created) transitions
- * `proposed -> accepted`. Scoped to `status = 'proposed'` so the write is
- * idempotent under re-affirmation (§18) and never resurrects a `rejected`,
- * `superseded`, or `deleted` fragment. Without this the search fragment layer
- * and node-provenance synthesis (both `WHERE status = 'accepted'`) never see
- * ingested fragments — the graph populates but `/search` returns nothing.
- */
 async function promoteFragmentsToAccepted(
   client: PoolClient,
   fragmentIds: readonly string[]
@@ -264,29 +220,6 @@ async function promoteFragmentsToAccepted(
 }
 
 /**
- * Close a vigent row for a §6.5-A succession (Emenda v7.3 — validity-axis close).
- *
- * Succession means the fact changed in the WORLD: the old version was TRUE for
- * `[valid_from, closeDate)` and remains the system's current belief about that
- * past window. So succession closes the **validity axis only** — set
- * `valid_to = closeDate` (the new version's `valid_from`, or `today` when the
- * new row has none) and LEAVE `superseded_at = NULL`. This keeps the old version
- * visible to valid-time travel (query (b), `temporal-filter.ts`) within its
- * window — which is what makes acceptance scenario C7 pass. The current view
- * (a) still excludes it because `valid_to` is set. This is the §5.6 distinction:
- * succession = validity axis; correction (§6.5-B) = transaction axis.
- *
- * EXCEPTION — intra-day collapse: validity is day-granular (`date`, §5.1) and
- * `valid_from < valid_to` is strict (CHECK + temporal.ts). When the vigent row's
- * own `valid_from` is on/after `closeDate` (a same-effective-date succession),
- * setting `valid_to = closeDate` would produce a degenerate `[D, D)` interval and
- * fail the CHECK. `date` cannot represent that sub-day boundary, so for that row
- * ONLY we fall back to the TRANSACTION axis (`superseded_at = now()`, `valid_to`
- * untouched) — the same mechanism correction uses. C7 is unreachable for sub-day
- * successions (documented day-granularity limitation); the `supersedes_*` lineage
- * still orders the versions. Both CASEs key off the row's own `valid_from` vs the
- * DB clock in SQL — no TS/SQL clock skew.
- *
  * `table` is a fixed literal (never input) — safe to interpolate.
  */
 async function closeVigentForSuccession(
@@ -417,22 +350,6 @@ async function lockVigentAttributeByTriple(
   return res.rows[0] ?? null;
 }
 
-/**
- * Consolidate a proposed link into the graph.
- *
- * Caller owns the transaction. This function performs lookup-and-decide
- * inside an internal SAVEPOINT so that a SQLSTATE 23505 on the partial
- * dup-guard (`knowledge_link_current_dup_guard`) — produced by a
- * concurrent committed INSERT racing us between our FOR UPDATE and our
- * INSERT — can be recovered (ROLLBACK TO SAVEPOINT keeps the parent
- * transaction usable). On a 23505 we re-run the lookup ONCE; the racer's
- * row is now visible to our SELECT FOR UPDATE so the decision settles
- * deterministically. A second 23505 surfaces as
- * `ValidationFailure('SYSTEM_INTERNAL_ERROR')` per BR-25 / BR-27.
- *
- * Non-23505 errors thrown inside the savepoint are rolled back (so the
- * parent transaction stays usable) and re-thrown unchanged.
- */
 export async function consolidateLink(
   client: PoolClient,
   args: ConsolidateLinkArgs,
@@ -527,25 +444,6 @@ async function consolidateLinkOnce(
     const sameTarget = vigent.target_node_id === args.target_node_id;
     const sameValidFrom = vigent.valid_from === (args.valid_from ?? null);
 
-    // (a) Re-affirmation (consolidation) — same target, change_hint='none'.
-    //
-    //     For MULTI-CURRENT types (`functional === false`): `valid_from`
-    //     equality is NOT required. The dup-guard scope already enforces
-    //     at most one vigent row per (source, target, link_type), so a
-    //     vigent row reached here IS the same assertion. The only reason
-    //     `valid_from` may differ between proposals is the per-document
-    //     `received` fallback (temporal.ts FR-001) — a metadata artifact
-    //     of the receiving document, not an assertion of the fact itself.
-    //     Consolidating regardless of `valid_from` satisfies v7 §18
-    //     "re-afirmação consolida, nunca duplica" and v7 §6.5 (same
-    //     source/target/link_type + change_hint='none' + no
-    //     succession/correction signal = re-affirmation).
-    //
-    //     For FUNCTIONAL types (`functional === true`): also require
-    //     `sameValidFrom`. On a functional type, a different `valid_from`
-    //     genuinely signals a different period — potential succession or
-    //     dispute, not a simple re-affirmation. The stricter check
-    //     preserves branches (c) and (d).
     const reaffirmation =
       sameTarget &&
       args.change_hint === "none" &&
@@ -555,10 +453,6 @@ async function consolidateLinkOnce(
       return { outcome: "consolidated", link_id: vigent.id };
     }
 
-    // (b) Correction — change_hint='correction' AND errata signal already
-    //     verified by validateTemporal. Same period preserved on the old
-    //     row (valid_to UNCHANGED) per §6.5-B; only mark superseded_at /
-    //     status='superseded'. The OUTCOME is 'accepted'.
     if (args.change_hint === "correction") {
       // Close the vigent row (transaction axis only — valid_to untouched
       // per §6.5-B).
@@ -613,9 +507,6 @@ async function consolidateLinkOnce(
       };
     }
 
-    // (d) Dispute — functional vigent row exists with overlapping
-    //     period, different value, no succession / correction signal.
-    //
     //     For multi-valued types: a vigent row with the SAME target is
     //     ALWAYS caught by branch (a) above (re-affirmation now ignores
     //     `valid_from` differences for multi-current types). Multi-valued
@@ -628,8 +519,6 @@ async function consolidateLinkOnce(
     if (!functional) {
       // Multi-valued — fall through to (e) below.
     } else {
-      // Functional, vigent row exists, NOT a re-affirmation, NOT
-      // correction, NOT succession -> dispute (§6.5-C).
       await client.query(
         `UPDATE knowledge_link
             SET status = 'disputed'::assertion_status

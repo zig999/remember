@@ -6,13 +6,6 @@
 // drive behaviour — every run used v1 regardless of the string it declared.
 // That is a traceability gap (the audit claims a version the prompt never
 // honoured). The registry closes it: the version field now maps to the prompt.
-//
-// An unknown version is a configuration error, NOT a silent fallback: BR-26
-// step 2 mandates "load the extraction.${prompt_version} module; fail with 500
-// SYSTEM_INTERNAL_ERROR if the module is missing". `selectPromptModule` throws
-// `UnknownPromptVersionError`; the extraction orchestrator runs it inside its
-// run-scoped try, so the run is flipped to `failed` and the error surfaces (it
-// must never silently run a different prompt than the audit trail records).
 
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -59,7 +52,6 @@ const V4: PromptModule = {
   user: v4.user,
 };
 
-/** Recommended version for NEW runs — callers SHOULD send this at intake. */
 export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, PromptModule>> = {
@@ -69,7 +61,6 @@ const REGISTRY: Readonly<Record<string, PromptModule>> = {
   [v4.PROMPT_VERSION]: V4,
 };
 
-/** Thrown when `prompt_version` names no registered module (BR-26 step 2). */
 export class UnknownPromptVersionError extends Error {
   constructor(public readonly promptVersion: string) {
     super(

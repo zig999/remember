@@ -9,14 +9,6 @@ import { z } from "zod";
 /** UUID v4 (or any UUID format). */
 export const UuidSchema = z.string().uuid();
 
-/**
- * `reason` — non-empty after trim, ≤ 1000 chars (BR-01).
- *
- * Implementation note: `z.string().trim().min(1).max(1000)` runs `trim()` then
- * checks the length AFTER the trim. We want to reject `"   "` as well as
- * strings > 1000 chars (counting the original chars, the trim never lengthens
- * a string). The Zod chain is sufficient.
- */
 export const ReasonSchema = z.string().trim().min(1).max(1000);
 
 /** Body schema for POST /api/v1/compliance/deletions (BR-01). */
@@ -73,9 +65,6 @@ export type ComplianceDeleteResponse = z.infer<
 
 /**
  * Query-string schema for GET /api/v1/compliance/deletions (UC-02).
- *
- * Time-range filters honor BR-09 (`from` inclusive, `to` exclusive). When both
- * bounds are supplied, the parser rejects `from >= to` with `VALIDATION_OUT_OF_RANGE`.
  */
 export const ListComplianceDeletionsQuerySchema = z
   .object({

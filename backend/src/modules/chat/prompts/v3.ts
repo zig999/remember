@@ -10,18 +10,6 @@
 //     reference -> byte-identical output, which is the precondition for the
 //     Anthropic `cache_control` prefix to stay valid across turns (P0 prompt-
 //     caching invariant from the `llm-cost-audit` memory).
-//   - Block 4B SEARCH DISCIPLINE — explicit directives the model MUST follow:
-//     `search` is lexical AND (one specific name per call, never concatenate
-//     multiple proper nouns); `list_nodes` MUST carry a `node_type` filter
-//     when used as category enumeration; `list_node_types` /
-//     `list_link_types` / `list_attribute_keys` are the discovery primitives.
-//   - Block 4C POST-INGESTION PLAYBOOK — explicit recipe for "show what was
-//     ingested" after `get_ingestion_status` returns `completed`. The model
-//     MUST consult `result.affected_nodes` FIRST (TC-5 propagation, BR-43 /
-//     BR-45 amendments) and do direct `get_node` / `traverse` lookups; the
-//     `search` / `list_nodes(node_type=...)` path is the fallback when
-//     `affected_nodes` is empty or absent; an unfiltered `list_nodes(limit:30)`
-//     used as "what was ingested" is forbidden.
 //
 // The renderer NEVER hardcodes a type name. The catalog grows by additive
 // migration + BFF restart (see `ontology-extension-playbook` memory); the
@@ -185,12 +173,6 @@ export function renderOntologyBlock(catalog: CatalogSnapshot): string {
   for (const attr of catalog.attributeKeyById.values()) {
     const owner = catalog.nodeTypeById.get(attr.node_type_id);
     const ownerName = owner !== undefined ? owner.name : "?";
-    // BR-30 — when the key has a CLOSED domain, list its allowed values inline
-    // so the model uses one of them verbatim instead of guessing (e.g. an
-    // English convention against a pt-BR domain). Values are SORTED for
-    // determinism (byte-stability / cache-control invariant) and to match the
-    // `allowed_values` order the validator returns on rejection. Absence of a
-    // domain leaves the line unchanged (open domain).
     const domain = catalog.attributeValidValuesByKeyId.get(attr.id);
     const domainSuffix =
       domain !== undefined && domain.size > 0

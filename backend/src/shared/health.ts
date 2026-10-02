@@ -15,12 +15,6 @@ export interface HealthReport {
   checked_at: string;
 }
 
-/**
- * Probe the BFF: confirm the process is up and the database is reachable. Never
- * throws — a DB failure surfaces as `{ ok: false, database: "unreachable" }`
- * so callers always get a usable report (the BFF answering at all proves it is
- * running; the `database` field reports the dependency separately).
- */
 export async function collectHealth(pool: Pool): Promise<HealthReport> {
   const checkedAt = new Date().toISOString();
   try {

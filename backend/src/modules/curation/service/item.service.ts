@@ -209,8 +209,6 @@ export async function correctItemService(
       );
     }
 
-    // BR-17: when `valid_from_fragment_id` is supplied, the fragment must
-    // exist AND its status must be `accepted`.
     if (
       body.corrected.valid_from_fragment_id !== undefined &&
       body.corrected.valid_from_fragment_id !== null
@@ -228,17 +226,6 @@ export async function correctItemService(
       }
     }
 
-    // BR-23 (TC-04): when correcting an attribute AND `corrected.value` is
-    // supplied, run two legs against the predecessor's `attribute_key`
-    // BEFORE any DB write:
-    //   (1) parseAttributeValue against `value_type` (type leg)
-    //   (2) assertValueInDomain when the key has a closed domain (domain leg)
-    // Both helpers throw `ValidationFailure` with `STRUCTURAL_INVALID` —
-    // curation re-raises as `BUSINESS_INVALID_ATTRIBUTE_VALUE` (HTTP 422)
-    // because curation collapses business reasons into the BUSINESS_*
-    // envelope. Other curator actions (`prefer_one`, `adjust_periods`,
-    // `confirm_item`, `reject_item`) do not write `value` and are out of
-    // scope (curation.spec.md UC-10 main flow step 5; alt 5a, 5b).
     if (
       body.item_kind === "attribute" &&
       body.corrected.value !== undefined &&
@@ -246,8 +233,6 @@ export async function correctItemService(
     ) {
       const attributeKeyId = predecessor.attribute_key_id;
       if (!attributeKeyId) {
-        // Defensive: loadItemsForUpdate always selects `attribute_key_id`
-        // for the `attribute` kind. If this fires the SELECT shape drifted.
         throw new BusinessError(
           "BUSINESS_INVALID_ATTRIBUTE_VALUE",
           "predecessor attribute row is missing attribute_key_id",
@@ -256,11 +241,6 @@ export async function correctItemService(
       }
       const attrKey = deps.catalog.attributeKeyById.get(attributeKeyId);
       if (!attrKey) {
-        // The predecessor row's attribute_key_id is not in the catalog
-        // snapshot. This can happen only if the catalog was loaded before a
-        // migration added the key OR if the predecessor was written against a
-        // stale schema. Surface as BUSINESS_INVALID_ATTRIBUTE_VALUE rather
-        // than 500 — the operator can re-run with a fresh boot.
         throw new BusinessError(
           "BUSINESS_INVALID_ATTRIBUTE_VALUE",
           "predecessor attribute_key_id does not resolve in the catalog snapshot",
@@ -268,7 +248,6 @@ export async function correctItemService(
         );
       }
 
-      // Type leg — details: { value_type, value } (BR-23 first leg).
       try {
         parseAttributeValue({
           value: body.corrected.value,
@@ -285,16 +264,12 @@ export async function correctItemService(
         throw err;
       }
 
-      // Domain leg — runs only when the key has a closed domain. Details:
-      // { attribute_key, value, allowed_values } (BR-23 second leg).
       const domain = domainOf(deps.catalog, attrKey.id);
       if (domain !== null) {
         try {
           assertValueInDomain(body.corrected.value, domain);
         } catch (err) {
           if (isValidationFailure(err)) {
-            // Pull the sorted allowed_values from the underlying failure to
-            // match the prompt-builder ordering (TC-02 contract).
             const detail = err.details as { allowed_values?: string[] };
             throw new BusinessError(
               "BUSINESS_INVALID_ATTRIBUTE_VALUE",
@@ -338,7 +313,6 @@ export async function correctItemService(
     // 3. Copy provenance.
     await copyProvenance(client, body.item_kind, body.item_id, newItemId);
 
-    // 4. Append the errata fragment if supplied (BR-19).
     if (
       body.corrected.valid_from_fragment_id !== undefined &&
       body.corrected.valid_from_fragment_id !== null

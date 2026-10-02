@@ -38,9 +38,7 @@ export interface ToolCallRow {
 /**
  * One row of the "recent ingestions" read — a `raw_information` row joined to
  * its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears
- * with null run fields). `content_preview` is the first 80 code points of the
- * raw text — enough for an operator to recognise a document after a client
- * timeout without shipping the whole content back.
+ * with null run fields).
  */
 export interface RecentIngestionRow {
   readonly raw_information_id: string;
@@ -58,8 +56,7 @@ export interface RecentIngestionRow {
 
 /**
  * Most recent ingestions, newest first. Read-only; the caller wraps this in a
- * `BEGIN READ ONLY` transaction. `limit` is validated (1..50) at the toolset
- * boundary before it reaches here.
+ * `BEGIN READ ONLY` transaction.
  */
 export async function findRecentIngestions(
   client: PoolClient,
@@ -109,12 +106,7 @@ export async function findLlmRunById(
 }
 
 /**
- * Aggregate run metrics. Returns a fully-formed `LlmRunSummary` — every field
- * present, missing buckets default to 0 (BR-12). Two parts:
- *   - the 8 outcome buckets, grouped from `tool_call.validation_outcome`;
- *   - `orphaned_fragments`, the count of this run's `proposed` fragments with
- *     no provenance row (uncited → unsearchable; recall-gap signal). Defined
- *     identically to the retry orphan-cleanup in `retryLlmRunRow` (BR-10).
+ * Aggregate run metrics.
  */
 export async function aggregateToolCallOutcomes(
   client: PoolClient,
@@ -145,8 +137,6 @@ export async function aggregateToolCallOutcomes(
     summary[row.validation_outcome] = Number.parseInt(row.n, 10);
   }
 
-  // Orphaned-fragment count (recall-gap signal). Same definition as the
-  // retry orphan-cleanup: `proposed` fragments of this run with no provenance.
   const orphan = await client.query<{ n: number }>(
     `SELECT count(*)::int AS n
        FROM information_fragment
@@ -166,8 +156,6 @@ export async function aggregateToolCallOutcomes(
  * Atomic retry transition. Implements BR-10 / BR-11:
  *  - UPDATE ... WHERE status = 'failed' RETURNING the new row. If no row is
  *    affected, the caller surfaces 409 BUSINESS_RUN_NOT_RETRYABLE.
- *  - In the same transaction, orphan `proposed` fragments of this run are
- *    flipped to `rejected`.
  */
 export async function retryLlmRunRow(
   client: PoolClient,
@@ -185,8 +173,6 @@ export async function retryLlmRunRow(
   );
   if (updated.rows.length === 0) return null;
 
-  // Orphan-fragment cleanup (BR-10): proposed fragments of THIS run that have
-  // no provenance row are flipped to `rejected`.
   await client.query(
     `UPDATE information_fragment
         SET status = 'rejected'
@@ -234,7 +220,6 @@ export async function countToolCalls(
   return Number.parseInt(result.rows[0]?.n ?? "0", 10);
 }
 
-/** Page of `tool_call` rows ordered by `created_at` ascending. */
 export async function findToolCallsByRun(
   client: PoolClient,
   args: { llm_run_id: string; limit: number; offset: number }
@@ -318,9 +303,7 @@ export async function insertToolCallStandalone(
 }
 
 /**
- * BR-18 anti-hallucination check. For every fragment in `fragment_ids`, the
- * fragment must exist AND have at least one `fragment_source` row pointing to
- * a `raw_chunk` of `expected_raw_information_id`. Returns the COUNT of fragments
+ * Returns the COUNT of fragments
  * that satisfy the rule — caller compares against `fragment_ids.length` and
  * throws `VALIDATION_INVALID_FORMAT` on mismatch.
  */

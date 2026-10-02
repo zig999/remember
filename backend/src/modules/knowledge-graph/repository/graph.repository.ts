@@ -68,12 +68,6 @@ export interface ListNodesResult {
  * List nodes filtered by status, optional NodeType, optional name-prefix
  * lookup (via `node_alias.alias_norm`). Uses two SQL queries (data + count).
  *
- * Prefix lookup mechanics (BR-03 of `.spec.md` / UC-04):
- *   - We pass the already-normalized prefix as `$X` and compare with
- *     `alias_norm LIKE $X || '%'`. The btree index on `alias_norm`
- *     supports left-anchored LIKE under the default collation.
- *   - DISTINCT on `kn.id` because a node can have many matching aliases.
- *
  * Per CLAUDE.md "Known Gotchas", `unaccent()` is STABLE; the caller has
  * already invoked `norm()` (via `immutable_unaccent`) at the application
  * boundary so the bound parameter is already normalized.
@@ -294,10 +288,6 @@ export interface ProvenanceRow {
  * (`link_id` for links, `attribute_id` for attributes); `targetIds` is the
  * array of ids we want provenance for in a single round trip.
  *
- * BR-16 excerpt computation: `substring(raw_chunk.text from offset_start + 1
- * for offset_end - offset_start)` — 1-based `substring`, 0-based
- * `[offset_start, offset_end)` offsets (CLAUDE.md "Known Gotchas" / A22).
- *
  * The query uses `= ANY($1::uuid[])` so all rows arrive in one network
  * round trip — never one query per target id (BR-16, no N+1).
  */
@@ -408,9 +398,7 @@ export async function fetchTraversalHop(
   });
   params.push(...temporal.params);
 
-  // BR-07 / BR-08: temporal filter from the helper. Excluded the `status =
-  // 'deleted'` rows explicitly here — a tombstoned link is never part of
-  // the traversal envelope (UC-06 alt 3a).
+  // BR-07 / BR-08: temporal filter from the helper.
   const sql = `SELECT kl.*
                  FROM knowledge_link_resolved kl
                 WHERE ${where.join(" AND ")}
@@ -428,22 +416,6 @@ export async function fetchTraversalHop(
 
 export type HistoryKind = "link" | "attribute";
 
-/**
- * Walk the complete lineage chain anchored at `anchorId`. Issues one
- * recursive CTE that follows BOTH directions (up via `supersedes_*_id`,
- * down via reverse pointer). Returns each row at most once, ordered ASC
- * by `recorded_at` then `id` for deterministic output.
- *
- * Returns `null` when the anchor itself is missing (the caller maps to
- * `RESOURCE_NOT_FOUND`).
- *
- * Because every row in the result set is read from the resolved view, the
- * derived fields (`is_current`, `is_in_effect`, `effective_status`) are the
- * SAME across the chain — they are functions of `current_date`, not of the
- * row's position in the chain. The service layer is responsible for keeping
- * the surrounding transaction open so all rows observe the same
- * `current_date` (back spec §1 "Transaction policy").
- */
 export async function walkLinkHistory(
   client: PoolClient,
   anchorId: string

@@ -7,16 +7,6 @@
 //     "error": { "code": "<ERROR_CODE>", "message": "<human-readable>",
 //                "details": <optional structured payload> }
 //   }
-//
-// Error mapping (registered in docs/specs/_global/error-codes.md):
-//   - AuthError                    -> 401 (code from AuthError.code)
-//   - ZodError                     -> 422 VALIDATION_INVALID_FORMAT
-//   - pg error: ECONNREFUSED / ETIMEDOUT / 57P03 / 57014 -> 503 SYSTEM_SERVICE_UNAVAILABLE
-//   - Any other unhandled error    -> 500 SYSTEM_INTERNAL_ERROR
-//
-// The handler MUST NOT leak internal messages on the 500 path — the client
-// gets a generic "internal error" string; the original `err.message` is
-// logged server-side via pino.
 
 import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import type { Logger } from "pino";
@@ -49,8 +39,6 @@ export function buildErrorHandler(logger: Logger) {
   ): FastifyReply {
     const { statusCode, envelope, logLevel } = classify(err);
 
-    // Log every failure with full context — but never the request body
-    // (PII rule: pino redaction handles `req.body.content/text/value`).
     logger[logLevel](
       {
         request_id: request.id,
@@ -122,7 +110,6 @@ export function classify(err: unknown): {
     };
   }
 
-  // 4. Database connectivity / statement-timeout (BR-18 of knowledge-graph).
   if (isPgUnavailable(err)) {
     return serviceUnavailableError();
   }
@@ -137,9 +124,6 @@ export function classify(err: unknown): {
         ok: false,
         error: {
           code: codeFromHttpStatus(err.statusCode),
-          // Never leak an internal message on a 5xx path (the file contract):
-          // 4xx messages are client-actionable and framework-generated, but a
-          // 5xx message may carry internal detail — use a generic string.
           message: isServerError ? "Internal server error." : err.message,
         },
       },

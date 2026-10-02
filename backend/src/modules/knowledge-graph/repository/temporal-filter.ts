@@ -7,29 +7,12 @@
 // extended parameter array to `pg.query`). It NEVER concatenates user input
 // — every value supplied here lands in a positional placeholder (CLAUDE.md
 // "Security").
-//
-// Modes:
-//
-//   1. asOf undefined            -> "current view" (query (a), BR-07):
-//        AND <alias>.valid_to IS NULL
-//        AND <alias>.superseded_at IS NULL
-//        [AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= current_date)]
-//          (the bracketed clause is added when `inEffectOnly = true`)
-//
-//   2. asOf provided             -> "valid-time travel" (query (b), BR-08):
-//        AND <alias>.superseded_at IS NULL
-//        AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= $asOf)
-//        AND (<alias>.valid_to   IS NULL OR <alias>.valid_to   >  $asOf)
-//
-// Note: the `inEffectOnly` flag is meaningful only in mode 1 — when
-// `asOf` is provided, the valid_from check is already part of the filter.
 
 import { InvariantError } from "../../../shared/invariant-error.js";
 
 export interface TemporalFilterOptions {
   /** Optional valid-time anchor (ISO YYYY-MM-DD). */
   readonly asOf?: string;
-  /** When true (and `asOf` undefined), restrict to rows in effect today. */
   readonly inEffectOnly?: boolean;
 }
 

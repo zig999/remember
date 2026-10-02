@@ -175,14 +175,6 @@ export async function searchKnowledgeService(
     dedupCollapsedCount += 1;
   }
 
-  // BR-10: a chunk hit not anchored by ANY fragment in the result set is
-  // dropped (we never surface raw-chunk text without the fragment lens).
-  // We retain chunk hits only if explicitly requested and no fragment
-  // anchored them. Per the spec ("collapse predates ranking; the final
-  // list never carries a chunk row"), we DROP all chunk hits unconditionally
-  // — only the dedup collapse promotes their excerpts into fragments.
-  // Chunks NOT collapsed have no surface; they drop.
-
   // ---------------------------------------------------------------
   // (f) Build the intermediate result list.
   // ---------------------------------------------------------------
@@ -290,9 +282,6 @@ export async function searchKnowledgeService(
         logger
       );
 
-      // For each link returned by the traversal, surface a `link` SearchItem.
-      // Score = TRAVERSAL_DECAY ** hop * <source node score>.
-      // We look up the source-node score by searching the items array.
       const nodeScoreById = new Map<string, number>();
       for (const it of items) {
         if (it.kind === "node") nodeScoreById.set(it.id, it.score);
@@ -378,9 +367,6 @@ export async function searchKnowledgeService(
     ? items
     : items.filter((it) => it.status !== "uncertain");
 
-  // ---------------------------------------------------------------
-  // (i) Rank (BR-15): score DESC, recordedAtTs DESC, id ASC.
-  // ---------------------------------------------------------------
   filtered.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (b.recordedAtTs !== a.recordedAtTs)

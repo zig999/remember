@@ -7,11 +7,6 @@
 // `renderErrorEnvelope` mapper, producing byte-identical envelopes on both
 // transports (no more parallel transport-specific short-code override).
 //
-// Three families:
-//   - ResourceNotFoundError -> 404 / RESOURCE_NOT_FOUND
-//   - ValidationFailure     -> 422 / VALIDATION_*  (code set by the caller)
-//   - InternalFailure       -> 500 / SYSTEM_INTERNAL_ERROR (BR-17 legacy-orphan alarm)
-//
 // Anything else propagates to the global Fastify error handler
 // (500 SYSTEM_INTERNAL_ERROR).
 
@@ -51,12 +46,6 @@ export class ValidationFailure extends ComplianceAuditError {
   }
 }
 
-/**
- * 500 — UC-01 alt `4c` legacy inconsistency: `raw_information.status =
- * 'deleted'` exists with no `compliance_deletion` row. BR-17 mandates an
- * operational alarm (already emitted at the service layer) and a generic
- * 500 to the client.
- */
 export class InternalFailure extends ComplianceAuditError {
   public readonly statusCode = 500;
   public readonly code = "SYSTEM_INTERNAL_ERROR" as const;

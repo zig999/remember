@@ -10,13 +10,8 @@
 //                      link_type known).
 //   2. Graph rules   — active link_type_rule for the triple (BR-15).
 //   3. Temporal      — semi-open invariant, change_hint signal, date basis.
-//   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
 //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
 //                      source (BR-18).
-//
-// On confidence < 0.40 the service returns `{ ok: true, result: { outcome:
-// 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`. The caller maps this to
-// `validation_outcome = 'rejected'` on the `tool_call` row (BR-17).
 //
 // After validation, the service delegates the actual graph write to
 // `consolidateLink` (TC-011 / BR-25 / BR-27): the consolidator locks the
@@ -136,10 +131,6 @@ export async function proposeLinkService(
   );
 
   // ---- Layer 3: Temporal -----------------------------------------------
-  // Pull document_date AND received_at from the run's source. `received_at`
-  // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
-  // and is consumed by `validateTemporal` as the fallback for
-  // `requires_valid_from = true` rows that carry no stated/document date.
   const sourceMetaRes = await client.query<{
     document_date: string | null;
     received_at: Date | null;
@@ -203,9 +194,6 @@ export async function proposeLinkService(
       target_node_id: args.target_node_id,
       link_type_id: resolvedLink.id,
       confidence: args.confidence,
-      // Use the temporal layer's resolved values — when the `received`
-      // fallback applied, these carry the materialized date + basis instead
-      // of the raw input nulls (v7 §6.5 / A14).
       valid_from: resolvedTemporal.valid_from,
       valid_to: args.valid_to ?? null,
       valid_from_basis: resolvedTemporal.valid_from_basis,

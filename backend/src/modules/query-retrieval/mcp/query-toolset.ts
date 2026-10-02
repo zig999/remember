@@ -6,12 +6,6 @@
 // Each tool wraps the SAME service-layer function that the REST handler in
 // `routes/query-retrieval.routes.ts` invokes, opens its own short
 // `BEGIN READ ONLY` transaction (mirrors the REST handler), and returns the
-// canonical MCP envelope:
-//   success -> { ok: true,  result: <service return value> }
-//   failure -> { ok: false, error: { code, message, details? } }
-// The failure branch is built by the shared `mapErrorToEnvelope` from TC-01
-// (BR-24) so REST and MCP surface byte-identical error codes for the same
-// thrown sentinel.
 //
 // The MCP tool input schema for each tool is the SAME Zod schema as the REST
 // DTO (`dto/search.dto.ts`); MCP has no URL path segments, so the provenance
@@ -176,10 +170,6 @@ export interface McpEnvelopeJson {
  *      knowledge-graph handlers use).
  *   2. Opens a `withReadOnly` transaction.
  *   3. Calls the service-layer function.
- *   4. Wraps the result in `{ ok: true, result }` or, on throw, in the shared
- *      `mapErrorToEnvelope(err)` envelope. The mapper never raises — every
- *      thrown value collapses to a typed `{ ok: false, error }` envelope
- *      (BR-24).
  */
 function makeHandler<S extends z.ZodTypeAny, O>(
   schema: S,

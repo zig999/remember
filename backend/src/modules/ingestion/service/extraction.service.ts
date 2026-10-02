@@ -18,9 +18,7 @@
 //   §6 "Anthropic API" row of `ingestion.back.md`).
 //
 // Error paths:
-//   - run not 'running' at entry           -> RunNotRunnableError (409)
 //   - run id unknown                       -> ResourceNotFoundError (404)
-//   - >=3 consecutive 'error' outcomes      -> ExtractionFatalError (500)
 //   - Anthropic SDK fatal error mid-run    -> LlmProviderFatalError (502)
 //   - any other uncaught exception         -> ExtractionFatalError (500)
 //
@@ -187,16 +185,6 @@ export interface AnthropicLike {
 /** Factory injected by the route or by tests. */
 export type AnthropicFactory = (apiKey: string) => AnthropicLike;
 
-// A5 — bound the per-request wait on the Anthropic API so a stalled stream
-// cannot keep an extraction turn pending for the SDK's loose implicit default
-// (~10 min). A single extraction turn emits at most `MAX_TOKENS` (8000) output
-// tokens plus adaptive thinking and completes in well under a minute in
-// practice, so a 5-minute ceiling is generous headroom while halving the
-// worst-case stall before the turn is aborted-and-retried. `maxRetries` is
-// pinned explicitly (matches the SDK default) so transient 429/529/network
-// blips self-heal without inflating cost. This does NOT change the latency of a
-// healthy run; it only caps a pathological hang. (If per-deployment tuning is
-// ever needed, promote these to env vars alongside `PG_STATEMENT_TIMEOUT_MS`.)
 const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 const ANTHROPIC_MAX_RETRIES = 2;
 
@@ -401,7 +389,6 @@ export interface RunExtractionDeps {
  *   - `ResourceNotFoundError`     — unknown llm_run id
  *   - `RunNotRunnableError`       — run not 'running'
  *   - `LlmProviderFatalError`     — Anthropic SDK fatal
- *   - `ExtractionFatalError`      — >=3 errors in a row OR uncaught exception
  *
  * The orchestrator never opens a long-lived `pg` connection: it acquires a
  * short read-only connection at entry for the pre-checks, releases it, and

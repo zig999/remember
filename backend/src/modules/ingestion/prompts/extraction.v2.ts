@@ -1,13 +1,3 @@
-// Extraction prompt — version v2 (Frente 2 / BR-26).
-//
-// v2 = v1 + an explicit Event-dating directive. The "go-live veio sem data"
-// gap was a PROMPT gap: v1 never told the model to propose `event_date` when it
-// creates an Event (the catalog has had Event.event_date — temporal, functional
-// — all along, §15.3). v2 appends that directive (plus the value-vs-valid_from
-// distinction) to v1's SYSTEM prompt; the USER builder, MAX_TOKENS, the §13
-// anti-injection envelope and the catalog rendering are reused VERBATIM from v1
-// — no duplication, so v1 stays the single source for everything unchanged.
-//
 // Why a new version (not an in-place edit of v1): it keeps the audit trail
 // honest. `llm_run.prompt_version` now MAPS to the prompt that ran (the registry
 // in `./index.ts` dispatches on it), and `idempotency_key` — which includes
@@ -29,12 +19,6 @@ export const PROMPT_VERSION = "v2" as const;
 export { MAX_TOKENS, user };
 export type { DocumentMetadata, UserPromptArgs };
 
-/**
- * The v2 delta over v1 — appended to the v1 SYSTEM prompt. Named so the unit
- * test can assert its presence and a future v3 can compose further. The LLM
- * reads the whole SYSTEM block, so appending a clearly-headed section is
- * sufficient; the directive carries its own inline example.
- */
 export const EVENT_DATING_DIRECTIVE = [
   "",
   "## Events — always date the occurrence",

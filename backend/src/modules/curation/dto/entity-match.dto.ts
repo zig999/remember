@@ -15,9 +15,6 @@ export const NodeIdPathSchema = z.object({
 export type NodeIdPath = z.infer<typeof NodeIdPathSchema>;
 
 /**
- * ResolveEntityMatchRequest — BR-11 (reason mandatory on merge_into),
- * BR-23 (self-merge forbidden at request shape).
- *
  * Implemented as a single Zod object with `superRefine` rather than a
  * discriminated union because OpenAPI exposes the body with a single
  * `decision` discriminator nested in a flat object.
@@ -59,7 +56,6 @@ export type ResolveEntityMatchBody = z.infer<
   typeof ResolveEntityMatchBodySchema
 >;
 
-/** MergeNodesRequest — BR-11 (reason required), BR-23 (self-merge forbidden). */
 export const MergeNodesBodySchema = z
   .object({
     survivor_id: UuidSchema,

@@ -1,10 +1,7 @@
 // Fire-and-forget distillation jobs — rolling summary (BR-33) + title (BR-34).
 //
 // chat.back.md v2.0.0 §1.1 / BR-33 / BR-34: both jobs are scheduled by the
-// route handler AFTER the HTTP response has terminated. They use the
-// `env.CHAT_UTILITY_MODEL` Anthropic model (default `claude-haiku-4-5`) via
-// non-streaming `messages.create(...)` (BR-33 step 4 / BR-34 step 4 —
-// `stream: false`).
+// route handler AFTER the HTTP response has terminated.
 //
 // CRITICAL CONTRACT (chat.back.md §1.1 + §7 "Fallback" column):
 //
@@ -46,14 +43,6 @@ import { selectTitlePromptModule } from "../prompts/index.js";
 import { selectChatSummaryPromptModule } from "../prompts/chat-summary/index.js";
 import { sanitizeAnthropicSequence } from "./message-sequence.js";
 
-/**
- * BR-33 v2.9 step 4 — hard cap on the final `summary_new` written to
- * `chat_conversation.summary_rolling`. Output longer than this is REFUSED:
- * `summary_prev` stays unchanged for this refresh and the function logs
- * WARN `chat.summary_refresh_overflow`. The cap is a defensive guard against
- * a misbehaving model — the persona instructs ~8 sentences (BR-46), which
- * comfortably fits inside 2000 chars in pt-BR prose.
- */
 const SUMMARY_MAX_CHARS = 2000;
 
 // ---------------------------------------------------------------------------
@@ -177,11 +166,6 @@ const TITLE_MAX_LENGTH = 80;
  *      very first refresh). Call `anthropic.messages.create({ model:
  *      env.CHAT_UTILITY_MODEL, stream: false, system: mod.system, messages:
  *      mod.buildUserTurn(summary_prev, slice), max_tokens: 512 })`.
- *   4. **Oversize refusal (HARD CAP 2000 chars).** Extract the response text
- *      and trim. If `summary_new.length > SUMMARY_MAX_CHARS`, log WARN
- *      `chat.summary_refresh_overflow { conversation_id, chars }` and return
- *      WITHOUT writing — `summary_prev` stays unchanged. If the trimmed
- *      output is empty, return silently (defensive).
  *   5. **Persist (idempotent).** `repository.updateSummaryRolling` under
  *      `withTransaction`. The `set_updated_at` trigger bumps `updated_at`.
  *      The UPDATE is idempotent on the row (last refresh wins; concurrent
@@ -353,7 +337,6 @@ export async function maybeRefreshSummary(
  *      doesn't yet have a completed turn).
  *   4. `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL,
  *      stream: false, system: selectTitlePromptModule(), messages: [user, asst] })`.
- *   5. Trim; if empty OR length > 80: silently drop (BR-34 step 5).
  *   6. `repository.setTitleIfNull(conversation_id, title)` under
  *      `withTransaction` — the `IF NULL` guard makes the operation idempotent.
  *   7. Log INFO `chat.title_distillation_success` on success.
@@ -407,9 +390,6 @@ export async function maybeDistillTitle(
     });
 
     const candidate = extractText(response).trim();
-    // BR-34 step 5 — silently drop on empty or over-length output. The model
-    // is expected to obey the 80-char ceiling baked into the prompt; the
-    // guard is defensive.
     if (candidate === "" || candidate.length > TITLE_MAX_LENGTH) return;
 
     await withTransaction(pool, (client) =>

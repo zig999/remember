@@ -1,10 +1,3 @@
-// Request-side DTOs (query/path) for the knowledge-graph REST endpoints.
-//
-// Zod is applied at the route boundary (CLAUDE.md "DTO Pattern" / BR-02 /
-// BR-19). Out-of-range values produce ZodError -> 422
-// `VALIDATION_INVALID_FORMAT` / `VALIDATION_OUT_OF_RANGE` through the
-// global error handler.
-
 import { z } from "zod";
 
 import { NodeStatusSchema } from "./enums.dto.js";
@@ -111,10 +104,6 @@ export type AttributeIdParam = z.infer<typeof AttributeIdParamSchema>;
 // Traverse (UC-06)
 // ---------------------------------------------------------------------------
 
-/**
- * Direction enum mirrors `openapi.yaml` traverseNode `direction` parameter.
- * Default in this schema is `both` (matches OpenAPI).
- */
 export const TraverseDirectionSchema = z.enum(["out", "in", "both"]);
 export type TraverseDirection = z.infer<typeof TraverseDirectionSchema>;
 
@@ -127,13 +116,6 @@ const LinkTypesArray = z
   .union([z.string().min(1), z.array(z.string().min(1))])
   .transform((v) => (Array.isArray(v) ? v : [v]));
 
-/**
- * Out-of-range `depth` is detected here AND re-asserted in the service layer
- * (defence in depth, BR-05 of back spec). Zod failure surfaces as Zod parse
- * error (422 VALIDATION_INVALID_FORMAT through the global handler); the
- * service-layer assertion produces BUSINESS_INVALID_TRAVERSE_DEPTH so the
- * route can distinguish the two paths.
- */
 const TraverseDepthCoercer = z
   .union([z.number(), z.string()])
   .transform((v, ctx) => {

@@ -49,9 +49,6 @@ export async function proposeFragmentService(
   if (matched !== args.chunk_ids.length) {
     // We can't tell from a single COUNT whether the miss is "not found" vs
     // "wrong source". The spec maps both to errors:
-    //  - chunk_id resolves to no row -> RESOURCE_NOT_FOUND (UC-08 alt 2b).
-    //  - chunk_id belongs to a different source -> VALIDATION_INVALID_FORMAT
-    //    (cross-table FK mismatch, alt 2c).
     // Disambiguate with a follow-up count of existence-only.
     const existsRes = await client.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])`,

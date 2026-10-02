@@ -35,11 +35,6 @@ const ExpandLinkTypesArray = z
   .transform((v) => (Array.isArray(v) ? v : [v]));
 
 /**
- * `query` validation per BR-04 of the back spec:
- *   - min 1 char (raw)
- *   - max 1000 chars (raw)
- *   - btrim non-empty after transform (rejects whitespace-only input)
- *
  * Empty-after-btrim raises a Zod custom issue with message
  * `BUSINESS_INVALID_SEARCH_QUERY` so the route can branch on it (we keep the
  * Zod path for "garbage input" and reserve the service-layer

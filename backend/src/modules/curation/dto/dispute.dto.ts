@@ -20,9 +20,6 @@ export type AdjustedPeriod = z.infer<typeof AdjustedPeriodSchema>;
 /**
  * ResolveDisputeRequest — implements BR-11 / BR-15 / BR-16:
  *
- *   - `decision = prefer_one`  -> winner_id required, member of item_ids, reason required
- *   - `decision = adjust_periods` -> periods[] required with one entry per item_id;
- *                                    semi-open invariant (valid_from < valid_to)
  *   - `decision = keep_disputed` -> no winner/periods; reason optional
  *
  * Cross-field validation done in a single `superRefine` so all violations
@@ -38,7 +35,6 @@ export const ResolveDisputeBodySchema = z
     reason: z.string().trim().min(1).optional().nullable(),
   })
   .superRefine((value, ctx) => {
-    // Item_ids unique
     const uniqueIds = new Set(value.item_ids);
     if (uniqueIds.size !== value.item_ids.length) {
       ctx.addIssue({
@@ -110,7 +106,6 @@ export const ResolveDisputeBodySchema = z
           });
         }
         periodIds.add(p.item_id);
-        // Semi-open invariant: valid_from < valid_to when both supplied.
         if (
           p.valid_from !== null &&
           p.valid_to !== null &&

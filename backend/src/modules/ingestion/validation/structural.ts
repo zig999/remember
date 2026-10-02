@@ -4,8 +4,6 @@
 // edge. Zod already covers: field presence, primitive types, length/range,
 // enum membership. THIS layer covers:
 //
-//   - Type-catalog membership (BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}):
-//       node_type, link_type, attribute_key all live in the seeded catalog.
 //   - Cross-table compatibility (VALIDATION_INVALID_FORMAT):
 //       * `propose_attribute`: key.node_type_id == node.node_type_id;
 //       * `propose_attribute`: value parseable as key.value_type;
@@ -19,11 +17,6 @@
 
 import { ValidationFailure } from "./errors.js";
 
-/**
- * Parse a `value` string against its declared `value_type`. The DB stores the
- * canonical serialized form (string column with generated typed columns).
- * Rejects "tomorrow" for `date`, "abc" for `number`, etc.
- */
 export function parseAttributeValue(args: {
   value: string;
   value_type: "date" | "number" | "text" | "bool";
@@ -34,7 +27,6 @@ export function parseAttributeValue(args: {
       // Empty already rejected by Zod min(1); anything else is valid text.
       return;
     case "date": {
-      // Strict ISO YYYY-MM-DD; not free-form.
       if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
@@ -54,7 +46,6 @@ export function parseAttributeValue(args: {
       return;
     }
     case "number": {
-      // Strict: must be a finite numeric literal (no NaN, no Infinity).
       if (!/^-?\d+(?:\.\d+)?$/.test(v)) {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
@@ -85,27 +76,6 @@ export function parseAttributeValue(args: {
   }
 }
 
-/**
- * Closed-domain gate for `propose_attribute` (BR-30).
- *
- * The caller is expected to skip this helper entirely when the
- * `AttributeKey` has an open domain — `domainOf(keyId)` returning `null`
- * means "no rows in `attribute_valid_value`" and is the backward-compatible
- * default (every legacy key stays open). This helper is therefore a pure
- * structural check on a known-closed domain: exact-match string equality,
- * no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30).
- *
- * Why no `attribute_key_id` parameter? The TC-03 contract narrows the
- * signature relative to the spec's reference signature to `(value, domain)`:
- * the helper is dumber, the call site in `propose-attribute.service.ts` is
- * the only one that knows the resolved key id and the open-domain guard.
- * The omission is recorded in the delivery's `spec_divergences`.
- *
- * On miss, raises `VALIDATION_INVALID_FORMAT` with deterministic-ordered
- * `allowed_values` so the LLM can re-issue the call with an in-domain value
- * on the next turn (BR-26 step 5b) and the owner can review rejection
- * clusters from the §16 metrics.
- */
 export function assertValueInDomain(
   value: string,
   domain: ReadonlySet<string>
@@ -113,9 +83,6 @@ export function assertValueInDomain(
   if (domain.has(value)) {
     return;
   }
-  // `[...domain].sort()` is locale-default lexicographic, which matches the
-  // prompt builder's enumeration order (BR-30 §1 Prompt builder row) — the
-  // diagnostic and the prompt list will line up.
   const allowed_values = [...domain].sort();
   throw new ValidationFailure(
     "VALIDATION_INVALID_FORMAT",
@@ -143,10 +110,6 @@ export function assertFound(args: {
   }
 }
 
-/**
- * Assert a catalog membership; raise the kind-specific `BUSINESS_UNKNOWN_*`
- * code on miss (BR-14 P2.1 namespaced taxonomy).
- */
 export function assertKnownType(args: {
   kind: "node_type" | "link_type" | "attribute_key";
   name: string;

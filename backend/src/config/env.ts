@@ -68,18 +68,15 @@ const envSchema = z.object({
   // (e.g. Claude Desktop via `mcp-remote`) that cannot run the Neon Auth OAuth
   // flow. When set AND `NODE_ENV=development`, a request carrying
   // `Authorization: Bearer <LOCAL_OPERATOR_TOKEN>` is accepted as the single
-  // owner WITHOUT JWKS verification (see middleware/auth.ts). Ignored entirely
-  // outside development, so it can never weaken a production deployment. Min
-  // length 16 so it is not trivially guessable. Optional: absent => disabled.
+  // owner WITHOUT JWKS verification (see middleware/auth.ts).
+  // Optional: absent => disabled.
   LOCAL_OPERATOR_TOKEN: z
     .string()
     .min(16, "LOCAL_OPERATOR_TOKEN must be at least 16 characters.")
     .optional(),
 
   // Anthropic SDK (BR-29). The orchestrator (TC-12 / BR-26) is the sole LLM
-  // caller of the BFF. Missing key at boot is a fatal config error; absence
-  // here causes the process to refuse to start (acceptance criterion of
-  // TC-12). The value never appears in logs, responses, or stack traces.
+  // caller of the BFF. The value never appears in logs, responses, or stack traces.
   ANTHROPIC_API_KEY: z
     .string()
     .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),
@@ -207,8 +204,7 @@ const envSchema = z.object({
   //   datetime BlockB on every chat turn's `system` array (chat.back.md
   //   BR-47 v2.9). Single-owner -> a single value applies process-wide.
   //   `loadEnv` validates the value against the runtime's IANA zone
-  //   database; an invalid / unknown zone -> the BFF refuses to start
-  //   (`InvalidOwnerTimezoneError`, fail-closed). NEW in v2.9 / TC-03.
+  //   database. NEW in v2.9 / TC-03.
   OWNER_TZ: z.string().min(1).default("America/Sao_Paulo"),
 });
 
@@ -228,11 +224,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
 
   // Fail-closed guard for the DEV-only auth bypass (see LOCAL_OPERATOR_TOKEN /
-  // middleware/auth.ts). The static bearer must NEVER be honored outside
-  // development. Because `NODE_ENV` defaults to "development", a production box
-  // that *forgets* to set `NODE_ENV` would parse as development and silently
-  // enable the bypass — so we check the RAW source: an absent or non-development
-  // `NODE_ENV` with a token present refuses startup rather than fail open.
+  // middleware/auth.ts).
   if (
     parsed.data.LOCAL_OPERATOR_TOKEN !== undefined &&
     source.NODE_ENV !== "development"
@@ -248,13 +240,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ]);
   }
 
-  // chat.back.md BR-47 step 4 — fail-closed validation of `OWNER_TZ`. The
-  // datetime BlockB renderer (`renderDatetimeBlockB`) runs on EVERY chat turn;
-  // an invalid IANA zone would throw `RangeError` at request time instead of
-  // boot time, surfacing as a 500 mid-stream. We validate once here, at the
-  // same fail-closed seam as `LOCAL_OPERATOR_TOKEN`. The construction itself
-  // is the validator: `new Intl.DateTimeFormat(undefined, { timeZone })`
-  // throws `RangeError` on an unknown / unsupported zone (Node's bundled ICU).
   try {
     new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ });
   } catch (err) {

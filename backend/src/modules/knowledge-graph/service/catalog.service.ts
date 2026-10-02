@@ -99,7 +99,6 @@ export async function listAttributeKeysService(
   if (options.node_type !== undefined) {
     const row = catalog.nodeTypeByName.get(options.node_type);
     if (row === undefined) {
-      // BR-03 — fail fast before SQL.
       throw new UnknownNodeTypeError(options.node_type);
     }
     nodeTypeId = row.id;
@@ -107,9 +106,6 @@ export async function listAttributeKeysService(
 
   const rows = await listAttributeKeys(client, { node_type_id: nodeTypeId });
 
-  // BR-30 — attach closed-domain values so REST/MCP clients see the allowed
-  // set up-front (parity with the chat ontology block). Group per key id;
-  // keys with no rows stay OPEN (no `valid_values`).
   const validValueRows = await listAttributeValidValues(client, {
     node_type_id: nodeTypeId,
   });

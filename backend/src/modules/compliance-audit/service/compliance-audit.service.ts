@@ -3,16 +3,6 @@
 // Transport-agnostic: the same functions are called by both the REST handler
 // (`routes/compliance-audit.routes.ts`) and the MCP handler
 // (`mcp/compliance-toolset.ts`) — BR-14.
-//
-// Transaction policy (BR-02):
-//   - The CALLER (route or MCP handler) opens BEGIN / COMMIT / ROLLBACK and
-//     hands the live `client` to `complianceDelete`. Every DB statement of
-//     UC-01 runs on that same client; commit is reached only after BR-08 has
-//     written BOTH audit rows.
-//   - The four read endpoints (listComplianceDeletions / getById on
-//     compliance_deletion / listCurationActions / getById on curation_action)
-//     are read-only and accept a `pool.connect()`-derived client too. They
-//     issue ONE auto-committed SELECT each.
 
 import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
@@ -68,10 +58,6 @@ export interface ComplianceAuditServiceDeps {
  * BR-02 — full UC-01 flow, transport-agnostic. The caller MUST open the
  * transaction (BEGIN) before calling; the caller is responsible for
  * COMMIT/ROLLBACK based on the return / throw.
- *
- * Discriminated union return:
- *   - { outcome: 'deleted',              deletion } -> HTTP 201
- *   - { outcome: 'noop_already_deleted', deletion } -> HTTP 200
  *
  * Throws:
  *   - ResourceNotFoundError on UC-01 alt 4a (raw_information_id resolves to

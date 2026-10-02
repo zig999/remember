@@ -5,15 +5,13 @@
 // local `ref` identifiers; this orchestrator persists a per-call
 // `RawInformation` (stamped with a nonce so the `content_hash` is unique per
 // call — no `noop_existing` branch on this path), opens an `LLMRun` carrying
-// the sentinels `model='directed'` / `prompt_version='directed-v1'`, dispatches
+// dispatches
 // the items in dependency order (fragments → nodes → attributes → links)
 // through the existing `propose_*` handlers (one TX per dispatch, BR-19; one
 // `tool_call` audit row each, BR-23), and returns a per-item report plus the
 // run's `affected_nodes` (BR-33).
 //
-// NEVER calls Anthropic — the directed path is `model = 'directed'`,
-// `prompt_version = 'directed-v1'` (sentinels; the run is observable in the
-// audit log but no Anthropic round-trip is made). The 5-layer validation
+// The 5-layer validation
 // pipeline of BR-13..BR-18 is preserved verbatim — every dispatched
 // `propose_*` runs the same service path that the LLM-driven extraction
 // (BR-26) and the REST mirrors (BR-28) use.
@@ -446,12 +444,6 @@ export async function directedIngestionService(
     };
   }
 
-  // All fragments are anchored to the first chunk of the synthesised content.
-  // The chunker may produce multiple chunks for long payloads, but for the
-  // anti-hallucination check (BR-18) any chunk of the run's source is a valid
-  // anchor — we deliberately pick the first one for determinism. (The
-  // directed payload is small per call; in practice content is well under the
-  // single-chunk boundary.)
   const anchorChunkId = chunks[0]!.id;
 
   // ---- Step 3 — dependency-ordered dispatch ----

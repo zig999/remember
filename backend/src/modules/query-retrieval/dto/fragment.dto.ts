@@ -17,14 +17,7 @@ import type { SourceType } from "./response.dto.js";
 /**
  * `listAcceptedFragments` query schema.
  *
- * - `llm_run_id` / `raw_information_id` are independently optional but at
- *   least one MUST be supplied; otherwise the `.refine` raises a
- *   `VALIDATION_INVALID_FORMAT` with the `requires_one_of` detail keyed off
- *   the openapi v1.3.0 example body. This is enforced HERE (DTO layer) so
- *   the service never sees an unfiltered request.
  * - UUID syntax is enforced at parse time; bad UUID → 422.
- * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
- *   mirrors `SearchQuerySchema`.
  */
 export const ListAcceptedFragmentsQuerySchema = z
   .object({

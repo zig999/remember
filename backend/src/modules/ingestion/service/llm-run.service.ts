@@ -94,9 +94,7 @@ export async function getLlmRunById(
   }
   const summary = await aggregateToolCallOutcomes(client, llmRunId);
 
-  // BR-33 — attach `affected_nodes` ONLY when the run is `completed`. The
-  // field is the snapshot of the run at completion; a `running` or `failed`
-  // run does not surface a partial list. Cache hit absorbs the common path;
+  // Cache hit absorbs the common path;
   // a miss falls back to the derived lookup over `tool_call.result` rows for
   // this run (best-effort — a transient DB outage on the derived path is
   // swallowed and the field is simply omitted).

@@ -15,12 +15,6 @@
 //     business DTO, and forwards both to the existing `proposeXxxHandler`
 //     (`propose-*.handler.ts`), which already owns the per-call transaction,
 //     `assertRunIsRunning`, and the `tool_call` audit row (BR-23 updated).
-//   - A Zod failure (missing/invalid `llm_run_id` or malformed business DTO)
-//     also goes through `runIngestHandler` so the rejected `tool_call` audit
-//     row is written (BR-23 updated). When no `llm_run_id` is parseable from
-//     the raw input, the audit-row insert cannot resolve its FK; the shell's
-//     `safeWriteAuditOnRollback` logs and swallows that, and the LLM still
-//     sees the VALIDATION_INVALID_FORMAT envelope (best-effort audit).
 //
 // Idempotency: `McpServer.registerTool` rejects duplicates by design; calling
 // this registrar twice in the same process throws. The boot wires it once.
@@ -428,17 +422,6 @@ function mapReadError(err: unknown): McpEnvelopeJson {
   return internalError().envelope;
 }
 
-// --------------------------------------------------------------------------
-// Zod-failure audit path: route the failed parse through `runIngestHandler`
-// so a `tool_call` row with `validation_outcome='rejected'` is written under
-// the same shell that the in-handler Zod-fail path uses (BR-23 updated).
-//
-// `llm_run_id` is extracted from the raw input on a best-effort basis: if the
-// caller sent a non-empty string, the FK resolves and the audit row is
-// persisted; if it is missing or syntactically wrong, the shell's
-// `safeWriteAuditOnRollback` logs and swallows the FK violation — the LLM
-// still sees the VALIDATION_INVALID_FORMAT envelope.
-// --------------------------------------------------------------------------
 
 function extractLlmRunIdFromRaw(rawInput: unknown): string {
   if (typeof rawInput !== "object" || rawInput === null) return "";

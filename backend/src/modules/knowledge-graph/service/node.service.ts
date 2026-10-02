@@ -59,10 +59,8 @@ export async function listNodesService(
     nodeTypeId = row.id;
   }
 
-  // BR-15 — default to active when caller omits status.
   const status: NodeStatus = input.status ?? "active";
 
-  // BR-01 of `.spec.md` — apply norm() before the LIKE prefix lookup.
   const name_prefix_norm =
     input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
 
@@ -98,7 +96,6 @@ export async function getNodeByIdService(
   if (node === null) {
     throw new ResourceNotFoundError("KnowledgeNode", input.nodeId);
   }
-  // BR-11 — deleted -> 410 (row exists but tombstoned).
   if (node.status === "deleted") {
     throw new NodeDeletedError(input.nodeId);
   }
@@ -123,7 +120,6 @@ export async function getNodeByIdService(
   );
   const provenanceByAttrId = groupProvenance(provenanceRows);
 
-  // BR-17 — empty provenance on non-deleted item -> WARN (no client error).
   warnIfEmptyProvenance(logger, attributeRows, provenanceByAttrId, {
     route: "GET /api/v1/nodes/:node_id",
     nodeId: input.nodeId,

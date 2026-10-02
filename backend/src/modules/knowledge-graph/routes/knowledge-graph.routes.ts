@@ -1,23 +1,4 @@
 // Fastify routes for the knowledge-graph REST endpoints.
-//
-// Mounted under `/api/v1/*` by the bootstrap (`app.ts`). The parent scope
-// already enforces Neon Auth JWT (BR-01); individual handlers do NOT
-// re-check the token.
-//
-// Endpoints implemented in TC-04 (read-only):
-//   - GET /api/v1/node-types                     (UC-01)
-//   - GET /api/v1/link-types[?include_rules]     (UC-02)
-//   - GET /api/v1/attribute-keys[?node_type]     (UC-03)
-//   - GET /api/v1/nodes                          (UC-04)
-//   - GET /api/v1/nodes/{node_id}                (UC-05)
-//   - GET /api/v1/links/{link_id}                (point read)
-//   - GET /api/v1/attributes/{attribute_id}      (point read)
-//
-// Endpoints implemented in TC-05 (this file):
-//   - GET /api/v1/nodes/{node_id}/traverse                    (UC-06)
-//   - GET /api/v1/links/{link_id}/history                     (UC-09)
-//   - GET /api/v1/attributes/{attribute_id}/history           (UC-10)
-//   - GET /api/v1/nodes/{node_id}/attributes/{key}/history    (UC-11)
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
@@ -334,21 +315,6 @@ export async function registerKnowledgeGraphRoutes(
 
 /**
  * Route-side wrappers around the shared mapper (`mapErrorToHttpResponse`).
- *
- * These wrappers exist to preserve the pre-refactor behaviour of the GET
- * routes: KNOWN business errors are caught and rendered with route context
- * (`extraDetails`); UNKNOWN errors (e.g. pg connection failures, runtime
- * bugs) are re-thrown so they reach the Fastify global error handler
- * (`backend/src/middleware/error-handler.ts`), which logs them via pino and
- * applies its own pg-unavailable / 500 mapping. We deliberately do NOT
- * intercept those paths here — the global handler owns the structured-logging
- * surface for request failures.
- *
- * The classification core itself lives in `mcp/error-envelope.ts`; the MCP
- * query transport (TC-02+) will consume the same module and will NOT re-throw
- * unknown errors (MCP transports must always produce a JSON-RPC `result`, so
- * the shared mapper's "anything else → SYSTEM_INTERNAL_ERROR" branch is the
- * terminal branch on that path).
  */
 
 /** Known sentinels recognised by the shared mapper — anything else falls

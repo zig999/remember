@@ -7,12 +7,6 @@
 // decision (matched_existing / needs_review / created_new) under the
 // `pg_advisory_xact_lock` of BR-20.
 //
-// Why the lock comes first (BR-20): two concurrent `propose_node` calls for
-// the same `(node_type, norm(name))` must NOT race on the resolve-or-create
-// branch. Acquiring the advisory lock before the first SELECT serialises both
-// the candidate scan AND the subsequent INSERT inside the same transaction;
-// the lock is released automatically at commit/rollback.
-//
 // Why the thresholds are constants (BR-25): tuning belongs to a code change,
 // not a runtime knob. The §16 metrics (acceptance rate, `needs_review` rate)
 // are the calibration input — see the "thresholds calibration" note in the
@@ -23,21 +17,8 @@ import type { PoolClient } from "pg";
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import type { ProposeNodeResolution } from "../dto/propose-node.dto.js";
 
-/**
- * Trigram-similarity ceiling above which a SINGLE candidate is taken as a
- * strong match (reuse the existing node). BR-25 / A12.
- *
- * Not configurable per call — see BR-25 description in the back spec.
- */
 export const MATCH_STRONG = 0.85;
 
-/**
- * Trigram-similarity floor below which a candidate is ignored entirely.
- * Candidates with `sim < MATCH_FLOOR` do not feed the decision and do not
- * produce `entity_match_review` rows. BR-25 / A12.
- *
- * Not configurable per call — see BR-25 description in the back spec.
- */
 export const MATCH_FLOOR = 0.55;
 
 /**
@@ -193,10 +174,6 @@ export async function resolveOrCreateNode(
     );
     const nodeId = insRes.rows[0]!.id;
 
-    // One entity_match_review row PER ambiguous candidate (every candidate
-    // with sim >= MATCH_FLOOR, NOT just the strong ones — BR-25 / TC
-    // constraint: "entity_match_review inserts one row per candidate where
-    // sim >= MATCH_FLOOR").
     for (const cand of decision.candidates) {
       await client.query(
         `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
@@ -246,20 +223,6 @@ type Decision =
     }
   | { readonly kind: "novel" };
 
-/**
- * Pure decision function — exported as `_decideFromCandidates` for testing.
- * Encodes the A12 decision table verbatim:
- *
- *   - Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no
- *     other candidate has `sim >= MATCH_FLOOR`.
- *   - Ambiguous: any candidate has `sim ∈ [MATCH_FLOOR, MATCH_STRONG)` OR two
- *     or more candidates have `sim >= MATCH_STRONG`.
- *   - Novel: every candidate has `sim < MATCH_FLOOR` (empty set included).
- *
- * The "ambiguous candidates" list returned in the ambiguous branch is the set
- * of all candidates with `sim >= MATCH_FLOOR` — these are the rows that
- * receive an `entity_match_review` insert.
- */
 export function decideFromCandidates(
   candidates: readonly TrigramCandidate[]
 ): Decision {

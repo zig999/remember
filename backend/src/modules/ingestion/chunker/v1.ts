@@ -3,25 +3,6 @@
 // BR-03 (deterministic), BR-04 (constants), BR-05 (offsets), BR-06 (hard
 // boundaries per source_type), BR-07 (oversize fallback) of
 // docs/specs/domains/ingestion/back/ingestion.back.md.
-//
-// Algorithm:
-//   1. Split the content into "blocks" along the hard boundaries that apply to
-//      `sourceType` (BR-06). For `ata`, `artigo`, `outro`, there are no hard
-//      boundaries — the whole content is a single block.
-//   2. For each block, try to keep it as one chunk if its size is at most
-//      `CHUNK_HARD_MAX` code points. If the block exceeds `CHUNK_HARD_MAX`, fall
-//      back to sentence-level split via `Intl.Segmenter('pt', {granularity:
-//      'sentence'})` (BR-07).
-//   3. Append sentence segments to a running buffer; close the buffer when
-//      adding the next sentence would push it above `CHUNK_TARGET[1]` (or above
-//      `CHUNK_HARD_MAX` if the very first sentence already exceeds the soft
-//      target).
-//
-// All offsets are 0-based, semi-open, counted in Unicode code points of the
-// ORIGINAL content (BR-05). We use `[...content]` to iterate code points and a
-// "code point index" array to translate between UTF-16 substring positions
-// and code-point positions — JavaScript's `string.length` and `substring`
-// operate on UTF-16 units, not code points.
 
 import {
   CHUNK_HARD_MAX,
@@ -42,7 +23,7 @@ export type SourceType =
 /**
  * Output of the chunker — one entry per persisted chunk. Verbatim slice of the
  * original content between `offset_start` and `offset_end` (code points,
- * semi-open). `chunk_index` is the 0-based position within the document.
+ * semi-open).
  */
 export interface RawChunkInput {
   readonly chunk_index: number;
@@ -78,13 +59,11 @@ export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[
     const blockSize = block.endExclusive - block.start;
     if (blockSize <= 0) continue;
     if (blockSize <= CHUNK_HARD_MAX) {
-      // Whole block fits — emit as a single chunk.
       chunks.push(
         buildChunk(codePoints, block.start, block.endExclusive, chunks.length)
       );
       continue;
     }
-    // Oversize — fall back to sentence-level split (BR-07).
     const blockText = codePoints.slice(block.start, block.endExclusive).join("");
     const sentenceRanges = splitBySentences(blockText, block.start);
     let bufferStart: number | null = null;
@@ -96,11 +75,6 @@ export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[
         continue;
       }
       const tentativeSize = sEnd - bufferStart;
-      // Close the running buffer if appending this sentence crosses the upper
-      // soft target. If the buffer itself is already empty and the first
-      // sentence is larger than CHUNK_HARD_MAX, emit it standalone — we have
-      // no finer atom to split on (a single 5000-char sentence will become one
-      // chunk; this is BR-07's documented limit).
       if (tentativeSize > CHUNK_TARGET[1]) {
         chunks.push(
           buildChunk(codePoints, bufferStart, bufferEnd, chunks.length)
@@ -119,11 +93,6 @@ export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[
   }
 
   if (chunks.length === 0 && totalCodePoints > 0) {
-    // Edge case: input was non-empty but consisted entirely of hard-boundary
-    // separators (e.g. a file made of nothing but form-feed characters). We
-    // still emit one chunk covering the raw content to preserve the audit
-    // chain. This is intentionally conservative — the LLM will likely reject
-    // the document, but ingestion never silently drops bytes.
     chunks.push(buildChunk(codePoints, 0, totalCodePoints, 0));
   }
 
@@ -143,15 +112,6 @@ interface CodePointRange {
  *
  * v1 boundary policy (intentionally conservative — see BR-06):
  *
- * - `pdf`:          form-feed (`\f`, U+000C). PDF extractors typically insert
- *                    `\f` between pages.
- * - `email`:        first blank line (header/body separator) plus every
- *                    transition into / out of a `>` quotation block.
- * - `chat`,
- *   `transcricao`:  speaker boundary. A line that starts with
- *                    `[ \t]*[A-Za-z0-9_]+[ \t]*:[ \t]` (e.g. `João:`,
- *                    `[12:00] Maria:`) opens a new block. We never fuse two
- *                    consecutive speakers into one chunk.
  * - `ata`,
  *   `artigo`,
  *   `outro`:        no hard boundary — single block.
@@ -210,10 +170,6 @@ function splitOnCharBoundary(
   return ranges;
 }
 
-/**
- * Split an email: first blank line closes the headers, every transition into
- * or out of a quotation block (`^>+ `) closes a chunk. We operate on lines.
- */
 function splitEmail(codePoints: readonly string[]): CodePointRange[] {
   const lines = scanLines(codePoints);
   if (lines.length === 0) return [];
@@ -258,12 +214,6 @@ function splitEmail(codePoints: readonly string[]): CodePointRange[] {
   return ranges;
 }
 
-/**
- * Split chat / transcript: a new "speaker line" opens a new block. A speaker
- * line is one whose trimmed start matches `[A-Za-z0-9_]+:` followed by white
- * space (e.g. `João: Bom dia`). Bracketed timestamps like `[12:00] João:` are
- * also accepted.
- */
 function splitTurns(codePoints: readonly string[]): CodePointRange[] {
   const lines = scanLines(codePoints);
   if (lines.length === 0) return [];
@@ -338,33 +288,8 @@ function isSpeakerLine(
   return SPEAKER_LINE_REGEX.test(text);
 }
 
-/**
- * Speaker-line regex. Accepts:
- *   - `Name:` followed by white space (Name = ASCII identifier characters
- *      plus single embedded spaces — we keep it strict to avoid false
- *      positives on prose like "Importante: ...").
- *   - Optional bracketed timestamp prefix `[12:00]` or `(12:00)`.
- *
- * Anchored to the start of the line. The trailing `\s` requirement avoids
- * matching `URLs:` headings and similar.
- */
 const SPEAKER_LINE_REGEX = /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/;
 
-/**
- * Sentence split via `Intl.Segmenter('pt', { granularity: 'sentence' })`
- * (BR-07). Returns half-open code-point ranges anchored to the ORIGINAL
- * document — `blockStart` is the code-point index where `blockText` begins in
- * the full document, so we can return absolute offsets without recomputing.
- *
- * Code-block / table heuristics (BR-07 carve-out): we currently do not split
- * sentences inside a Markdown ``` fenced block or inside a `|...|` table row.
- * Because v1 only sentence-splits on blocks above CHUNK_HARD_MAX, structural
- * blocks below that limit are preserved by step 2; the carve-out only matters
- * for pathological inputs and is documented in BR-07 as best-effort.
- *
- * The `Intl.Segmenter` API operates on UTF-16 indices; we translate them back
- * to code-point indices via a precomputed cumulative map.
- */
 function splitBySentences(
   blockText: string,
   blockStart: number
