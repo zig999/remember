@@ -1,0 +1,50 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.curation.ts
+    where: |-
+      the header docblock, lines 1-15
+    evidence: |-
+      * The "Curar" button on the panel header surfaces two distinct curation
+      * targets, mutually exclusive:
+      *  - `needs_review` nodes belong to the **entity_match** queue (BFF emits
+      *    one queue row per `needs_review` node — keyed by `node_id`).
+      *  - Nodes with at least one `uncertain`/`disputed` attribute have a
+      *    contextual `disputed` target (uncertain is a display flag, not a
+      *    dedicated queue, so the drawer surfaces it via the disputed family +
+      *    the attribute id).
+    cost: |-
+      The docblock states in prose the same rule that `deriveCurationTarget` implements: the entity-match target for `needs_review`, otherwise the disputed target for an `uncertain` or `disputed` attribute, otherwise none. If the node moves, the comment keeps asserting the old rule. Nothing checks it, and a reader may take it for the authority. The comment also describes the queue and display-flag semantics, and no code here carries those.
+    kind: restates
+    correction: |-
+      Remove the docblock. The code in this file already holds the rule and the node holds it too, so this is the comment route followed by `/reconcile` over the file.
+    node: rules/graph-explorer/curation-target-follows-the-node
+
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file derives only a curation target and holds none of the screen's texts, regions, overlays or states: `export function deriveCurationTarget(data: NodeDetailView): NodeCurationTarget | null`. The "Curar" action named by show-node-detail is rendered elsewhere.
+  - node: rules/graph-explorer/curar-opens-the-drawer-for-the-target
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only returns `{ kind: "entity_match", itemId: data.id }` or `{ kind: "disputed", itemId: attr.id }`. It never opens the drawer, takes a label from the node's canonical name, or touches the address. Opening the drawer happens in another file.
+  - node: rules/graph-explorer/curation-target-follows-the-node
+    held_at: |-
+      deriveCurationTarget, lines 24-39
+    evidence: |-
+      if (data.status === "needs_review") {
+          return { kind: "entity_match", itemId: data.id };
+        }
+        for (const attr of data.attributes) {
+          if (
+            attr.effectiveStatus === "uncertain" ||
+            attr.effectiveStatus === "disputed"
+          ) {
+            return { kind: "disputed", itemId: attr.id };
+          }
+        }
+        return null;
+
+looked_past: |-
+  The `NodeCurationTarget` interface declares a shape that is a code-structure matter, and the `SelectedItemKind` import from the curation store is a dependency, not a domain fact stated here.

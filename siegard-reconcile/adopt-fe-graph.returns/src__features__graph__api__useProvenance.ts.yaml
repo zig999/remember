@@ -1,0 +1,62 @@
+findings:
+  - file: src/features/graph/api/useProvenance.ts
+    where: >-
+      Docstring, lines 5-9 (the lazy-query paragraph), above the `enabled: enabled && id.length > 0` gate at line 45
+    evidence: |-
+      Lazy TanStack Query hook — the query stays disabled until the consumer
+      sets `enabled` to `true` (i.e. the user expands a "Ver origem completa"
+      `<details>` disclosure).
+    cost: >-
+      The rule that a provenance read waits for the caller and needs a non-empty id is held by code on line 45 and by the node. The docstring says it a third time, so a change to the node would leave this prose describing a rule that no longer applies.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The code at line 45 holds the gate, and the node binds the file.
+    node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+  - file: src/features/graph/api/useProvenance.ts
+    where: >-
+      Docstring, lines 11-13 (the "Spec references" entry that cites staleTime 5min), above `const STALE_MS = 5 * 60_000;` at line 29
+    evidence: |-
+      "useProvenance hook" — kind/id arguments, enabled gate, staleTime 5min.
+    cost: >-
+      The five-minute freshness is held by code (`STALE_MS`, `staleTime: STALE_MS`, `refetchOnWindowFocus: false`) and by the node. The docstring restates it and cites a `docs/specs/` document as its authority, which points a reader to a second home for the fact.
+    kind: restates
+    correction: >-
+      Remove the reference entry. The code at lines 29, 46 and 47 holds the fact.
+    node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: >-
+      The `queryFn` of `useProvenance` (lines 38-44): the GET request for the link and attribute provenance paths, with the id URL-encoded.
+    evidence: |-
+      const wire = await http<ProvenanceResponseWire>(
+        `/api/v1/provenance/${kind}/${encodeURIComponent(id)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toProvenanceResponse(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: >-
+      The `enabled` option of the `useQuery` call, line 45.
+    evidence: |-
+      enabled: enabled && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: >-
+      The `STALE_MS` constant at line 29 and the `staleTime` and `refetchOnWindowFocus` options at lines 46-47.
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: >-
+      The `queryFn` at lines 38-44. It has no catch or remapping, so the error the `http` helper raises reaches the query result unchanged.
+    evidence: |-
+      queryFn: async () => {
+        const wire = await http<ProvenanceResponseWire>(
+          `/api/v1/provenance/${kind}/${encodeURIComponent(id)}`,
+          { method: "GET", headers: authHeader() },
+        );
+        return toProvenanceResponse(wire);
+      },
+looked_past: >-
+  The `${kind}` interpolation, and the docstring's mention of `getProvenanceByFragment`, also reach the `/provenance/fragments/{id}` read. That read is held by contracts/curation-workspace/bff-curation-reads, which is not in this node set, and the `ProvenanceKind` union is declared in provenance.types.ts, which is outside this file set.
+candidates_opened:
+  - contracts/curation-workspace/bff-curation-reads

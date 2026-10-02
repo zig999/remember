@@ -1,0 +1,72 @@
+findings:
+  - file: src/features/graph/lib/layout-tree.ts
+    where: >-
+      the file header docblock, lines 8-16 ("Orientation — left-to-right (LR)"), and the spacing comments on
+      TREE_SIBLING_GAP and TREE_LEVEL_GAP, lines 37-44
+    evidence: |-
+      DEPTH→canvasX (layers march right) and
+       *  BREADTH→canvasY (siblings stack vertically).
+    cost: >-
+      The depth-along-x, siblings-along-y orientation is stated in prose, and the runtime code holds it too:
+      `out.set(id, { x: node.y ?? 0, y: node.x ?? 0 })` and the `nodeSize([TREE_SIBLING_GAP, TREE_LEVEL_GAP])` call with 110 and 340.
+      The prose is a second home that moves separately from the node. The runTreeLayout docblock at line 48 also still reads "Tidy tree (top-down) layout".
+      That contradicts the orientation the code implements and the header describes, so a reader of the docstring is told the opposite of what the layout does.
+    kind: restates
+    correction: >-
+      Remove the orientation prose from the header and the two constant comments, and the stale "top-down" docstring line.
+      The fact stays in the node and in the code at lines 40, 45, 81-84 and 102.
+    node: rules/graph-explorer/tree-layout-grows-left-to-right
+  - file: src/features/graph/lib/layout-tree.ts
+    where: >-
+      header step 4 (lines 24-25) and the @param pinnedPositions docblock (lines 54-56)
+    evidence: |-
+      Pinned positions override the layout output — same contract as the
+       *  other two runners: a pinned node never moves regardless of algorithm.
+    cost: >-
+      The keep-positioned-nodes rule is restated in prose while the code holds it at `const pinned = pinnedPositions.get(id); if (pinned !== undefined) { out.set(id, { x: pinned.x, y: pinned.y }); continue; }`.
+      The prose also claims a contract shared with two other runners, which this file cannot show.
+      A reader trusting the comment would look for the rule in the wrong place.
+    kind: restates
+    correction: "Remove the prose in the header and the @param docblock. The code at lines 93-97 holds the fact."
+    node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+  - file: src/features/graph/lib/layout-tree.ts
+    where: >-
+      header step 5 (line 26) and the inline comment at line 91
+    evidence: |-
+      The virtual super-root (when present) is dropped from the output.
+    cost: >-
+      The never-positioned virtual root is restated in prose while the code holds it at `if (id === SUPER_ROOT_ID) continue;`.
+      The creation of the virtual root under several components happens in spanning-tree.ts, which this file does not hold.
+      The comment's version can drift from both.
+    kind: restates
+    correction: >-
+      Remove the prose at line 26 and the comment at line 91. The skip at line 92 holds the fact, and `SUPER_ROOT_ID` is declared in ./spanning-tree.
+    node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+read:
+  - node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+    held_at: >-
+      the pinned branch inside the descendants loop of runTreeLayout, lines 93-97
+    evidence: |-
+      const pinned = pinnedPositions.get(id);
+          if (pinned !== undefined) {
+            out.set(id, { x: pinned.x, y: pinned.y });
+            continue;
+          }
+  - node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+    held_at: >-
+      the skip of the virtual root in the loop, line 92. The construction of the virtual root over several components sits in buildSpanningTree in spanning-tree.ts, which this file calls and does not declare.
+    evidence: |-
+      if (id === SUPER_ROOT_ID) continue;
+  - node: rules/graph-explorer/tree-layout-grows-left-to-right
+    held_at: >-
+      the constants at lines 40 and 45, the nodeSize call at lines 81-84 and the axis swap at line 102
+    evidence: |-
+      const TREE_SIBLING_GAP = 110;
+      const TREE_LEVEL_GAP = 340;
+      tree<SpanningTreeNode>().nodeSize([
+          TREE_SIBLING_GAP,
+          TREE_LEVEL_GAP,
+        ]);
+      out.set(id, { x: node.y ?? 0, y: node.x ?? 0 });
+looked_past: >-
+  The prose rationale (card height about 64px, max-w-3xs about 256px, the edge label, "radial layout distributes best", nodeSize versus size) and the defensive `?? 0` fallbacks state no domain fact of the nodes, so they are left to the comment route and the code-review judgment.

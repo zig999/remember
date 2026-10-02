@@ -1,0 +1,23 @@
+findings:
+  - file: src/features/graph/api/_request.ts
+    where: |-
+      the file header comment (lines 1-19) and the docstring on authHeader(), line 22
+    evidence: |-
+      /** Build the `Authorization: Bearer <jwt>` header when a token is present. */
+      and, in the header, " *  - lib/http.ts contract — JWT is the caller's responsibility (header
+       *    injection happens here, parsing happens in lib/http)."
+    cost: |-
+      The bearer-token rule is stated in prose here as well as in the node and in the code of authHeader(). If the node moves, the comment keeps asserting the old form and no check reaches it. The code in this file already holds the fact, so the prose adds a second home and no behavior.
+    kind: restates
+    correction: |-
+      Remove the header comment and the docstring through the comment route, then run /reconcile over this file. The code on lines 23-26 stays as it is.
+    node: constraints/every-operation-requires-owner-authentication
+read:
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: |-
+      authHeader(), lines 23-26. It reads the token from the auth store at call time and attaches it as a bearer Authorization header.
+    evidence: |-
+      const token = useAuthStore.getState().accessToken;
+        return token !== null ? { Authorization: `Bearer ${token}` } : {};
+looked_past: |-
+  The header comment also carries rationale, namely the cross-feature import ban, the deliberate duplication of the chat helper and reading the token at call time rather than at module load. That prose states no fact of any node, so it belongs to the comment route and not to this judgment.

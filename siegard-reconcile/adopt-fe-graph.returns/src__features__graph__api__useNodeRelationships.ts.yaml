@@ -1,0 +1,67 @@
+findings:
+  - file: src/features/graph/api/useNodeRelationships.ts
+    where: |-
+      the file docstring, line 2-3 (header line)
+    evidence: |-
+      * useNodeRelationships — GET /api/v1/nodes/:id/traverse?depth=1&direction=both
+    cost: |-
+      The depth and direction of a node's relationships read are written a second time in prose beside the code that sends them. When the node changes, a reader can mistake this header for the place the rule lives, and `--check` never reaches a comment.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact stays held by the request path in the queryFn, which sends `?depth=1&direction=both`.
+    node: rules/graph-explorer/relationships-are-read-at-depth-one-both-ways
+  - file: src/features/graph/api/useNodeRelationships.ts
+    where: |-
+      the file docstring, lines 10-12 (Spec references, first bullet)
+    evidence: |-
+      *    "useNodeRelationships hook" — query key, staleTime 5min, enabled gate.
+    cost: |-
+      The 5-minute freshness window is restated in a comment. Code holds it twice in this file (`STALE_MS` and `staleTime: STALE_MS`). The prose is a second home that would go stale unnoticed if the node moved.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact stays held by `const STALE_MS = 5 * 60_000;` with `staleTime: STALE_MS` and `refetchOnWindowFocus: false`.
+    node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the queryFn of useNodeRelationships (lines 35-41)
+    evidence: |-
+      const wire = await http<TraversalResultWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}/traverse?depth=1&direction=both`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toTraversalResult(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: |-
+      the `enabled` option, line 42
+    evidence: |-
+      enabled: typeof id === "string" && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: |-
+      `STALE_MS` (line 28) and the `staleTime` and `refetchOnWindowFocus` options, lines 43-44
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/node-detail-reads-share-a-key-by-node
+    held_at: |-
+      the queryKey line 34, which calls the relationships entry of graphNodeKeys with the placeholder id. The key factory itself, with its separate `["graph", "node", id, "relationships"]` shape, is declared in src/features/graph/api/keys.ts.
+    evidence: |-
+      queryKey: graphNodeKeys.relationships(id ?? "__noop__"),
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: |-
+      the queryFn, lines 35-41. The error from `http` propagates with no catch or rewrap.
+    evidence: |-
+      const wire = await http<TraversalResultWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}/traverse?depth=1&direction=both`,
+        { method: "GET", headers: authHeader() },
+      );
+  - node: rules/graph-explorer/relationships-are-read-at-depth-one-both-ways
+    held_at: |-
+      the request path in the queryFn, line 37
+    evidence: |-
+      `/api/v1/nodes/${encodeURIComponent(id as string)}/traverse?depth=1&direction=both`
+looked_past: |-
+  The docstring's phase labels, its docs/specs path references and its claim that attribute provenance ships inline with useNodeDetail are prose, not a fact of any node in this set, so I did not report them.
+candidates_opened:
+  - rules/graph-explorer/the-first-node-id-key-is-a-placeholder

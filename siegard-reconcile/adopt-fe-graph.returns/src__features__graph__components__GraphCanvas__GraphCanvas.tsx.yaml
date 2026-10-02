@@ -1,0 +1,230 @@
+findings:
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      header docblock, lines 10-11, and the handleNodeClick docblock, lines 235-237
+    evidence: |-
+      Translate React Flow's `onNodeClick(event, node)` to the spec's
+       *    `onNodeSelect(nodeId)` callback (view-only — never a chat mutation).
+      ...
+         * View-only: we never trigger a chat mutation or navigation.
+    cost: |-
+      The rule that a node click is only reported as an id is also written as prose here. If the node moves, nobody will think to update the comment, and the comment can end up contradicting it.
+    kind: restates
+    correction: |-
+      Remove the two comments. The code that holds the fact is handleNodeClick, which only calls `onNodeSelect(node.id)`.
+    node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      docblock of toRfNodes, lines 92-94
+    evidence: |-
+      Position falls back to {0, 0} when missing (the force pass hasn't run
+       *   yet for this id).
+    cost: |-
+      The (0, 0) fallback is stated a second time as prose, alongside the node that holds it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fallback is held by `position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 }` in the same file.
+    node: rules/graph-explorer/a-node-without-position-sits-at-the-origin
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment in the useImperativeHandle recenter function, line 224
+    evidence: |-
+      // "Reset to default" — clear pan/zoom to the canvas origin.
+    cost: |-
+      The recenter behaviour is restated as prose. The numeric values live in DEFAULT_VIEWPORT, so a reader may take the comment, rather than the node, as the statement of the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by `rfApi.setViewport({ x: DEFAULT_VIEWPORT.x, y: DEFAULT_VIEWPORT.y, zoom: DEFAULT_VIEWPORT.zoom }, { duration: 300 })`.
+    node: rules/graph-explorer/fit-and-recenter-take-300-milliseconds
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment in the focusNode function, lines 210-214
+    evidence: |-
+      `setCenter(x, y, { zoom, duration })` centers the viewport on
+              // a single point. The node's `position` is the top-left; offset
+              // by half its measured size (when known) so we centre on the
+              // node's geometric middle.
+    cost: |-
+      The rule that focusing centres on the node's middle is restated as prose and can drift from the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact: `const cx = node.position.x + (measured?.width ?? 0) / 2;` and `rfApi.setCenter(cx, cy, { zoom: 1, duration: 300 })`.
+    node: rules/graph-explorer/focusing-a-node-centres-it-at-zoom-one
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment above the fitView props, lines 294-296
+    evidence: |-
+      // Auto-fit when nodes change so a new turn's subgraph centres
+            // without the user having to click "fit". The `padding: 0.1` keeps
+            // a 10% margin around the bounding box (RF default is too tight).
+    cost: |-
+      The fit-on-change rule and its 0.1 padding value are written a second time in prose beside the node that holds them.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact in `fitView` and `fitViewOptions={{ padding: 0.1 }}`.
+    node: rules/graph-explorer/the-canvas-opens-at-three-quarters-zoom
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment above the draggable and selectable props, lines 303-310
+    evidence: |-
+      Draggable
+            // when a position-commit handler is wired (TC-FE drag, supersedes D5):
+      ...
+            // behaviour. `nodesConnectable` stays false — this is a read-only graph.
+    cost: |-
+      The drag-only-when-a-commit-is-wired rule is stated again as prose. It also cites a decision identifier, "supersedes D5", that no running code reads.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact in `nodesDraggable={onNodePositionCommit !== undefined}` and in `handleNodesChange`, which calls `onNodePositionCommit(change.id, { x: change.position.x, y: change.position.y })`.
+    node: rules/graph-explorer/nodes-drag-only-when-a-commit-is-wired
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comments beside the interaction flags, lines 310 and 314-315
+    evidence: |-
+      `nodesConnectable` stays false — this is a read-only graph.
+      ...
+            // Pan/zoom are user-driven — these are the React Flow
+            // defaults restated for clarity.
+    cost: |-
+      Both comments restate what the node holds, and the second one openly says the code is restated for clarity.
+    kind: restates
+    correction: |-
+      Remove the comments. The code holds the fact in `nodesConnectable={false}`, `elementsSelectable={true}`, `panOnDrag` and `zoomOnScroll`.
+    node: rules/graph-explorer/the-owner-cannot-draw-links
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment inside GraphCanvas above visibleNodes, lines 161-168
+    evidence: |-
+      When provided → mount only nodes whose id is in the Set, and only
+        //    edges whose BOTH endpoints are in the Set (AC-F.15).
+    cost: |-
+      The reveal-filter rule is written as prose a second time, together with a citation to a requirement identifier, AC-F.15, that code never reads.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact in the `visibleNodes` and `visibleLinks` memos, which filter with `revealedIds.has(n.id)` and `revealedIds.has(l.source) && revealedIds.has(l.target)`.
+    node: rules/graph-explorer/only-revealed-nodes-are-shown
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      comment above the top-right Panel, lines 320-324
+    evidence: |-
+      Shown only when the canvas has at
+          least one visible node AND at least one of the controls is wired:
+          a Panel with neither control is empty noise.
+    cost: |-
+      The condition for showing the controls is stated again as prose beside the node that holds it.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact in `visibleNodes.length > 0 && (onResetLayout || (layoutAlgorithm && onLayoutAlgorithmChange))`.
+    node: rules/graph-explorer/layout-controls-need-nodes-and-a-handler
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      the visible label of the Button, line 352
+    evidence: |-
+      <Shuffle aria-hidden="true" className="size-4" />
+                  Reorganizar
+    cost: |-
+      The visible wording of the reorganize control, "Reorganizar", is text shown to the owner and is held by no node. The node fixes only the accessible name "Reorganizar o layout do grafo". A change to this wording would be made here, where nobody looks for it in the specification.
+    kind: unstated
+    correction: |-
+      The node that owns the reorganize control would have to state its visible label. The file cannot fix this by reading the specification.
+    node: rules/graph-explorer/the-reorganize-control-needs-its-handler
+read:
+  - node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+    held_at: |-
+      handleNodeClick, lines 240-246
+    evidence: |-
+      (_event: ReactMouseEvent, node: Node) => {
+            if (!onNodeSelect) return;
+            onNodeSelect(node.id);
+          }
+  - node: rules/graph-explorer/a-node-without-position-sits-at-the-origin
+    held_at: |-
+      toRfNodes, line 108
+    evidence: |-
+      position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
+  - node: rules/graph-explorer/fit-and-recenter-take-300-milliseconds
+    held_at: |-
+      the fitView and recenter functions of the imperative handle, lines 220-229
+    evidence: |-
+      rfApi.fitView({ duration: 300, padding: 0.1 });
+      ...
+      rfApi.setViewport(
+                { x: DEFAULT_VIEWPORT.x, y: DEFAULT_VIEWPORT.y, zoom: DEFAULT_VIEWPORT.zoom },
+                { duration: 300 },
+              );
+  - node: rules/graph-explorer/focusing-a-node-centres-it-at-zoom-one
+    held_at: |-
+      the focusNode function of the imperative handle, lines 205-219
+    evidence: |-
+      const node = rfApi.getNode(id);
+              if (!node) return;
+      ...
+              rfApi.setCenter(cx, cy, { zoom: 1, duration: 300 });
+  - node: rules/graph-explorer/layout-controls-need-nodes-and-a-handler
+    held_at: |-
+      the condition guarding the Panel, lines 325-327
+    evidence: |-
+      {visibleNodes.length > 0 &&
+              (onResetLayout || (layoutAlgorithm && onLayoutAlgorithmChange)) && (
+                <Panel position="top-right">
+  - node: rules/graph-explorer/nodes-drag-only-when-a-commit-is-wired
+    held_at: |-
+      the nodesDraggable prop, line 311, and handleNodesChange, lines 260-273
+    evidence: |-
+      nodesDraggable={onNodePositionCommit !== undefined}
+      ...
+      if (change.type === "position" && change.position) {
+                onNodePositionCommit(change.id, {
+                  x: change.position.x,
+                  y: change.position.y,
+                });
+  - node: rules/graph-explorer/only-revealed-nodes-are-shown
+    held_at: |-
+      the visibleNodes and visibleLinks memos, lines 173-188
+    evidence: |-
+      revealedIds === undefined
+              ? nodes
+              : nodes.filter((n) => revealedIds.has(n.id)),
+      ...
+      (l) => revealedIds.has(l.source) && revealedIds.has(l.target),
+  - node: rules/graph-explorer/the-canvas-opens-at-three-quarters-zoom
+    held_at: |-
+      DEFAULT_VIEWPORT at line 86 and the ReactFlow fit props at lines 291 and 297-298
+    evidence: |-
+      const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 0.75 } as const;
+      ...
+      defaultViewport={DEFAULT_VIEWPORT}
+      ...
+      fitView
+      fitViewOptions={{ padding: 0.1 }}
+  - node: rules/graph-explorer/the-layout-picker-needs-the-algorithm-and-its-setter
+    held_at: |-
+      LAYOUT_ALGORITHM_LABELS and LAYOUT_ALGORITHM_ORDER, lines 63-72, and the Select, lines 329-342
+    evidence: |-
+      force: "Força",
+        tree: "Árvore",
+        radial: "Radial",
+      ...
+      {layoutAlgorithm && onLayoutAlgorithmChange && (
+      ...
+      aria-label="Algoritmo de layout do grafo"
+  - node: rules/graph-explorer/the-owner-cannot-draw-links
+    held_at: |-
+      the interaction props on ReactFlow, lines 312-317
+    evidence: |-
+      nodesConnectable={false}
+            elementsSelectable={true}
+      ...
+            panOnDrag
+            zoomOnScroll
+  - node: rules/graph-explorer/the-reorganize-control-needs-its-handler
+    held_at: |-
+      the Button rendered when onResetLayout is supplied, lines 343-354
+    evidence: |-
+      {onResetLayout && (
+                      <Button
+      ...
+                        onClick={onResetLayout}
+                        aria-label="Reorganizar o layout do grafo"
+looked_past: |-
+  I saw the Select's `className="w-auto min-w-3xs"`, the Button's `variant="secondary" size="sm"`, `proOptions={{ hideAttribution: true }}` and the comments about useImperativeHandle and React 19 refs. They are surface or code-style matters, not a domain fact of a node, so they belong to another judgment.

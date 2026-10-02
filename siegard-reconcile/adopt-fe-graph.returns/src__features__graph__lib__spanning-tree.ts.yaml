@@ -1,0 +1,79 @@
+findings:
+  - file: src/features/graph/lib/spanning-tree.ts
+    where: |-
+      the header docstring, lines 9-16, and the comments at lines 84-86 and 119-122
+    evidence: |-
+      * 1. Pick the highest-degree node as the root of each component (tie:
+      *         smallest id — stable across runs so the same delta always lays out
+      *         the same way).
+      *      2. Run BFS from each component root to derive its spanning tree.
+      // Component-by-component BFS. For each unvisited id, pick the highest-
+      // degree unvisited node (tiebreak: smallest id) as the component root,
+      // Iterate neighbours in stable id order so the tree shape is
+    cost: |-
+      The roots-by-highest-degree, smaller-id-on-ties and ascending-neighbour-order rules appear as prose in a second place. A reader of the comment can mistake it for the home of the rule. When the node changes, nothing ties the comment to it, and the comment can keep stating the old rule.
+    kind: restates
+    correction: |-
+      Remove the comments. The code holds the fact in the `sortedByDegree` comparator (`if (da !== db) return db - da; return a < b ? -1 : a > b ? 1 : 0;`) and in `[...adj.get(currentId)!].sort()`. The node already holds the rule.
+    node: rules/graph-explorer/tree-and-radial-layouts-share-one-spanning-tree
+  - file: src/features/graph/lib/spanning-tree.ts
+    where: |-
+      the header docstring, lines 14-16, the comment above `SUPER_ROOT_ID` at lines 25-27, and the comment at lines 137-138
+    evidence: |-
+      *      3. If there is more than one component, attach all component roots as
+      *         children of a single virtual super-root.
+      // Single component → real root. Forest → virtual super-root that wraps
+      // every component root. Callers strip the super-root from the output.
+    cost: |-
+      The virtual-root rule and the rule that it is never positioned are restated as comments. The positioning half is enforced in the layout runners, not in this file. A reader of the comment sees a rule with no visible enforcement here. The comment can drift from the node unnoticed.
+    kind: restates
+    correction: |-
+      Remove the comments. This file holds the fact in `export const SUPER_ROOT_ID = "__super_root__";` and in `return { id: SUPER_ROOT_ID, children: componentRoots, };`. The runners that drop the id from the position Map are in layout-tree.ts and layout-radial.ts, which the candidate index names; I did not open them.
+    node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+  - file: src/features/graph/lib/spanning-tree.ts
+    where: |-
+      the comment at lines 72-75, inside the link loop
+    evidence: |-
+      // Defensive: skip a link whose endpoint is not in nodeIds — same posture
+      // as runForceLayout.
+    cost: |-
+      The rule that a link with a missing endpoint is left out is stated as prose beside the code that enforces it. The comment also points at another layout runner as its model. That ties two files together in prose only, with no bind between them.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the fact at `if (!srcSet || !tgtSet) continue;`. The node already holds the rule.
+    node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+read:
+  - node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+    held_at: |-
+      the guard `if (!srcSet || !tgtSet) continue;` in the link loop of buildSpanningTree, line 79
+    evidence: |-
+      const srcSet = adj.get(source);
+      const tgtSet = adj.get(target);
+      if (!srcSet || !tgtSet) continue;
+  - node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+    held_at: |-
+      the `SUPER_ROOT_ID` constant (line 28) and the final return of buildSpanningTree (lines 139-145). The "never given a position" half is not in this file, which only supplies the sentinel id.
+    evidence: |-
+      export const SUPER_ROOT_ID = "__super_root__";
+      if (componentRoots.length === 1) {
+        return componentRoots[0]!;
+      }
+      return {
+        id: SUPER_ROOT_ID,
+        children: componentRoots,
+      };
+  - node: rules/graph-explorer/tree-and-radial-layouts-share-one-spanning-tree
+    held_at: |-
+      buildSpanningTree, lines 58-146. The adjacency Set (lines 67-82) counts duplicates once. The self-link skip is at line 76. The degree/id comparator is at lines 93-98. The breadth-first walk is at lines 113-132, with neighbours sorted by id at line 123.
+    evidence: |-
+      if (source === target) continue;
+      const sortedByDegree = [...nodeIds].sort((a, b) => {
+        const da = adj.get(a)!.size;
+        const db = adj.get(b)!.size;
+        if (da !== db) return db - da;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+      const neighbours = [...adj.get(currentId)!].sort();
+looked_past: |-
+  The comment at lines 17-20 saying cross-links are left out of the spanning tree and stay in React Flow as floating edges is a fact only prose states in this file, so it is not a finding here.
+candidates_opened: []

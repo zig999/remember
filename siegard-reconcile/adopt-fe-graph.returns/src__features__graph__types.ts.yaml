@@ -1,0 +1,196 @@
+findings:
+  - file: src/features/graph/types.ts
+    where: |-
+      the module docblock, lines 8-10, and the docblock of GraphStatus, lines 90-92
+    evidence: |-
+      * - `GraphStatus` has exactly 5 values — there is NO `"idle"` (I-4). Adding
+      *    `"idle"` would re-introduce the empty/idle ambiguity the plan removed.
+    cost: |-
+      The five phases and the absence of an idle phase are written out in prose beside the union that already declares them. The comment cites a plan under temp/ as its authority. A later change to the phases would need two edits, and a reader could take the comment for the decision.
+    kind: restates
+    correction: |-
+      Remove the prose. The union `export type GraphStatus = "empty" | "loading" | "revealing" | "ready" | "error";` in this same file already holds the fact, and the node binds to it.
+    node: domain/graph-explorer/graph-pane-status
+  - file: src/features/graph/types.ts
+    where: |-
+      the module docblock, lines 11-13, the GraphNodeData.state docblock, lines 42-43, and the GraphNodeWireStatus docblock, lines 101-103
+    evidence: |-
+      *  - `GraphNodeData.state` is derived from the node `status` field only —
+      *    nodes do not carry `flags` (I-2 — flags live on links). The wire
+      *    `GraphNodeWire` therefore intentionally omits a `flags` field.
+    cost: |-
+      The rule that a node's state follows its status alone is stated in prose in this file. The code that applies it is `deriveNodeState` in src/features/graph/lib/map.ts, which takes only `status`. Someone reading the prose would assume it is the rule, and a change to the specification would never reach it.
+    kind: restates
+    correction: |-
+      Remove the prose. `deriveNodeState(status: GraphNodeWireStatus)` in src/features/graph/lib/map.ts holds the rule, and the node binds to it.
+    node: rules/graph-explorer/node-state-follows-its-status-alone
+  - file: src/features/graph/types.ts
+    where: |-
+      the GraphNodeData.state docblock, lines 42-45, and the GraphNodeWireStatus docblock, lines 101-103
+    evidence: |-
+      *  `undefined` is emitted for `status` values that do not map to a visible
+      *  state (e.g. `merged`, `deleted` — those nodes are filtered out by the
+      *  dispatcher before reaching this surface shape).
+    cost: |-
+      The rule that a merged or deleted node gets no state and is left off the pane is told in prose here. The code that holds it is the `case "merged": case "deleted": return undefined;` branch of `deriveNodeState` in src/features/graph/lib/map.ts, together with the composing mapper in src/features/graph/api/mapWireToGraphDelta.ts. The prose is a second home that nothing reads.
+    kind: restates
+    correction: |-
+      Remove the prose. The branch in src/features/graph/lib/map.ts holds the fact.
+    node: rules/graph-explorer/merged-or-deleted-node-has-no-state-and-is-left-off
+  - file: src/features/graph/types.ts
+    where: |-
+      the module docblock, lines 14-17, and the GraphLinkData.isTemporal docblock, line 71
+    evidence: |-
+      /** `true` → solid stroke; `false` → dashed stroke (tokens.md §7, I-1). */
+    cost: |-
+      The prose states the dash rule more narrowly than the node. The node says the stroke is dashed 4 4 when the state is uncertain or the link is not temporal. A reader trusting this comment would not know an uncertain temporal link is dashed too. The code that holds the rule is `const isDashed = isUncertain || !data.isTemporal;` in src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx.
+    kind: restates
+    correction: |-
+      Remove the prose. The branch in GraphEdgeAdapter.tsx holds the rule, and the node binds to it there.
+    node: rules/graph-explorer/a-link-is-dashed-unless-temporal-and-sure
+  - file: src/features/graph/types.ts
+    where: |-
+      the GraphNodeData docblock, lines 32-34, and the GraphNodeWire.node_type docblock, lines 113-115
+    evidence: |-
+      `type` has already been mapped
+      *  via `mapNodeType()` — unknown wire types collapse to the safe fallback
+    cost: |-
+      The fallback to concept for an unknown node type is told in prose here. The code that holds it is `mapNodeType` in src/features/graph/lib/map.ts (`wireType.trim().toLowerCase()` then `FALLBACK_NODE_TYPE`). The comment cites the plan's G-B and UC-CG-12 as if they were the rule.
+    kind: restates
+    correction: |-
+      Remove the prose. `mapNodeType` in src/features/graph/lib/map.ts holds the rule.
+    node: rules/graph-explorer/node-type-is-trimmed-lowercased-and-falls-back-to-concept
+  - file: src/features/graph/types.ts
+    where: |-
+      the GraphLinkData.label docblock, lines 59-63
+    evidence: |-
+      /** Link type slug (`participates_in`, `member_of`, …). Used **exclusively**
+      *  as the stroke-color lookup key (`LINK_STROKE_CLASS[label]`) and as a
+      *  diagnostic id — **never** rendered as visible text. The visible text is
+      *  `linkTypeLabel`. */
+    cost: |-
+      The rule that the slug is kept as the label and is never the text shown is told in prose here. The interface does declare the `label` and `linkTypeLabel` fields, but nothing in this file prevents the slug from being rendered. The code that holds the rule is the `LINK_STROKE_CLASS[data.label]` lookup in GraphEdgeAdapter.tsx and `mapLinkTypeLabel` in src/features/graph/lib/map.ts.
+    kind: restates
+    correction: |-
+      Remove the prose. The code in GraphEdgeAdapter.tsx and lib/map.ts holds the rule, and the node binds to it there.
+    node: rules/graph-explorer/link-type-slug-is-kept-apart-from-its-text
+  - file: src/features/graph/types.ts
+    where: |-
+      the GraphLinkData.linkTypeLabel docblock, lines 64-70, and the GraphLinkWire.link_type_label docblock, lines 127-132
+    evidence: |-
+      falls back to the humanized slug
+      *  (`link_type.replace(/_/g, " ")`) when the wire field is absent (legacy
+      *  frames / unknown link types).
+    cost: |-
+      The fallback of the shown link text to the slug with spaces is written out in prose here. The code that holds it is `return linkType.replace(/_/g, " ");` in `mapLinkTypeLabel` in src/features/graph/lib/map.ts. The comment is narrower than the node. It says "absent", while the code and the node also fall back when the label is blank.
+    kind: restates
+    correction: |-
+      Remove the prose. `mapLinkTypeLabel` in src/features/graph/lib/map.ts holds the rule.
+    node: rules/graph-explorer/link-text-is-the-catalog-label-or-the-spaced-slug
+  - file: src/features/graph/types.ts
+    where: |-
+      the GraphLinkData.state docblock, lines 75-76
+    evidence: |-
+      /** Confidence state — derived from link `status` + `flags` (links carry
+      *  flags; nodes do not — I-2). */
+    cost: |-
+      The rule that a link's state comes from its status and flags is mentioned in prose in this file. The code that holds it, with its precedence, is `deriveLinkState` in src/features/graph/lib/map.ts. The prose gives no precedence, so it reads as the whole rule when it is not.
+    kind: restates
+    correction: |-
+      Remove the prose. `deriveLinkState` in src/features/graph/lib/map.ts holds the rule.
+    node: rules/graph-explorer/link-state-follows-a-fixed-precedence
+read:
+  - node: domain/chat/graph-delta
+    held_at: |-
+      the GraphDeltaWire interface, lines 147-151, and the GraphDelta interface, lines 82-88
+    evidence: |-
+      export interface GraphDeltaWire {
+        readonly source_tool: string;
+        readonly nodes: readonly GraphNodeWire[];
+        readonly links: readonly GraphLinkWire[];
+      }
+  - node: domain/chat/graph-delta-link
+    held_at: |-
+      the GraphLinkWire interface, lines 122-144
+    evidence: |-
+      readonly link_type: string;
+      readonly link_type_label?: string;
+      readonly is_temporal: boolean;
+      readonly is_in_effect?: boolean;
+      readonly status?: string;
+      readonly flags?: readonly GraphLinkWireFlag[];
+  - node: domain/chat/graph-delta-node
+    held_at: |-
+      the GraphNodeWire interface, lines 111-119
+    evidence: |-
+      readonly node_type: string;
+      readonly canonical_name: string;
+      readonly status: GraphNodeWireStatus;
+  - node: domain/graph-explorer/confidence-state
+    held_at: nowhere
+    evidence: |-
+      import type { ConfidenceState } from "@/components/ds/StateBadge";
+      this file only imports the type and uses it for `state?: ConfidenceState`; the enumeration's values are declared in components/ds/StateBadge, not here
+  - node: domain/graph-explorer/graph-link-view
+    held_at: |-
+      the GraphLinkData interface, lines 52-78
+    evidence: |-
+      readonly id: string;
+      readonly source: string;
+      readonly target: string;
+      readonly label: string;
+      readonly linkTypeLabel: string;
+      readonly isTemporal: boolean;
+      readonly inEffect?: boolean;
+      readonly state?: ConfidenceState;
+  - node: domain/graph-explorer/graph-node-view
+    held_at: |-
+      the GraphNodeData interface, lines 35-49
+    evidence: |-
+      readonly id: string;
+      readonly type: GraphNodeType;
+      readonly label: string;
+      readonly state?: ConfidenceState;
+      readonly subtitle?: string;
+  - node: domain/graph-explorer/graph-pane
+    held_at: nowhere
+    evidence: |-
+      this file declares the delta and node/link view shapes, not the pane aggregate (nodes, links, positions, user_pinned, reveal_queue, status, layout and the operations); `export interface GraphDelta` is the nearest construct
+  - node: domain/graph-explorer/graph-pane-status
+    held_at: |-
+      the GraphStatus type, line 93
+    evidence: |-
+      export type GraphStatus = "empty" | "loading" | "revealing" | "ready" | "error";
+  - node: domain/knowledge-base/assertion-flag
+    held_at: |-
+      the GraphLinkWireFlag type, line 108
+    evidence: |-
+      export type GraphLinkWireFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/node-status
+    held_at: |-
+      the GraphNodeWireStatus type, line 104
+    evidence: |-
+      export type GraphNodeWireStatus = "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/chat/graph-delta-link-label
+    held_at: |-
+      the link_type_label field of GraphLinkWire, line 133, which is only declared optional here; the catalog lookup that makes it present or absent runs in the backend and is outside this file
+    evidence: |-
+      readonly link_type_label?: string;
+  - node: rules/graph-explorer/link-type-slug-is-kept-apart-from-its-text
+    held_at: |-
+      the label and linkTypeLabel fields of GraphLinkData, lines 63 and 70, which declare the slug and the text apart; the prohibition on showing the slug is applied outside this file
+    evidence: |-
+      readonly label: string;
+      readonly linkTypeLabel: string;
+  - node: rules/graph-explorer/node-type-is-trimmed-lowercased-and-falls-back-to-concept
+    held_at: nowhere
+    evidence: |-
+      this file only declares `readonly node_type: string;` on GraphNodeWire and `readonly type: GraphNodeType;` on GraphNodeData; the trim, lowercase and fallback to concept sit in `mapNodeType` in src/features/graph/lib/map.ts, and the comment in this file only claims them
+looked_past: |-
+  The comments cite temp/chat-graphspace-plan.md, tokens.md and the GraphSpace component spec, and the sourceTool docblock says it "never branches the UI". The file is a types module with no behavior of its own, so I saw those and did not report them: they are prose that no node holds and no code carries, which is the comment route's judgment rather than this one.
+candidates_opened:
+  - rules/graph-explorer/a-link-is-dashed-unless-temporal-and-sure
+  - rules/graph-explorer/link-text-is-the-catalog-label-or-the-spaced-slug
+  - rules/graph-explorer/merged-or-deleted-node-has-no-state-and-is-left-off
+  - rules/graph-explorer/node-state-follows-its-status-alone
+  - rules/graph-explorer/link-state-follows-a-fixed-precedence

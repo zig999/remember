@@ -1,0 +1,209 @@
+findings:
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the header docstring, lines 5-6, and the comment at lines 151-152 above `isDashed`
+    evidence: |-
+      * Solid stroke when `data.isTemporal === true`; dashed (`4 4`) otherwise
+
+      // Dash pattern: per §3, `uncertain` always reads as dashed (uncertainty
+      // supersedes the temporal/stable visual). Otherwise `isTemporal` drives it.
+    cost: >-
+      The dash rule is written a second time in prose, and the comments cite `tokens.md §7`, `AC-F.11` and a
+      component spec §3 as its authority. A reader who follows those citations will look for the rule
+      outside the specification, and a node edit will not reach the comments.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `const isDashed = isUncertain || !data.isTemporal;`
+      and `const strokeDasharray = isDashed ? "4 4" : "0";`.
+    node: rules/graph-explorer/a-link-is-dashed-unless-temporal-and-sure
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the header docstring, lines 7-9, and the docstring of `stateStrokeClass`, lines 77-89
+    evidence: |-
+      * Confidence-state colour overrides (uncertain / disputed / superseded)
+      *    via the `--color-state-*` tokens. When no override is active, the
+      *    stroke uses the LinkType colour token (`--color-link-{label}`).
+
+      *  - accepted   → no override
+      *  - low-confidence → no override (not normally rendered on edges; the
+    cost: >-
+      The precedence of state over type is stated again in prose, with colour names (amber, orange, muted
+      grey) that no node holds. The comments cite `GraphEdge.component.spec.md §3` as the source. The next
+      reader of the code takes the comment for the decision.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `const strokeColorClass = stateClass ?? linkClass;`
+      with `stateStrokeClass` returning `null` for accepted, low-confidence and undefined.
+    node: rules/graph-explorer/a-weak-state-overrides-the-type-colour
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the docstring of `LINK_STROKE_CLASS` and `FALLBACK_STROKE_CLASS`, lines 45-57 and 74
+    evidence: |-
+      * the Tailwind v4 scanner keeps every variant ... The 13 link types are the normative
+      * catalog from
+      * `remember-modelagem-v7.md §15.2` + tokens.md §7.
+
+      /** Neutral fallback for unknown link slugs (open ontology — G-B). */
+    cost: >-
+      The fallback rule for an unknown type is also stated in prose, citing "G-B" and v7 §15.2, so the
+      authority is attributed to a document and not to the node. The code holds it anyway in
+      `LINK_STROKE_CLASS[data.label] ?? FALLBACK_STROKE_CLASS`.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `FALLBACK_STROKE_CLASS = "stroke-link-related-to"`
+      is the fallback of the lookup `LINK_STROKE_CLASS[data.label] ?? FALLBACK_STROKE_CLASS`.
+    node: rules/graph-explorer/a-link-is-coloured-by-its-type
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the header docstring, lines 10-11, and the comment at line 161
+    evidence: |-
+      * `opacity-40` when `data.inEffect === false` OR `data.state ===
+      *    "superseded"` (out-of-effect / historical edge, GraphEdge.spec §3).
+
+      // Dim out-of-effect or superseded edges (§3 — "Out of effect" / "Superseded").
+    cost: >-
+      The dimming rule is stated in prose against the component spec, a second home outside behaviour. A
+      change to the node will not reach it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `const isDimmed = data.inEffect === false || data.state === "superseded";`.
+    node: rules/graph-explorer/a-link-is-dimmed-when-out-of-effect
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the comment at lines 175-176 above `aria-hidden="true"`
+    evidence: |-
+      // `aria-hidden` on the edge — relationship info is announced via
+      // node aria-labels + NodeDetailPanel (§8 accessibility).
+    cost: >-
+      The rule and a rationale, which is itself a fact about how relationships are announced, are in a
+      comment citing §8. No node holds that rationale, so the comment becomes its only home.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `aria-hidden="true"` on `BaseEdge`.
+    node: rules/graph-explorer/a-link-is-hidden-from-assistive-technology
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the comments at lines 122-124 and 129-131 above the two early `return null`
+    evidence: |-
+      // Defensive: React Flow may briefly call the edge renderer without `data`
+      // during reconciliation (e.g. mid-reveal). Render nothing in that case
+
+      // nothing — `getEdgeParams` returns `null` to signal the unmeasured
+      // state explicitly (no fallback to 0/0 — see GraphEdge.spec §6).
+    cost: >-
+      The no-draw rule appears again in prose with an authority citation (GraphEdge.spec §6). A change to
+      the node will not reach it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `if (!data) { return null; }` and
+      `const params = getEdgeParams(sourceNode, targetNode); if (!params) { return null; }`.
+    node: rules/graph-explorer/a-link-needs-data-and-measured-nodes
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the header docstring, lines 12-17
+    evidence: |-
+      * The catalog-resolved **pt-BR display label** (`data.linkTypeLabel`)
+      *    rendered as a small centred label via `EdgeLabelRenderer`, using the
+      *    `text-xs` token. The slug (`data.label`) is **never** rendered as
+      *    text
+    cost: >-
+      The label rule is restated in prose citing "GraphEdge.spec §1, §2, §7 scenarios 7 / 8". Code holds
+      it too, so this only adds a second home that a node change will not reach.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file: `{data.linkTypeLabel}` is the only text the
+      label renders.
+    node: rules/graph-explorer/a-link-shows-the-catalog-label
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the `className` of `BaseEdge`, lines 182-188
+    evidence: |-
+      "[stroke-width:var(--border-thin)]",
+      "hover:[stroke-width:var(--border-2)]",
+      selected && "[stroke-width:var(--border-thick)]",
+    cost: >-
+      A link thickens on hover and thickens again when selected, using three width tokens. No node holds
+      either behaviour; a search of the specification root for stroke, hover and selected link terms found
+      only node-drawing rules. The code becomes the only place this interaction state is decided, and
+      someone reading the specification will not find it.
+    kind: unstated
+    correction: >-
+      Analysis would need to give the link's hover and selected widths a node, for example in
+      `domain/graph-explorer/graph-pane`.
+  - file: src/features/graph/components/GraphEdgeAdapter/GraphEdgeAdapter.tsx
+    where: >-
+      the `style` of the label `div`, lines 201-210
+    evidence: |-
+      position: "absolute",
+      transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+      pointerEvents: "none",
+    cost: >-
+      The label is centred on the bezier midpoint and ignores the pointer, so a click or drag passes
+      through to the node under it. No node holds either decision. The label's own text is also not
+      hidden from assistive technology, while the rest of the link is. No node settles whether the label
+      is covered by the hidden rule.
+    kind: unstated
+    correction: >-
+      Analysis would need to state where a link's label sits and that it is not interactive, either in
+      the label rule or in a new node.
+read:
+  - node: domain/graph-explorer/confidence-state
+    held_at: nowhere
+    evidence: |-
+      import type { ConfidenceState } from "@/components/ds/StateBadge";
+      ... switch (state) { case "uncertain": ... case "disputed": ... case "superseded": ... case "accepted": case "low-confidence": case undefined: return null; }
+      The file only imports the type and branches on its values. It declares no shape of the enumeration.
+  - node: rules/graph-explorer/a-link-is-coloured-by-its-type
+    held_at: >-
+      `LINK_STROKE_CLASS` and `FALLBACK_STROKE_CLASS`, lines 58-75, and the lookup at line 148
+    evidence: |-
+      participates_in: "stroke-link-participates-in", ... sponsors: "stroke-link-sponsors",
+      const FALLBACK_STROKE_CLASS = "stroke-link-related-to";
+      const linkClass = LINK_STROKE_CLASS[data.label] ?? FALLBACK_STROKE_CLASS;
+      The 13 slugs match the thirteen of rules/knowledge-base/catalog-link-types.
+  - node: rules/graph-explorer/a-link-is-dashed-unless-temporal-and-sure
+    held_at: >-
+      `isDashed` and `strokeDasharray`, lines 153-159
+    evidence: |-
+      const isUncertain = data.state === "uncertain";
+      const isDashed = isUncertain || !data.isTemporal;
+      const strokeDasharray = isDashed ? "4 4" : "0";
+  - node: rules/graph-explorer/a-link-is-dimmed-when-out-of-effect
+    held_at: >-
+      `isDimmed`, line 162, applied to the edge at line 187 and to the label at line 215
+    evidence: |-
+      const isDimmed = data.inEffect === false || data.state === "superseded";
+      isDimmed && "opacity-40",
+  - node: rules/graph-explorer/a-link-is-hidden-from-assistive-technology
+    held_at: >-
+      the `aria-hidden` prop of `BaseEdge`, line 177
+    evidence: |-
+      aria-hidden="true"
+      The label `div` rendered through `EdgeLabelRenderer` carries no aria-hidden.
+  - node: rules/graph-explorer/a-link-needs-data-and-measured-nodes
+    held_at: >-
+      the two early returns, lines 125-135
+    evidence: |-
+      if (!data) {
+        return null;
+      }
+      const params = getEdgeParams(sourceNode, targetNode);
+      if (!params) {
+        return null;
+      }
+  - node: rules/graph-explorer/a-link-shows-the-catalog-label
+    held_at: >-
+      the content of the label `div`, line 218
+    evidence: |-
+      {data.linkTypeLabel}
+      The slug `data.label` is used only as the key of `LINK_STROKE_CLASS`.
+  - node: rules/graph-explorer/a-weak-state-overrides-the-type-colour
+    held_at: >-
+      `stateStrokeClass` and `strokeColorClass`, lines 90-103 and 147-149
+    evidence: |-
+      case "uncertain": return "stroke-state-uncertain"; ... case "accepted": case "low-confidence": case undefined: return null;
+      const strokeColorClass = stateClass ?? linkClass;
+looked_past: >-
+  Tailwind arbitrary-value syntax, the eslint-disable directive and the `exactOptionalPropertyTypes` workaround for `markerEnd` are code-style matters and not a judgment on a domain fact.
+candidates_opened:
+  - rules/knowledge-base/catalog-link-types

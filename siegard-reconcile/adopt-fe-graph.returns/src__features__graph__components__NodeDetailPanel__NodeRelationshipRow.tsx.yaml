@@ -1,0 +1,117 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipRow.tsx
+    where: |-
+      the header docstring, lines 1-15 (the row composition: direction arrow, link type, neighbor name, confidence, status badge)
+    evidence: |-
+      The row
+       * shows direction arrow, link type, neighbor name, confidence,
+       * temporal/effective-status badge, and two stacked disclosures:
+    cost: |-
+      The row's composition is written a second time in prose that no running system emits. If the node changes, this docstring keeps the old order, and nothing reaches it, because the check only follows files a node is bound to.
+    kind: restates
+    correction: |-
+      Remove the prose. The JSX of NodeRelationshipRow, lines 130-162, already holds the fact. The comment route that removes prose answers this, followed by /reconcile over the file.
+    node: rules/graph-explorer/a-relationship-row-shows-arrow-type-neighbour-confidence-and-status
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipRow.tsx
+    where: |-
+      the header docstring, lines 5-11 (the two stacked disclosures and the lazy read)
+    evidence: |-
+      *  - "Proveniência do link" — inline `link.provenance[]` (no extra fetch).
+       *  - "Ver origem completa" — lazy `useProvenance('links', linkId)`, enabled
+       *    only when expanded.
+    cost: |-
+      The rule that provenance is read only while the disclosure is open is stated again in prose. The code holds it at `useProvenance("links", linkId, open)`. A reader can take the docstring for the place the rule is decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The `open` state and the `useProvenance("links", linkId, open)` call in LazyLinkOrigin hold the fact.
+    node: rules/graph-explorer/every-item-offers-its-full-origin
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipRow.tsx
+    where: |-
+      the comment above `badgeState`, lines 112-115
+    evidence: |-
+      // The wire AssertionStatus enum doesn't include "active" — we pass
+        // "accepted" (the closest analogue for a live link) since the row only
+        // surfaces the effective status badge; the inner assertion status is not
+        // consumed at the row level beyond the disputed/superseded fallback.
+    cost: |-
+      The rule that the badge comes from the effective status with the assertion status taken as accepted is restated as a rationale. The rationale is a claim about the wire enum that no node holds. The code holds the rule itself in `mapAttributeStatusToBadge(link.effectiveStatus, "accepted")`.
+    kind: restates
+    correction: |-
+      Remove the comment. The call on line 116 holds the fact.
+    node: rules/graph-explorer/a-relationship-badge-follows-its-effective-status
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipRow.tsx
+    where: |-
+      LinkInlineProvenance, lines 47-63 (what each inline entry shows)
+    evidence: |-
+      <p className="text-xs text-foreground">{p.fragmentText}</p>
+      ...
+      {p.confidenceLabel !== null && (
+      ...
+      {p.sourceType !== null && (
+      ...
+      {p.receivedAtLabel !== null && (
+    cost: |-
+      The code decides what an inline entry shows: the fragment text always, and confidence, source type and received-at only when present. No node in this file's set holds that. The node that does, a candidate, is bound only to NodeAttributeRow.tsx. A change to the node would not reach this file.
+    kind: unstated
+    correction: |-
+      Bind rules/graph-explorer/inline-entries-show-text-and-what-they-have to this file as well. That is an analysis-side step, because the code cannot read the specification.
+    node: rules/graph-explorer/inline-entries-show-text-and-what-they-have
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: |-
+      the NodeRelationshipRow JSX, lines 124-177. It covers the show-relationships accepted answer: arrow, link type, neighbour, confidence and status badge per row. The section name "Relações" and the loading, empty and retry texts are not in this file.
+    evidence: |-
+      <li ... data-testid="node-detail-relationship-row" data-direction={link.direction}> ... {link.directionArrow} ... {link.directionLabel} ... {link.neighborName} ... {link.confidenceLabel} ... <StateBadge state={badgeState} size="sm" iconOnly />
+  - node: rules/graph-explorer/a-relationship-badge-follows-its-effective-status
+    held_at: |-
+      line 116, the badgeState assignment
+    evidence: |-
+      const badgeState = mapAttributeStatusToBadge(link.effectiveStatus, "accepted");
+  - node: rules/graph-explorer/a-relationship-row-shows-arrow-type-neighbour-confidence-and-status
+    held_at: |-
+      the first flex div of the row, lines 130-162, in the order the node states
+    evidence: |-
+      <span ... aria-hidden="true" ...>{link.directionArrow}</span>
+      <span className="sr-only">{directionSr}</span>
+      <span ...>{link.directionLabel}</span>
+      ...{link.neighborName}...{link.confidenceLabel}
+      <StateBadge state={badgeState} size="sm" iconOnly />
+  - node: rules/graph-explorer/a-relationship-row-shows-its-validity
+    held_at: |-
+      lines 163-169, the validity div
+    evidence: |-
+      {(link.validFromLabel !== null || link.validToLabel !== null) && (
+        <div className="text-xs text-muted-foreground">
+          {link.validFromLabel ?? "—"}
+          {" → "}
+          {link.validToLabel ?? "—"}
+  - node: rules/graph-explorer/every-item-offers-its-full-origin
+    held_at: |-
+      LazyLinkOrigin, lines 78-103, rendered for every row at line 174. The read is enabled only while the details element is open. The wording of the summary comes from NODE_DETAIL_COPY.originSummary in another file.
+    evidence: |-
+      const [open, setOpen] = useState(false);
+      const query = useProvenance("links", linkId, open);
+      ... onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)} ...
+      <LazyLinkOrigin linkId={link.id} />
+  - node: rules/graph-explorer/inline-provenance-needs-an-entry
+    held_at: |-
+      the conditional render at lines 121-122 and 171-173. The summary wording ("Proveniência do link" plus the count and entrada/entradas) is produced by NODE_DETAIL_COPY.linkProvenanceSummary in another file, not here.
+    evidence: |-
+      const hasInlineProvenance = provenance.length > 0;
+      ...
+      {hasInlineProvenance && (
+        <LinkInlineProvenance entries={provenance} />
+      )}
+      ... {NODE_DETAIL_COPY.linkProvenanceSummary(entries.length)}
+  - node: rules/graph-explorer/screen-readers-hear-the-direction
+    held_at: |-
+      lines 117-120, the direction branch, rendered in the sr-only span at line 138. The exact wording is in NODE_DETAIL_COPY in another file.
+    evidence: |-
+      const directionSr =
+        link.direction === "outgoing"
+          ? NODE_DETAIL_COPY.directionOutgoingSr
+          : NODE_DETAIL_COPY.directionIncomingSr;
+looked_past: |-
+  The wording of the screen-reader direction text, the provenance summary and the origin summary lives in NodeDetailPanel.copy.ts, which is outside this file set, so I did not read it. Styling classes, test ids and the "·" separators are surface and say nothing about a domain fact.
+candidates_opened:
+  - rules/graph-explorer/inline-entries-show-text-and-what-they-have

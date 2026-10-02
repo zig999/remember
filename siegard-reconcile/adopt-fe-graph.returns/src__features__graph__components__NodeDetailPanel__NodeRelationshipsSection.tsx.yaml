@@ -1,0 +1,49 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipsSection.tsx
+    where: |-
+      the header comment, lines 6-10 (the four-state list)
+    evidence: |-
+      * Owns the `useNodeRelationships(nodeId)` call and renders the four states
+      * declared in the spec:
+      *  - loading            → spinner + live copy
+      *  - empty (`links=[]`) → "Nenhuma relação encontrada."
+    cost: |-
+      The comment says again, outside any behaviour, the loading and empty wording and the empty-list condition that the node holds. The wording is also held in code in src/features/graph/components/NodeDetailPanel/NodeDetailPanel.copy.ts (`relationshipsEmpty: "Nenhuma relação encontrada."`). If the node's wording moves, the comment still reads as the current rule. No check reaches it.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the fact: the empty branch renders `NODE_DETAIL_COPY.relationshipsEmpty` and the pending branch renders `NODE_DETAIL_COPY.relationshipsLoading`. The prose route is a direct edit followed by /reconcile over the file.
+    node: rules/graph-explorer/relationships-say-loading-or-none
+  - file: src/features/graph/components/NodeDetailPanel/NodeRelationshipsSection.tsx
+    where: |-
+      the header comment, lines 9-10 (the error state)
+    evidence: |-
+      *  - error              → "Não foi possível carregar as relações." + retry
+    cost: |-
+      The comment says again the alert wording and the retry action that the node holds. Both are also held in code in this file (`role="alert"` with `query.refetch()`) and in NodeDetailPanel.copy.ts. A second statement in a comment lets a reader mistake it for the place the wording is decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The error branch already holds the fact.
+    node: rules/graph-explorer/a-failed-relationships-read-always-offers-a-retry
+read:
+  - node: rules/graph-explorer/a-failed-relationships-read-always-offers-a-retry
+    held_at: |-
+      the `query.isError` branch, lines 48-73
+    evidence: |-
+      role="alert" ... <span>{NODE_DETAIL_COPY.relationshipsError}</span> ... onClick={() => { void query.refetch(); }} ... {NODE_DETAIL_COPY.relationshipsRetry}. The branch tests `query.isError` only and reads no error code. The strings resolve in NodeDetailPanel.copy.ts to "Não foi possível carregar as relações." and "Tentar novamente".
+  - node: rules/graph-explorer/relationship-rows-keep-the-answered-order
+    held_at: |-
+      the success branch, lines 83-93
+    evidence: |-
+      {query.data.links.map((l) => (<NodeRelationshipRow key={l.id} link={l} />))}. The list is mapped in the order received, with no sort or filter.
+  - node: rules/graph-explorer/relationships-are-a-named-busy-section
+    held_at: |-
+      the `<section>` element, lines 96-102, and the branch order in lines 33-94
+    evidence: |-
+      aria-label={NODE_DETAIL_COPY.relationshipsHeading} ... aria-busy={query.isPending ? "true" : "false"}. The branches run `query.isPending`, then `query.isError`, then `query.data === undefined || query.data.links.length === 0`, then the list. The heading resolves to "Relações" in NodeDetailPanel.copy.ts.
+  - node: rules/graph-explorer/relationships-say-loading-or-none
+    held_at: |-
+      the pending branch (lines 33-47) and the empty branch (lines 74-82)
+    evidence: |-
+      <span aria-live="polite" ...>{NODE_DETAIL_COPY.relationshipsLoading}</span> and <p ... data-testid="node-detail-relationships-empty">{NODE_DETAIL_COPY.relationshipsEmpty}</p>. The strings resolve to "Carregando relações…" and "Nenhuma relação encontrada." in NodeDetailPanel.copy.ts.
+looked_past: |-
+  The `query.data === undefined` guard, the test ids, the class names and the spinner icon are implementation details that state no domain fact.

@@ -1,0 +1,114 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeAttributeRow.tsx
+    where: >-
+      the file's header docstring, lines 6-12, the lines describing the "Proveniência" disclosure (Phase A)
+    evidence: |-
+      - Phase A — "Proveniência" (inline from `attribute.provenance[]`, no
+        extra fetch);
+    cost: >-
+      The docstring states, in prose, that the inline provenance disclosure exists and reads no extra data. The
+      code holds this fact too, in `InlineProvenance` and in the `hasInlineProvenance &&` gate in this file. A
+      second home for the fact sits outside any behaviour. When the node moves, nothing reads or updates the
+      prose.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route, then run `/reconcile` over this file. The behaviour is already
+      correct and is held in code here.
+    node: rules/graph-explorer/inline-provenance-needs-an-entry
+  - file: src/features/graph/components/NodeDetailPanel/NodeAttributeRow.tsx
+    where: >-
+      the file's header docstring, lines 6-12, the lines describing the "Ver origem completa" disclosure (Phase C)
+    evidence: |-
+      - Phase C — "Ver origem completa" (lazy `useProvenance('attributes', id)`,
+        enabled only when expanded).
+    cost: >-
+      The docstring restates that the full origin is read lazily, only while the disclosure is open. The code
+      holds this fact too, in `useProvenance("attributes", attributeId, open)` and in `{open && (`. The prose is
+      a second home outside behaviour and goes stale when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route, then run `/reconcile` over this file. The behaviour is already
+      correct and is held in code here.
+    node: rules/graph-explorer/every-item-offers-its-full-origin
+  - file: src/features/graph/components/NodeDetailPanel/NodeAttributeRow.tsx
+    where: >-
+      the comment above `const provenance = attr.provenance ?? [];` in NodeAttributeRow, lines 121-123
+    evidence: |-
+      // Defensive against legacy fixtures or wire payloads missing `provenance` —
+      // the transform fills `[]` by default, but tests may shape `NodeAttributeView`
+      // by hand. A missing `provenance` should hide Phase A, not crash the panel.
+    cost: >-
+      The comment restates that an attribute with no provenance list gets an empty one. The code holds that fact
+      here in `attr.provenance ?? []`, and in `_transforms.ts`, where the comment says the transform fills `[]`.
+      The prose is a second home that no running system emits.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route, then run `/reconcile` over this file. The `?? []` default and the
+      transform in `src/features/graph/api/_transforms.ts` already hold the fact.
+    node: rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: >-
+      the exported `NodeAttributeRow`, which renders one attribute of the node detail as a table row. The
+      contract's other attribute outcomes ("Nenhum atributo registrado.", the loading and failure answers) are
+      not in this file.
+    evidence: |-
+      export const NodeAttributeRow: FC<NodeAttributeRowProps> = ({ attr }) => {
+      ...
+      <td className="p-xs align-top">{attr.key}</td>
+  - node: rules/graph-explorer/an-attribute-row-shows-key-value-state-and-validity
+    held_at: >-
+      the primary `<tr data-testid="node-detail-attribute-row">` in NodeAttributeRow, lines 128-147
+    evidence: |-
+      <td className="p-xs align-top">{attr.key}</td>
+      ...
+      <span>{attr.value}</span>
+      {(attr.validFromLabel !== null || attr.validToLabel !== null) && (
+      ...
+      {attr.validFromLabel ?? "—"}
+      {" → "}
+      {attr.validToLabel ?? "—"}
+      ...
+      <StateBadge state={attr.state} size="sm" iconOnly />
+  - node: rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+    held_at: >-
+      the first statement of NodeAttributeRow, line 124. The other home of this fact is the transform in
+      `src/features/graph/api/_transforms.ts`, which this file's comment names but which is outside the file set.
+    evidence: |-
+      const provenance = attr.provenance ?? [];
+      const hasInlineProvenance = provenance.length > 0;
+  - node: rules/graph-explorer/every-item-offers-its-full-origin
+    held_at: >-
+      the `LazyOrigin` component, rendered for every attribute at line 154. Its `open` state gates the read.
+    evidence: |-
+      const [open, setOpen] = useState(false);
+      const query = useProvenance("attributes", attributeId, open);
+      ...
+      {NODE_DETAIL_COPY.originSummary}
+      ...
+      <LazyOrigin attributeId={attr.id} />
+  - node: rules/graph-explorer/inline-entries-show-text-and-what-they-have
+    held_at: >-
+      the `entries.map` list items inside `InlineProvenance`, lines 43-74
+    evidence: |-
+      <p className="text-xs text-foreground">{p.fragmentText}</p>
+      ...
+      {p.confidenceLabel !== null && (
+      ...
+      {p.sourceType !== null && (
+      ...
+      {p.receivedAtLabel !== null && (
+  - node: rules/graph-explorer/inline-provenance-needs-an-entry
+    held_at: >-
+      the `hasInlineProvenance &&` gate at line 151 and the summary call at line 40. The wording "Proveniência (n
+      entrada(s))" itself is produced in `NODE_DETAIL_COPY.attributeProvenanceSummary`, which is another file
+      and was not opened.
+    evidence: |-
+      {hasInlineProvenance && (
+        <InlineProvenance entries={provenance} />
+      )}
+      ...
+      {NODE_DETAIL_COPY.attributeProvenanceSummary(entries.length)}
+looked_past: >-
+  The `data-testid` attributes, the `data-in-effect` attribute, the `COLSPAN = 3` constant, the "·" separators
+  and the Tailwind classes are presentation or test hooks, and none states a domain fact.

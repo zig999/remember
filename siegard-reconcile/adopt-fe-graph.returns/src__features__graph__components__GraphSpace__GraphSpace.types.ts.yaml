@@ -1,0 +1,80 @@
+findings:
+  - file: src/features/graph/components/GraphSpace/GraphSpace.types.ts
+    where: >-
+      Header docblock, lines 5-6, restating the pane's input contract
+    evidence: |-
+      * `useGraphStore`) — it is a sink (no writes to the store from here).
+    cost: >-
+      The caller-fed, no-write half of the pane rule is also said in prose here, a second
+      home for a fact the node holds. If the node moves, nothing reaches this comment, and
+      the next reader can take it as the rule's authority. The props that carry the fact
+      are declared in this same file (`nodes: readonly GraphNodeData[]`, `status: GraphStatus`,
+      `errorMessage?: string`), so the pair conforms and what is owed is removing the prose.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact stays held by the node and by the props declared in
+      GraphSpaceProps.
+    node: rules/graph-explorer/pane-is-a-region-named-after-the-graph
+  - file: src/features/graph/components/GraphSpace/GraphSpace.types.ts
+    where: >-
+      Docblock of the `status` prop, lines 39-41
+    evidence: |-
+      /** Processing state of the graph pane (REQ-2). Drives overlay /
+       *  empty-state rendering. Exactly 5 values — no `"idle"` (I-4). */
+      status: GraphStatus;
+    cost: >-
+      The five phases and the absence of `"idle"` are said again in prose, outside the node
+      that holds them. The enumeration is declared as code in src/features/graph/types.ts
+      (`export type GraphStatus = "empty" | "loading" | "revealing" | "ready" | "error";`),
+      so the pair conforms. If the node's values change, this comment keeps asserting the
+      old count and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the prose. The enumeration is held by the node and by the declaration in
+      src/features/graph/types.ts.
+    node: domain/graph-explorer/graph-pane-status
+  - file: src/features/graph/components/GraphSpace/GraphSpace.types.ts
+    where: >-
+      Docblock of the `onNodeSelect` prop, lines 49-51
+    evidence: |-
+      /** View-only callback fired when a node is clicked. Used by parent to
+       *  mount `NodeDetailPanel`. Never causes a chat mutation. */
+      onNodeSelect?: (nodeId: string) => void;
+    cost: >-
+      The rule that a click is passed on as the node id and nothing else is also written as
+      prose. The signature `(nodeId: string) => void` in this file already carries only the
+      id, so the pair conforms. The comment is a second statement of the rule that would go
+      stale unnoticed if the node moved.
+    kind: restates
+    correction: >-
+      Remove the prose. The id-only contract stays in the node and in the callback signature.
+    node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+read:
+  - node: domain/graph-explorer/graph-pane-status
+    held_at: >-
+      nowhere. This file only uses the type, and the enumeration is declared in
+      src/features/graph/types.ts.
+    evidence: |-
+      import type { GraphLinkData, GraphNodeData, GraphStatus } from "../../types";
+      ...
+      status: GraphStatus;
+  - node: rules/graph-explorer/pane-is-a-region-named-after-the-graph
+    held_at: >-
+      The `nodes`, `links`, `status` and `errorMessage` props of GraphSpaceProps, which carry
+      the caller-fed half of the rule as readonly inputs. The accessible name "Grafo de
+      conhecimento" appears nowhere in this file.
+    evidence: |-
+      nodes: readonly GraphNodeData[];
+      links: readonly GraphLinkData[];
+      status: GraphStatus;
+      errorMessage?: string;
+looked_past: >-
+  The handle docblocks (`focusNode` no-op, `fitView`, `recenter` "default" zoom) and the
+  `revealStaggerMs` description state behaviours that other files implement. They are prose
+  carrying no fact of this file's own code, so I left them to the comment route, and the
+  `revealStaggerMs` prop is a plain optional number whose default is not set here.
+candidates_opened:
+  - domain/graph-explorer/graph-pane
+  - rules/graph-explorer/a-node-click-only-reports-the-node-id
+  - rules/graph-explorer/focusing-a-node-centres-it-at-zoom-one
+  - rules/graph-explorer/the-pane-reveals-at-the-hooks-default-gap

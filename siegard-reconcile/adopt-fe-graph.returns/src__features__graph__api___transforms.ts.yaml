@@ -1,0 +1,155 @@
+findings:
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the file's header docstring (lines 4-9) and the docstring of mapNodeStatusToBadge (lines 35-48)
+    evidence: |-
+      `node.status` → StateBadge state (`active → accepted`,
+       *        `needs_review → uncertain`, `merged → superseded`).
+      and
+      *  - `active`        → `accepted`     (the canonical "this is the truth" state)
+       *  - `needs_review`  → `uncertain`    (review queue, §10 of remember-modelagem)
+       *  - `merged`        → `superseded`
+    cost: |-
+      The status-to-badge table is stated a second time in prose, citing a docs/specs component spec and a section of the modelagem. When the node moves, the comment keeps saying the old table, and `--check` does not reach it. Code in this same file holds the fact (the switch in mapNodeStatusToBadge returns "accepted", "uncertain", "superseded" and "superseded" for deleted), so the pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove the header bullet and the docstring through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/node-badge-follows-the-node-status
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the file's header docstring (lines 9-10) and the docstring of sortAttributes (lines 227-234)
+    evidence: |-
+      Attributes sorted: `is_in_effect: true` first, then by `key`
+       *        alphabetically (stable).
+      and
+      Sort attributes: `is_in_effect: true` first, then by `attribute_key`
+       * (locale-aware, case-insensitive). Stable when keys collide
+    cost: |-
+      The ordering rule is stated twice in prose, and the header version says "alphabetically" where the node says pt-BR comparison ignoring case and accents. A reader of the comment would take the weaker statement as the rule. Code in this file holds the fact (`a.key.localeCompare(b.key, "pt-BR", { sensitivity: "base" })` after the isInEffect comparison), so only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove both comments through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/attributes-in-effect-come-first-by-key
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the file's header docstring (lines 11-12), the DATE_FORMATTER comment (lines 101-106) and the formatDateLabel docstring (lines 114-118)
+    evidence: |-
+      `valid_from`/`valid_to` formatted as `DD/MM/YYYY` (pt-BR) using
+       *        `Intl.DateTimeFormat`.
+      and
+      `timeZone: 'UTC'` matches the wire date construction (Date.UTC) below so
+      and
+      Returns `null` when input is `null` (open-ended interval). Returns the
+       * raw string if parsing fails — never throws
+    cost: |-
+      The validity-date format, the UTC reasoning and the absent and unreadable-date behaviours are restated in three comments. A change to the node would leave them describing the old behaviour, and `--check` does not reach them. Code in this file holds the fact (`timeZone: "UTC"` in DATE_FORMATTER, `if (date === null) return null;`, `return date;` on a failed parse), so only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove the three comments through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/a-validity-date-is-shown-day-month-year
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the docstring of mapAttributeStatusToBadge (lines 67-84) and the inline comment at lines 92-94
+    evidence: |-
+      The raw assertion
+       * status is consulted only for the `disputed` mapping, which the effective
+       * view also exposes as `disputed` so the precedence is:
+      and
+      // `active` — but if the underlying assertion was 'superseded' (which would
+        // be unusual since effective='active' implies a current assertion), keep
+        // 'superseded' as the least misleading.
+    cost: |-
+      The precedence is stated in prose, and the docstring says the assertion status is consulted only for `disputed`. The code (`if (assertion === "superseded") return "superseded";`) uses it for `superseded`, and so does the node. A reader who trusts the comment would believe the assertion status never affects the badge. Code in this file holds the fact, so only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove the docstring and the inline comment through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/attribute-badge-follows-a-fixed-precedence
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the docstring of formatConfidenceLabel (lines 168-174)
+    evidence: |-
+      Format a confidence float (0..1) as a 0-decimal percentage label
+       * (`0.923 → "92%"`). Spec §9 "Response transforms" row.
+       *
+       * Returns `null` when the wire value was undefined/null — the row UI
+       * collapses the label gracefully (`"—"`) without falsely reporting `0%`.
+    cost: |-
+      The rounding rule and the no-label-instead-of-0% rule are restated in prose, with a worked example and a claim about what the row UI shows ("—") that no node in this set holds. Code in this file holds the fact (`return `${Math.round(confidence * 100)}%`;` and the `null` returns), so only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/confidence-is-a-rounded-percentage
+  - file: src/features/graph/api/_transforms.ts
+    where: |-
+      the RECEIVED_AT_FORMATTER comments (lines 183-191) and the formatReceivedAtLabel docstring (lines 193-197)
+    evidence: |-
+      `received_at` is a full ISO timestamp, not a date-only field — render in
+        // the user's local timezone so the day matches what they would read in a
+        // mail header.
+      and
+      Returns the raw string on parse failure (never throws), `null` when input
+       * is absent.
+    cost: |-
+      The local-time-zone choice, its reason, and the absent and unreadable behaviours are restated in prose. A change to the node would leave the comments describing the old rule. Code in this file holds the fact (a formatter with no `timeZone`, `return iso;` on `Number.isNaN`, `null` when absent), so only the prose is owed removal.
+    kind: restates
+    correction: |-
+      Remove the comments through the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/an-inline-entry-shows-its-date-only
+read:
+  - node: domain/graph-explorer/confidence-state
+    held_at: |-
+      nowhere
+    evidence: |-
+      the enumeration is not declared here. The file only imports it, `import type { ConfidenceState } from "@/components/ds/StateBadge";`, and returns its values from mapNodeStatusToBadge and mapAttributeStatusToBadge.
+  - node: rules/graph-explorer/a-validity-date-is-shown-day-month-year
+    held_at: |-
+      DATE_FORMATTER and formatDateLabel, lines 107-139
+    evidence: |-
+      `new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })`, `if (date === null) return null;`, `if (parts.length !== 3) return date;`, `if (Number.isNaN(dt.getTime())) return date;`, `return DATE_FORMATTER.format(dt);`
+  - node: rules/graph-explorer/an-attribute-hides-its-bookkeeping-fields
+    held_at: |-
+      toAttributeView, lines 151-164
+    evidence: |-
+      `{ id: wire.id, key: wire.attribute_key, value: wire.value, valueType: wire.value_type, effectiveStatus: wire.effective_status, isInEffect: wire.is_in_effect, state: mapAttributeStatusToBadge(wire.effective_status, wire.status), validFromLabel: ..., validToLabel: ..., provenance: ... }`, with no is_current, confidence or node_id
+  - node: rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+    held_at: |-
+      the provenance line of toAttributeView, line 162
+    evidence: |-
+      provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  - node: rules/graph-explorer/an-inline-entry-hides-what-it-lacks
+    held_at: |-
+      toProvenanceEntryView and formatConfidenceLabel, lines 175-225
+    evidence: |-
+      `typeof wire.confidence === "number" && Number.isFinite(wire.confidence) ? wire.confidence : null`, `rawInformationId: wire.raw_information_id ?? null`, `sourceType: wire.source_type ?? null`, `excerpt: wire.excerpt ?? null`, `if (!Number.isFinite(confidence)) return null;`
+  - node: rules/graph-explorer/an-inline-entry-shows-its-date-only
+    held_at: |-
+      RECEIVED_AT_FORMATTER and formatReceivedAtLabel, lines 184-205
+    evidence: |-
+      `new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", })` with no timeZone, `if (iso === undefined || iso === null) return null;`, `if (Number.isNaN(dt.getTime())) return iso;`
+  - node: rules/graph-explorer/attribute-badge-follows-a-fixed-precedence
+    held_at: |-
+      mapAttributeStatusToBadge, lines 85-97
+    evidence: |-
+      `if (effective === "disputed") return "disputed"; if (effective === "uncertain") return "uncertain"; if (effective === "inactive") return "superseded"; ... if (assertion === "superseded") return "superseded"; return "accepted";`
+  - node: rules/graph-explorer/attributes-in-effect-come-first-by-key
+    held_at: |-
+      sortAttributes, lines 235-245
+    evidence: |-
+      `if (a.isInEffect !== b.isInEffect) { return a.isInEffect ? -1 : 1; } return a.key.localeCompare(b.key, "pt-BR", { sensitivity: "base" });` on a copy, `[...attrs].sort(...)`
+  - node: rules/graph-explorer/confidence-is-a-rounded-percentage
+    held_at: |-
+      formatConfidenceLabel, line 180
+    evidence: |-
+      return `${Math.round(confidence * 100)}%`;
+  - node: rules/graph-explorer/node-badge-follows-the-node-status
+    held_at: |-
+      mapNodeStatusToBadge, lines 49-63
+    evidence: |-
+      `case "active": return "accepted"; case "needs_review": return "uncertain"; case "merged": return "superseded"; case "deleted": return "superseded";`
+  - node: rules/graph-explorer/node-detail-has-no-merged-into-by-default
+    held_at: |-
+      toNodeDetail and toAliasView, lines 143-149 and 256-257
+    evidence: |-
+      `mergedIntoNodeId: wire.node.merged_into_node_id ?? null,` and `{ id: wire.id, alias: wire.alias, kind: wire.kind }`
+looked_past: |-
+  The comments also say that a deleted node answers 410 BUSINESS_NODE_DELETED and that the low-confidence flag is not surfaced in v1, prose that no code or emitted text in this file carries and that is another judgment's to remove or give a node.

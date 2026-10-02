@@ -1,0 +1,165 @@
+findings:
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the header docstring, lines 15-19 ("Invariants pinned here")
+    evidence: |-
+      * - D5 / AC-F.12 — **nodes that already have a position in the store are
+      *    pinned via `fx`/`fy`**. After the simulation runs, their `x`/`y` are
+      *    snapped back to the pinned values by d3-force on every tick. New nodes
+      *    receive freshly computed positions from the force field.
+    cost: |-
+      The keep-in-place rule is stated a second time in prose, beside the code that holds it. When the node moves, this paragraph stays behind and reads as a current decision. The code that holds it is `return { id, x: pinned.x, y: pinned.y, fx: pinned.x, fy: pinned.y };` in this file.
+    kind: restates
+    correction: |-
+      Remove the paragraph by the comment route, then run /reconcile over the file. The behavior and the node already agree.
+    node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the header docstring lines 26-31 and the SIM_TICKS docstring, lines 66-71
+    evidence: |-
+      /** Number of synchronous ticks per simulation run. d3-force's default natural
+       *  ticks count is ~300 (alpha from 1 → 0.001 with default decay). 100 ticks
+       *  is short enough to not block the main thread on the small subgraphs the
+    cost: |-
+      The 100-tick, no-animation rule is also written as prose. Someone changing the tick count in the node would not find this comment bound to it, and it would keep saying 100. The code that holds it is `const SIM_TICKS = 100;`, `.stop();` and `simulation.tick(SIM_TICKS);` in this file.
+    kind: restates
+    correction: |-
+      Remove the two prose passages by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/force-layout-runs-a-hundred-silent-ticks
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the docstrings on NODE_FOOTPRINT, COLLIDE_RADIUS, LINK_DISTANCE, CHARGE_STRENGTH and CENTER_X/CENTER_Y, lines 73-100
+    evidence: |-
+      /** Footprint reserved per node, in canvas units — the widest node card
+       *  (`GraphNode` is `max-w-3xs` ≈ 256px) plus margin. Shared calibration with
+      ...
+      /** Center of the simulation field. Coordinates are in canvas units; React
+       *  Flow's `defaultViewport` is configured to fit. (0, 0) keeps the math
+    cost: |-
+      The footprint, collision radius, link distance, charge and centre are explained a second time in prose, along with a figure of about 256px for the card width that no node states. When the node's numbers change, the comments still give the old rationale. The code that holds the values is `const NODE_FOOTPRINT = 270;`, `const COLLIDE_RADIUS = NODE_FOOTPRINT / 2;`, `const LINK_DISTANCE = NODE_FOOTPRINT;`, `const CHARGE_STRENGTH = -300;` and `const CENTER_X = 0;` in this file.
+    kind: restates
+    correction: |-
+      Remove the docstrings by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/force-layout-keeps-nodes-270-apart
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the runForceLayout docstring, lines 140-141, and the comment on the result loop, lines 199-202
+    evidence: |-
+      * - Nodes with NO links still receive a position from charge + center, so an
+      *   isolated subgraph fragment is still placed.
+    cost: |-
+      The rule that a linkless node is placed and an uncomputable coordinate becomes 0 is repeated in prose. The code that holds it is `out.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });` in this file.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/a-linkless-node-is-still-placed
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the runForceLayout docstring, lines 142-143, and the comment in the effect, lines 269-273
+    evidence: |-
+      * - An empty `nodeIds` short-circuits to an empty Map without instantiating
+      *   the simulation.
+    cost: |-
+      The empty-graph rule is stated in prose in two places beside the code that holds it. The code is `if (nodeIds.length === 0) { return out; }` and the effect's branch `useGraphStore.setState({ positions: new Map<string, GraphPosition>() });`, both in this file.
+    kind: restates
+    correction: |-
+      Remove both passages by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/an-empty-graph-has-no-positions
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the comment above the link filter in runForceLayout, lines 169-172
+    evidence: |-
+      // Drop links whose endpoints are not part of this nodeIds set — d3-force
+      // would otherwise throw or create a phantom node. (`removeNodes` already
+      // drops orphan links from the store, but the hook still defends the
+    cost: |-
+      The rule that links without both endpoints are left out is restated in prose, together with a claim about what the store does that no node in this set holds. The code that holds the rule here is `.filter((l) => nodeIdSet.has(l.source) && nodeIdSet.has(l.target))`.
+    kind: restates
+    correction: |-
+      Remove the comment by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the useForceLayout docstring, lines 217-224, and the closing comment, lines 300-304
+    evidence: |-
+      * - Re-runs the simulation whenever the store's `nodes` Map or `links` Map
+      *   identity changes (i.e. when `addNodes` / `removeNodes` / `clear` run —
+      *   each writes a fresh Map per the store's contract).
+    cost: |-
+      The re-run triggers are described in prose, and the account of what the store does can drift from the code. The code that holds the rule is the dependency array `}, [nodes, links, layoutNonce]);`, which leaves `positions` out, so a manual move does not re-run the layout.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/layout-reruns-on-graph-or-counter-change
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the comments on layoutNonce and on the effect's start, lines 235-237 and 254-255
+    evidence: |-
+      // A "Reorganizar" reset run ignores the pin set so every node re-flows;
+      // a normal (delta-driven) run pins existing/user-placed nodes (AC-F.12).
+    cost: |-
+      The counter-change rule is restated as prose, together with a UI label that this file does not emit. The code that holds the rule is `const pinned = isReset ? new Map<string, GraphPosition>() : positionsRef.current;`, where `isReset` is `prevNonceRef.current !== layoutNonce`.
+    kind: restates
+    correction: |-
+      Remove the comments by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/a-counter-change-places-every-node-again
+  - file: src/features/graph/hooks/useForceLayout.ts
+    where: |-
+      the comment above the dispatch switch, lines 279-282
+    evidence: |-
+      // `runForceLayout` remains the default and the existing tests still
+      // pin its pin-preserving behaviour.
+    cost: |-
+      The force-by-default rule is restated in prose. The code that holds the fallback is `case "force": default: next = runForceLayout(nodeIds, linkPairs, pinned);`. The default value of the algorithm itself sits in graph-store.ts, which is not part of this file set.
+    kind: restates
+    correction: |-
+      Remove the comment by the comment route, then run /reconcile over the file.
+    node: rules/graph-explorer/layout-defaults-to-force
+read:
+  - node: rules/graph-explorer/a-counter-change-places-every-node-again
+    held_at: |-
+      the effect in useForceLayout, lines 256-267
+    evidence: |-
+      const isReset = prevNonceRef.current !== layoutNonce; ... const pinned = isReset ? new Map<string, GraphPosition>() : positionsRef.current;
+  - node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+    held_at: |-
+      the SimNode construction in runForceLayout, lines 159-167, with the pinned set passed from the effect, line 267
+    evidence: |-
+      if (pinned !== undefined) { return { id, x: pinned.x, y: pinned.y, fx: pinned.x, fy: pinned.y }; } return { id };
+  - node: rules/graph-explorer/a-linkless-node-is-still-placed
+    held_at: |-
+      the result collection loop in runForceLayout, lines 203-205
+    evidence: |-
+      for (const n of simNodes) { out.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 }); }
+  - node: rules/graph-explorer/an-empty-graph-has-no-positions
+    held_at: |-
+      the empty guard in runForceLayout, lines 151-153, and the empty branch of the effect, lines 269-277
+    evidence: |-
+      if (nodeIds.length === 0) { return out; } ... useGraphStore.setState({ positions: new Map<string, GraphPosition>() });
+  - node: rules/graph-explorer/force-layout-keeps-nodes-270-apart
+    held_at: |-
+      the constants at lines 76-99 and the simulation construction at lines 181-195
+    evidence: |-
+      const NODE_FOOTPRINT = 270; const COLLIDE_RADIUS = NODE_FOOTPRINT / 2; const LINK_DISTANCE = NODE_FOOTPRINT; const CHARGE_STRENGTH = -300; const CENTER_X = 0; const CENTER_Y = 0; ... .force("collide", forceCollide<SimNode>(COLLIDE_RADIUS)) .force("center", forceCenter<SimNode>(CENTER_X, CENTER_Y))
+  - node: rules/graph-explorer/force-layout-runs-a-hundred-silent-ticks
+    held_at: |-
+      SIM_TICKS at line 71, the `.stop()` at line 195 and the tick call at line 197
+    evidence: |-
+      const SIM_TICKS = 100; ... .stop(); simulation.tick(SIM_TICKS);
+  - node: rules/graph-explorer/layout-defaults-to-force
+    held_at: |-
+      the dispatch switch in the effect, lines 284-295. The default value of the algorithm is held in graph-store.ts, outside this file.
+    evidence: |-
+      case "force": default: next = runForceLayout(nodeIds, linkPairs, pinned); break;
+  - node: rules/graph-explorer/layout-reruns-on-graph-or-counter-change
+    held_at: |-
+      the effect's dependency array, line 306
+    evidence: |-
+      }, [nodes, links, layoutNonce]);
+  - node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+    held_at: |-
+      the link filter in runForceLayout, lines 173-176. The tree and radial runners are in other files, and this file passes them `linkPairs` unfiltered.
+    evidence: |-
+      const nodeIdSet = new Set(nodeIds); const simLinks: SimLink[] = linkPairs .filter((l) => nodeIdSet.has(l.source) && nodeIdSet.has(l.target))
+looked_past: |-
+  Comments stating only facts no node holds (the card width of about 256px, the "Reorganizar" label, the Tailwind note, the plan and spec references) are prose with no code behind them, and the comment route removes them.

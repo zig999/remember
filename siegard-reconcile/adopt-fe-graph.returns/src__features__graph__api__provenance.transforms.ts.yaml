@@ -1,0 +1,145 @@
+findings:
+  - file: src/features/graph/api/provenance.transforms.ts
+    where: >-
+      the header docstring, line 8 (Spec references, the received_at row)
+    evidence: |-
+      • `raw_information.received_at` → pt-BR `DD/MM/YYYY HH:mm`.
+    cost: >-
+      The received-at format is written in this docstring as well as in the node. The docstring says
+      `DD/MM/YYYY HH:mm`, but the code that runs is `new Intl.DateTimeFormat("pt-BR", { dateStyle:
+      "short", timeStyle: "short" })`. If the two drift, a reader cannot tell which one was decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by code in this file, in RECEIVED_AT_DATETIME and
+      formatReceivedAtDateTime.
+    node: rules/graph-explorer/a-source-date-time-is-short-pt-br
+  - file: src/features/graph/api/provenance.transforms.ts
+    where: >-
+      the header docstring, line 9 (the chunk offset row)
+    evidence: |-
+      • `chunk.offset_start`/`offset_end` → `chars {start}–{end}`.
+    cost: >-
+      The offset-window wording is written in this docstring as well as in the node. Code in this file
+      already holds it at offsetRangeLabel, so the prose is a second home that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by code in toChunkView, in the template literal
+      `chars ${wire.offset_start}–${wire.offset_end}`.
+    node: rules/graph-explorer/a-chunk-offset-window-is-shown-as-chars
+  - file: src/features/graph/api/provenance.transforms.ts
+    where: >-
+      the docstring of formatReceivedAtDateTime, lines 32-35
+    evidence: |-
+      Format a `received_at` ISO instant as `DD/MM/YYYY HH:mm` in the user's
+      local timezone. Returns the raw string on parse failure (defensive).
+    cost: >-
+      The format, the local-time-zone rule and the raw-text fallback are all stated in prose beside the
+      code that holds them. Prose and node can disagree, and nobody would know which one the business
+      decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by code in formatReceivedAtDateTime:
+      `if (Number.isNaN(dt.getTime())) return iso;` and `RECEIVED_AT_DATETIME.format(dt)`.
+    node: rules/graph-explorer/a-source-date-time-is-short-pt-br
+  - file: src/features/graph/api/provenance.transforms.ts
+    where: >-
+      the docstring of readMetadataDocumentDate, line 51
+    evidence: |-
+      /** Read `metadata.document_date` (ISO date) → pt-BR `DD/MM/YYYY`, or null. */
+    cost: >-
+      The metadata source of the document date, its day-month-year display and the null fallback are
+      restated in a comment. Code in this file holds the source and the null guard, and the formatting
+      is delegated to formatDateLabel. The prose is a second home for a fact a node holds.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by code in readMetadataDocumentDate:
+      `if (typeof d !== "string" || d.length === 0) return null;` followed by `return formatDateLabel(d);`.
+    node: rules/graph-explorer/title-and-document-date-come-from-metadata
+  - file: src/features/graph/api/provenance.transforms.ts
+    where: >-
+      the comment block in toRawInformationView, lines 72-76
+    evidence: |-
+      // Only set the field when
+      // the wire actually carried a value — TS strict `exactOptionalPropertyTypes`
+      // forbids assigning `undefined` to an optional property.
+    cost: >-
+      The rule that original input is carried only when answered is restated in prose. The comment also
+      describes how another component treats the value (disclosure, a '[REDACTED]' indicator, nothing),
+      which this file does not implement. Prose in two places is a second home for facts that nodes hold.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by code in toRawInformationView:
+      `if (wire.original_input !== undefined) { return { ...base, originalInput: wire.original_input }; }`.
+    node: rules/graph-explorer/original-input-is-carried-only-when-answered
+read:
+  - node: rules/graph-explorer/a-chunk-offset-window-is-shown-as-chars
+    held_at: >-
+      toChunkView, the offsetRangeLabel property (line 89)
+    evidence: |-
+      offsetRangeLabel: `chars ${wire.offset_start}–${wire.offset_end}`,
+  - node: rules/graph-explorer/a-chunk-without-locator-has-an-empty-one
+    held_at: >-
+      toChunkView, the locator property (line 91)
+    evidence: |-
+      locator: wire.locator ?? {},
+  - node: rules/graph-explorer/a-provenance-answer-is-a-list-of-fragments
+    held_at: >-
+      toProvenanceResponse, toFragmentView and toChunkView (lines 83-113)
+    evidence: |-
+      return { fragments: wire.fragments.map(toFragmentView) };
+      ... id: wire.id, text: wire.text, confidence: wire.confidence, ... status: wire.status, chunks: wire.chunks.map(toChunkView),
+      ... id: wire.id, chunkIndex: wire.chunk_index, offsetStart: wire.offset_start, offsetEnd: wire.offset_end, ... excerpt: wire.excerpt, locator: wire.locator ?? {}, rawInformation: toRawInformationView(wire.raw_information),
+  - node: rules/graph-explorer/a-source-date-time-is-short-pt-br
+    held_at: >-
+      RECEIVED_AT_DATETIME (lines 27-30) and formatReceivedAtDateTime (lines 36-40)
+    evidence: |-
+      const RECEIVED_AT_DATETIME = new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+      ... if (Number.isNaN(dt.getTime())) return iso;
+      return RECEIVED_AT_DATETIME.format(dt);
+  - node: rules/graph-explorer/a-source-shows-its-id-type-dates-and-title
+    held_at: >-
+      toRawInformationView, the base object (lines 65-71)
+    evidence: |-
+      id: wire.id,
+      sourceType: wire.source_type,
+      receivedAtLabel: formatReceivedAtDateTime(wire.received_at),
+      title: readMetadataTitle(wire.metadata),
+      documentDateLabel: readMetadataDocumentDate(wire.metadata),
+  - node: rules/graph-explorer/a-validity-date-is-shown-day-month-year
+    held_at: >-
+      readMetadataDocumentDate (lines 52-60). It holds the guard and hands the day-month-year formatting to formatDateLabel, imported from ./_transforms. That function is in another file, which I did not read because it is outside the file set.
+    evidence: |-
+      if (typeof d !== "string" || d.length === 0) return null;
+      // `formatDateLabel` returns `null` for `null` input only — `d` is a string.
+      return formatDateLabel(d);
+  - node: rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+    held_at: >-
+      toFragmentView, the confidenceLabel property (line 103)
+    evidence: |-
+      confidenceLabel: formatConfidenceLabel(wire.confidence) ?? "0%",
+  - node: rules/graph-explorer/lists-keep-the-answered-order
+    held_at: >-
+      toProvenanceResponse (line 112) and toFragmentView (line 105), by mapping without sorting or filtering
+    evidence: |-
+      return { fragments: wire.fragments.map(toFragmentView) };
+      chunks: wire.chunks.map(toChunkView),
+  - node: rules/graph-explorer/original-input-is-carried-only-when-answered
+    held_at: >-
+      toRawInformationView, the conditional spread (lines 77-79)
+    evidence: |-
+      if (wire.original_input !== undefined) {
+        return { ...base, originalInput: wire.original_input };
+      }
+      return base;
+  - node: rules/graph-explorer/title-and-document-date-come-from-metadata
+    held_at: >-
+      readMetadataTitle (lines 43-49) and readMetadataDocumentDate (lines 52-60)
+    evidence: |-
+      return typeof t === "string" && t.length > 0 ? t : null;
+      ... if (typeof d !== "string" || d.length === 0) return null;
+      return formatDateLabel(d);
+looked_past: >-
+  The comment on lines 72-74 names a '[REDACTED]' sentinel and describes how NodeProvenanceChain treats it. No code in this file carries that fact, so it is prose only, and the candidate rule a-redacted-original-input-is-never-shown belongs to another file's judgment.

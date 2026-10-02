@@ -1,0 +1,76 @@
+findings:
+  - file: src/features/graph/api/traversal.types.ts
+    where: |-
+      the doc comments on `directionLabel` (lines 63-64) and `directionArrow` (line 67) in `TraversalLinkView`
+    evidence: |-
+      /** Label rendered for the link kind — `link_type` for outgoing,
+       *  `link_inverse_name` for incoming, mirroring spec §9 transform. */
+      readonly directionLabel: string;
+      ...
+      /** `"→"` for outgoing, `"←"` for incoming — used in the row arrow. */
+      readonly directionArrow: "→" | "←";
+    cost: |-
+      The wording-and-arrow rule is stated a second time in prose beside the type. The running code that holds it is in another file (`src/features/graph/api/traversal.transforms.ts`: `directionLabel: isOutgoing ? wire.link_type : wire.link_inverse_name,` and `directionArrow: isOutgoing ? "→" : "←",`). The comment also cites "spec §9", an authority that is not a node. If the node moves, the comment keeps asserting the old wording and nothing flags it.
+    kind: restates
+    correction: |-
+      Remove the two comments. The fact stays in the node and in the code of `traversal.transforms.ts`.
+    node: rules/graph-explorer/direction-picks-the-link-wording
+  - file: src/features/graph/api/traversal.types.ts
+    where: |-
+      the header doc comment, lines 8-11
+    evidence: |-
+      The panel only consumes `depth=1&direction=both` so the surface trims the
+      wire payload to the fields actually rendered.
+    cost: |-
+      The request depth and direction are restated in prose in a file that does not issue the request. The code that holds them is `src/features/graph/api/useNodeRelationships.ts`, which builds `/traverse?depth=1&direction=both`. A change to the node would leave this comment stating the old values.
+    kind: restates
+    correction: |-
+      Remove the sentence. The request parameters stay in the node and in `useNodeRelationships.ts`.
+    node: rules/graph-explorer/relationships-are-read-at-depth-one-both-ways
+  - file: src/features/graph/api/traversal.types.ts
+    where: |-
+      the doc comment on `confidenceLabel` in `TraversalLinkView`, line 75
+    evidence: |-
+      /** `"92%"`-style label for the link confidence. */
+      readonly confidenceLabel: string;
+    cost: |-
+      The percentage format is described in prose beside the type. The format is held by `formatConfidenceLabel` in `src/features/graph/api/_transforms.ts`, which `traversal.transforms.ts` calls. The comment is a second home for the format rule, and nothing reads it.
+    kind: restates
+    correction: |-
+      Remove the comment. The format stays in the node and in `formatConfidenceLabel`.
+    node: rules/graph-explorer/confidence-is-a-rounded-percentage
+
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the `TraversalResultWire` and `TraversalLinkWire` interfaces (lines 26-51), which declare the traverse answer's shape
+    evidence: |-
+      export interface TraversalResultWire {
+        readonly starting_node_id: string;
+        readonly nodes: ReadonlyArray<NodeSummaryWire>;
+        readonly links: ReadonlyArray<TraversalLinkWire>;
+      }
+      ... readonly link_inverse_name: string; readonly effective_status: AttributeWireEffectiveStatus; readonly confidence: number;
+  - node: rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node
+    held_at: |-
+      nowhere. This file declares only the vocabulary `LinkDirection` (line 58). The comparison of source and starting node is not in this file.
+    evidence: |-
+      export type LinkDirection = "outgoing" | "incoming";
+  - node: rules/graph-explorer/a-relationship-shows-fixed-fields
+    held_at: |-
+      the `TraversalLinkView` interface (lines 60-82), which declares the surface fields. It omits `status`, `is_current`, `recorded_at`, `superseded_at`, `hop` and `score`, which `TraversalLinkWire` carries.
+    evidence: |-
+      readonly linkType: string; ... readonly effectiveStatus: AttributeWireEffectiveStatus;
+      readonly isInEffect: boolean; ... readonly confidenceLabel: string; readonly confidence: number;
+      readonly validFromLabel: string | null; readonly validToLabel: string | null;
+      readonly flags: ReadonlyArray<string>; readonly provenance: ReadonlyArray<ProvenanceEntryView>;
+
+looked_past: |-
+  Comments on `neighborName`, `neighborNodeId` and `neighborNodeType` and on `LinkDirection` echo candidate nodes. They are prose, and the code that holds the same facts sits in `traversal.transforms.ts`.
+
+candidates_opened:
+  - rules/graph-explorer/direction-picks-the-link-wording
+  - rules/graph-explorer/a-relationship-row-shows-arrow-type-neighbour-confidence-and-status
+  - rules/graph-explorer/the-neighbour-is-the-other-end
+  - rules/graph-explorer/confidence-is-a-rounded-percentage
+  - rules/graph-explorer/relationships-are-read-at-depth-one-both-ways

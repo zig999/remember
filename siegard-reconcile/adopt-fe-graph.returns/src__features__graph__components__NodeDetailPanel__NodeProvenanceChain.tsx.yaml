@@ -1,0 +1,188 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx
+    where: >-
+      the docblock of classifyProvenanceError, lines 37-41
+    evidence: |-
+      * Codes are namespaced (`RESOURCE_NOT_FOUND`, `BUSINESS_RAW_INFORMATION_DELETED`,
+      * `SYSTEM_*`). Anything else falls back to `generic`.
+    cost: >-
+      The comment says any other code is `generic`. The node, and the code under the comment
+      (`return "unknown";`), make `generic` only a `SYSTEM_` code and `unknown` everything else.
+      A reader who trusts the comment will look for a `generic` fallback that does not exist.
+      The two variants read the same wording today, so the mismatch is invisible on screen.
+    kind: restates
+    correction: >-
+      Remove the sentence. The classification is held by the function body, where
+      `startsWith("SYSTEM_")` gives `generic` and the final `return "unknown"` covers the rest.
+    node: rules/graph-explorer/an-origin-failure-is-classified-by-its-code
+  - file: src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx
+    where: >-
+      the header docblock, lines 17-21 (Accessibility, "410 (tombstoned) is permanent — no retry button"
+      and "When error: `role="alert"`")
+    evidence: |-
+      *  - When error: `role="alert"` on the error notice.
+      *  - 410 (tombstoned) is permanent — no retry button.
+    cost: >-
+      The alert and no-retry-when-deleted rule is stated in prose as well as held by the
+      `role="alert"` div and `showRetry = variant !== "deleted"`. The prose speaks of an HTTP 410,
+      while the node and the code speak of the variant `deleted`. A second wording of the rule sits
+      where the next reader will look for it.
+    kind: restates
+    correction: >-
+      Remove the lines. The branch in the `isError` block holds the fact.
+    node: rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
+  - file: src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx
+    where: >-
+      the header docblock, line 18 ("When loading: `aria-busy="true"` on the body and a live region")
+    evidence: |-
+      *  - When loading: `aria-busy="true"` on the body and a live region.
+    cost: >-
+      The busy and polite-announcement rule is stated in prose while the pending branch holds it
+      (`aria-busy="true"`, `aria-live="polite"`). A change to the node would leave this comment
+      claiming the old rule.
+    kind: restates
+    correction: >-
+      Remove the line.
+    node: rules/graph-explorer/the-origin-body-checks-pending-failure-then-data
+  - file: src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx
+    where: >-
+      the comment on REDACTED_SENTINEL (lines 74-75), and the `originalInput` prop docblock (lines 65-70)
+    evidence: |-
+      /** Sentinel value the BFF writes to `original_input` after a §11
+       * `compliance_delete` redacts the row. Must NEVER be rendered verbatim. */
+    cost: >-
+      The never-show-the-sentinel rule is restated in prose, with a claim about what the BFF writes
+      and why. The code holds the rule (`originalInput !== REDACTED_SENTINEL` on the disclosure,
+      `=== REDACTED_SENTINEL` on the muted indicator), so this is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment and the matching bullet in the prop docblock. The rule is held by the two
+      branches of the original-input rendering in ChunkDetails.
+    node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+  - file: src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx
+    where: >-
+      the `originalInput` prop docblock (lines 65-70) and the JSX comment at line 128
+    evidence: |-
+      *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
+      *  - `null` / `undefined` → render nothing.
+      {/* TC-04 (v2.1) — original_input three branches: disclosure / muted indicator / silence. */}
+    cost: >-
+      The verbatim-disclosure and the nothing-when-absent rules are stated again in prose. The code
+      holds both (`typeof originalInput === "string" && originalInput !== REDACTED_SENTINEL` renders
+      the `<details>` with `whitespace-pre-wrap`; `null` and `undefined` match no branch).
+    kind: restates
+    correction: >-
+      Remove the docblock bullets and the JSX comment.
+    node: rules/graph-explorer/an-original-input-is-shown-verbatim
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: >-
+      the show-origin operation is held across the three return branches of NodeProvenanceChain
+      (pending, isError and body, lines 184-294). The other operations belong to other files.
+    evidence: |-
+      if (isPending) {
+      if (isError) {
+      if (data === undefined || data.fragments.length === 0) {
+      <article key={frag.id} ...>
+  - node: domain/graph-explorer/origin-failure
+    held_at: >-
+      the exported type ProvenanceErrorVariant, lines 31-35
+    evidence: |-
+      export type ProvenanceErrorVariant =
+        | "not-found"
+        | "deleted"
+        | "generic"
+        | "unknown";
+  - node: rules/graph-explorer/a-chunk-shows-its-index-offsets-and-excerpt
+    held_at: >-
+      the ChunkDetails component, the index and offset spans and the excerpt blockquote, lines 93-105
+    evidence: |-
+      chunk #{chunkIndex}
+      <span data-testid="node-provenance-offset">{offsetRangeLabel}</span>
+      <blockquote ...>{excerpt}</blockquote>
+  - node: rules/graph-explorer/a-chunk-shows-its-source
+    held_at: >-
+      the dl in ChunkDetails, lines 106-127
+    evidence: |-
+      <dt className="font-medium">Tipo:</dt>
+      <dt className="font-medium">Recebido em:</dt>
+      {title !== null && (... <dt className="font-medium">Título:</dt>
+      {documentDateLabel !== null && (... <dt className="font-medium">Data do documento:</dt>
+  - node: rules/graph-explorer/a-fragment-shows-confidence-status-text-and-chunks
+    held_at: >-
+      the article rendered per fragment, lines 259-291
+    evidence: |-
+      {frag.confidenceLabel}
+      <span>{frag.status}</span>
+      {frag.text}
+      {frag.chunks.map((chunk) => (
+        <ChunkDetails
+  - node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+    held_at: >-
+      the muted-indicator branch and the exclusion on the disclosure branch, lines 129-154. The wording
+      is read from NODE_DETAIL_COPY, which is declared in NodeDetailPanel.copy.ts.
+    evidence: |-
+      originalInput !== REDACTED_SENTINEL && (
+      {originalInput === REDACTED_SENTINEL && (
+        <p ... aria-label={NODE_DETAIL_COPY.originalInputRedactedAria} ...>
+          {NODE_DETAIL_COPY.originalInputRedacted}
+  - node: rules/graph-explorer/an-absent-original-input-shows-nothing
+    held_at: >-
+      the two guards at lines 129-130 and 146, neither of which matches null or undefined
+    evidence: |-
+      {typeof originalInput === "string" &&
+      {originalInput === REDACTED_SENTINEL && (
+  - node: rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
+    held_at: >-
+      the isError branch, lines 202-239
+    evidence: |-
+      const showRetry = variant !== "deleted";
+      role="alert"
+      onClick={onRetry}
+  - node: rules/graph-explorer/an-origin-failure-is-classified-by-its-code
+    held_at: >-
+      classifyProvenanceError, lines 46-53
+    evidence: |-
+      if (err === null || typeof err !== "object") return "unknown";
+      if (code === "RESOURCE_NOT_FOUND") return "not-found";
+      if (code === "BUSINESS_RAW_INFORMATION_DELETED") return "deleted";
+      if (typeof code === "string" && code.startsWith("SYSTEM_")) return "generic";
+      return "unknown";
+  - node: rules/graph-explorer/an-origin-failure-reads-its-wording
+    held_at: >-
+      the message selection in the isError branch, lines 204-209. The strings are held in
+      NodeDetailPanel.copy.ts, whose values are "Origem não encontrada.",
+      "Documento original removido por conformidade." and "Não foi possível carregar a origem.".
+    evidence: |-
+      variant === "deleted"
+        ? NODE_DETAIL_COPY.originDeleted
+        : variant === "not-found"
+          ? NODE_DETAIL_COPY.originNotFound
+          : NODE_DETAIL_COPY.originError;
+  - node: rules/graph-explorer/an-origin-without-fragments-says-not-found
+    held_at: >-
+      the empty-body branch, lines 243-252
+    evidence: |-
+      if (data === undefined || data.fragments.length === 0) {
+        return (<p ... data-testid="node-provenance-empty">{NODE_DETAIL_COPY.originNotFound}</p>
+  - node: rules/graph-explorer/an-original-input-is-shown-verbatim
+    held_at: >-
+      the details disclosure in ChunkDetails, lines 129-145. The summary text is read from
+      NODE_DETAIL_COPY.originalInputSummary, which is "Texto original do operador".
+    evidence: |-
+      <details ... data-testid="node-provenance-original-input">
+        <summary ...>{NODE_DETAIL_COPY.originalInputSummary}</summary>
+        <p className="mt-xs whitespace-pre-wrap" ...>{originalInput}</p>
+  - node: rules/graph-explorer/the-origin-body-checks-pending-failure-then-data
+    held_at: >-
+      the order of the three guards in NodeProvenanceChain, lines 184-252, then the list at line 254
+    evidence: |-
+      if (isPending) {
+        <div ... aria-busy="true" ...>
+          <span aria-live="polite" ...>{NODE_DETAIL_COPY.originLoading}</span>
+      if (isError) {
+      if (data === undefined || data.fragments.length === 0) {
+looked_past: >-
+  I saw presentational choices (the warning or destructive icon colour by variant, class names, test ids)
+  and the `data === undefined` case rendering the not-found text, a defensive branch the nodes do not
+  separately name. I judged them layout or code-review matters, not domain facts.

@@ -1,0 +1,52 @@
+findings:
+  - file: src/features/graph/lib/edge-params.ts
+    where: |-
+      the docblock above getEdgePosition, lines 93-102 (tie-breaking), and the comment at lines 120-121 (fallback)
+    evidence: |-
+      * Tie-breaking: vertical sides (left/right) take precedence over
+      * horizontal (top/bottom) at the corners — this matches the React Flow
+      ...
+      // Fallback — degenerate cases (rounding) — pick bottom for top-down
+    cost: |-
+      The side order and the bottom fallback are held by the `if (px <= nx + 1) return Position.Left;` chain and the final `return Position.Bottom;`, and the node holds them too. The prose is a third statement of them. If the code order changes, the comment keeps saying the old order and nobody can tell which one was decided.
+    kind: restates
+    correction: |-
+      Remove the tie-breaking docblock text and the fallback comment. The `Position` chain in getEdgePosition already holds the rule.
+    node: rules/graph-explorer/a-link-meets-each-node-at-its-border
+  - file: src/features/graph/lib/edge-params.ts
+    where: |-
+      the header docblock lines 19-21, and the docblock above getEdgeParams, lines 125-130
+    evidence: |-
+      * Returns `null` when either node is unmeasured (no `internals` /
+      * `positionAbsolute` yet, or zero-sized `measured`). Callers MUST render
+      * nothing in that case — never fall back to (0,0).
+      ...
+      * unmeasured (no measured width/height) — the adapter MUST render
+      * nothing in that case (see GraphEdge.spec §1 + §6 Do/Don't).
+    cost: |-
+      The rule is held by `if (!source || !target) return null;` and `if (sw === 0 || sh === 0 || tw === 0 || th === 0) return null;`, and the node holds it too. The comments repeat it and cite `docs/specs/...` paths as if they were authority. A reader may take them for a second home that has to be kept in step.
+    kind: restates
+    correction: |-
+      Remove the comments. The `null` guards in getEdgeParams hold the rule.
+    node: rules/graph-explorer/a-link-needs-both-measured-nodes-to-be-drawn
+read:
+  - node: rules/graph-explorer/a-link-meets-each-node-at-its-border
+    held_at: |-
+      getNodeIntersection (lines 56-91, centre-to-centre clip at the node's rectangle) and getEdgePosition (lines 103-123, side selection)
+    evidence: |-
+      if (px <= nx + 1) return Position.Left;
+      if (px >= nx + w - 1) return Position.Right;
+      if (py <= ny + 1) return Position.Top;
+      if (py >= ny + h - 1) return Position.Bottom;
+      return Position.Bottom;
+  - node: rules/graph-explorer/a-link-needs-both-measured-nodes-to-be-drawn
+    held_at: |-
+      the guards in getEdgeParams, lines 135-140
+    evidence: |-
+      if (!source || !target) return null;
+      ...
+      if (sw === 0 || sh === 0 || tw === 0 || th === 0) return null;
+looked_past: |-
+  The dead defensive branch in getNodeIntersection that returns the node's top-left corner when it is unmeasured, and the algorithm credit to the React Flow recipe, are implementation details and not domain facts, so I left them for a code review.
+candidates_opened:
+  - rules/graph-explorer/a-link-needs-data-and-measured-nodes

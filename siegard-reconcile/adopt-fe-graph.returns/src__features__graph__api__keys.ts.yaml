@@ -1,0 +1,32 @@
+findings:
+  - file: src/features/graph/api/keys.ts
+    where: |-
+      graphViewKeys, lines 41-48 (the whole key factory, including forConversation)
+    evidence: |-
+      export const graphViewKeys = {
+        all: ["graphView"] as const,
+        forConversation: (conversationId: string) =>
+          ["graphView", conversationId] as const,
+      } as const;
+    cost: |-
+      The graph view is cached under one entry per conversation, and that scoping lives only in this file. The nearest node, rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation, governs restoring and saving the view on a conversation change. It says nothing about how the view is cached. Anyone looking for what a conversation's graph view is cached by will read the specification and find nothing. The sibling node keys (node detail, relationships, provenance) each have a rule; this one has none.
+    kind: unstated
+    correction: |-
+      Analysis would have to give the per-conversation cache key of the saved graph view a node, as the node-detail and provenance keys already have. The nearest home is the chat-workspace graph-view rule or a new rule beside it in graph-explorer.
+read:
+  - node: rules/graph-explorer/full-provenance-is-cached-by-kind-and-id
+    held_at: |-
+      graphNodeKeys.provenance, lines 29-31
+    evidence: |-
+      provenance: (kind: string, id: string) =>
+        ["graph", "provenance", kind, id] as const,
+  - node: rules/graph-explorer/node-detail-reads-share-a-key-by-node
+    held_at: |-
+      graphNodeKeys.detail and graphNodeKeys.relationships, lines 24 and 27. The key is by node id. The relationships key sits under a separate prefix, so the detail key does not cover it. The placeholder id for the case with no node is not in this file, because detail only takes an id string.
+    evidence: |-
+      detail: (id: string) => ["nodes", id] as const,
+      relationships: (id: string) => ["graph", "node", id, "relationships"] as const,
+looked_past: |-
+  The file's JSDoc blocks cite spec paths and restate key conventions in prose with no running behavior, and this pass leaves them to the comment route.
+candidates_opened:
+  - rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation

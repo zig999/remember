@@ -1,0 +1,189 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the file's header docstring, lines 4-5 ("fetches `GET /api/v1/nodes/:id` via `useNodeDetail(nodeId)`")
+    evidence: |-
+      * v1 (TC-FE-08) — fetches `GET /api/v1/nodes/:id` via `useNodeDetail(nodeId)`
+    cost: >-
+      The docstring is a second home for the read-by-id fact, which the code already holds with
+      `const query = useNodeDetail(nodeId);`. The route it quotes is also stated here by hand, so if
+      the route moves, the comment keeps asserting the old one and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The call to `useNodeDetail(nodeId)` in this file holds
+      the fact, and the read's route belongs to the contract node bound to useNodeDetail.ts.
+    node: rules/graph-explorer/the-panel-reads-the-node-by-id
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the header docstring, Accessibility block, line 25
+    evidence: |-
+      *  - `role="complementary"` + `aria-label="Detalhes do nó: <label>"`.
+    cost: >-
+      The accessible name is stated in prose and in code. The code is the `role="complementary"` and
+      `aria-label={`Detalhes do nó: ${resolvedLabel}`}` on the GlassSurface, with
+      `resolvedLabel = query.data?.canonicalName ?? nodeLabel ?? "carregando"`. A reader changing the
+      name has two places to keep in step, and the specification is a third.
+    kind: restates
+    correction: Remove the line from the docstring.
+    node: rules/graph-explorer/the-panel-is-a-region-named-after-the-node
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the header docstring, Accessibility block, line 27
+    evidence: |-
+      *  - Error state announces via `role="alert"`.
+    cost: >-
+      The docstring restates the alert rule for a failed read. Within this file only the dispatch is
+      code: `else if (query.isError) { const variant = classifyError(query.error); body = (<ErrorView ...
+      onRetry={() => { void query.refetch(); }} />`. The `role="alert"` attribute itself is not in
+      this file. It sits in ErrorView, which the candidate index binds to the node under
+      NodeDetailPanel.shell.tsx, and I did not read that file because it is outside the file set. If
+      the alert is ever dropped there, this line goes on claiming it.
+    kind: restates
+    correction: >-
+      Remove the line from the docstring. If the shell does not hold `role="alert"`, the finding
+      becomes `contradicts` against that file, and this pass cannot say.
+    node: rules/graph-explorer/a-failed-node-read-is-an-alert
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the header docstring line 28 ("`Escape` fires `onClose`") and the comment at lines 95-96 above onKeyDown
+    evidence: |-
+      *  - `Escape` fires `onClose`.
+      // Escape closes (spec §8). Attached to the panel root so the listener
+      // auto-cleans when the panel unmounts.
+    cost: >-
+      Two prose copies of the Escape rule sit beside the code that holds it, `if (event.key ===
+      "Escape") { event.preventDefault(); onClose(); }` wired as `onKeyDown` on the panel root. The
+      "spec §8" citation points at a section number, not at a node.
+    kind: restates
+    correction: Remove both pieces of prose.
+    node: rules/graph-explorer/escape-closes-the-panel
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the header docstring line 29 ("Close button receives focus on mount") and the comment at lines 76-77 above the useEffect
+    evidence: |-
+      *  - Close button receives focus on mount.
+      // Spec §8 — focus the close button on mount so keyboard users can dismiss
+      // immediately. The `nodeId` dep re-focuses when the panel swaps nodes.
+    cost: >-
+      The focus rule is restated twice in prose while the code holds it in `useEffect(() => {
+      closeRef.current?.focus(); }, [nodeId]);`. The comment also repeats the node-change trigger,
+      which the dependency array already encodes.
+    kind: restates
+    correction: Remove both pieces of prose.
+    node: rules/graph-explorer/the-close-button-takes-focus
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the comment at lines 72-73 above `drawerOpen`
+    evidence: |-
+      // CurationDrawer open state (TC-07). Local — the drawer never changes the
+      // URL (spec §3 row "CurationDrawer abre"), so the parent route is unaware.
+    cost: >-
+      The no-address-change fact is held by code: `const [drawerOpen, setDrawerOpen] = useState(false);`
+      and `onCurate={() => setDrawerOpen(true)}`, with no navigation anywhere in the file. The comment
+      repeats it and cites a spec row by title instead of by node.
+    kind: restates
+    correction: Remove the comment.
+    node: rules/graph-explorer/curar-opens-the-drawer-for-the-target
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.tsx
+    where: >-
+      the comment at line 82 above handleDrawerOpenChange
+    evidence: |-
+      // Restore focus to the trigger when the drawer closes (FL-CURATION-03 §7).
+    cost: >-
+      The focus-return rule is restated beside its implementation, `if (!next) {
+      requestAnimationFrame(() => { curateButtonRef.current?.focus(); }); }`. The citation names a
+      flow document, not a node.
+    kind: restates
+    correction: Remove the comment.
+    node: rules/graph-explorer/closing-the-drawer-returns-focus-to-curar
+read:
+  - node: rules/graph-explorer/a-failed-node-read-is-an-alert
+    held_at: >-
+      the `query.isError` branch of the body selection, lines 116-127. The alert role and the rule that
+      a retry is offered only for the generic failure are in ErrorView and classifyError, in
+      NodeDetailPanel.shell.tsx, which is outside this file set.
+    evidence: |-
+      } else if (query.isError) {
+        const variant = classifyError(query.error);
+        body = (
+          <ErrorView
+            variant={variant}
+            closeRef={closeRef}
+            onClose={onClose}
+            onRetry={() => {
+              void query.refetch();
+            }}
+          />
+  - node: rules/graph-explorer/closing-the-drawer-returns-focus-to-curar
+    held_at: >-
+      handleDrawerOpenChange, lines 83-90, passed as `onOpenChange` of the CurationDrawer
+    evidence: |-
+      function handleDrawerOpenChange(next: boolean): void {
+        setDrawerOpen(next);
+        if (!next) {
+          requestAnimationFrame(() => {
+            curateButtonRef.current?.focus();
+          });
+        }
+      }
+  - node: rules/graph-explorer/curar-opens-the-drawer-for-the-target
+    held_at: >-
+      the CurationDrawer element, lines 175-185, and the `onCurate` wiring, line 136. The target itself
+      comes from deriveCurationTarget in another file.
+    evidence: |-
+      <CurationDrawer
+        open={drawerOpen}
+        onOpenChange={handleDrawerOpenChange}
+        kind={curationTarget.kind}
+        itemId={curationTarget.itemId}
+        {...(query.data?.canonicalName !== undefined
+          ? { itemLabel: query.data.canonicalName }
+          : {})}
+      />
+  - node: rules/graph-explorer/escape-closes-the-panel
+    held_at: >-
+      onKeyDown, lines 97-102, attached to the panel root through `onKeyDown={onKeyDown}`
+    evidence: |-
+      function onKeyDown(event: KeyboardEvent<HTMLElement>): void {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }
+  - node: rules/graph-explorer/the-close-button-takes-focus
+    held_at: >-
+      the focus effect, lines 78-80, with closeRef passed to every view. The button's accessible name
+      is not in this file.
+    evidence: |-
+      useEffect(() => {
+        closeRef.current?.focus();
+      }, [nodeId]);
+  - node: rules/graph-explorer/the-panel-checks-pending-then-failure-then-data
+    held_at: >-
+      the body selection chain, lines 107-147
+    evidence: |-
+      if (query.isPending) {
+        body = (<LoadingView ... />);
+      } else if (query.isError) {
+        ...
+      } else if (query.data !== undefined) {
+        body = (<SuccessView ... />);
+      } else {
+        body = (<LoadingView ... />);
+      }
+  - node: rules/graph-explorer/the-panel-is-a-region-named-after-the-node
+    held_at: >-
+      resolvedLabel, lines 104-105, and the GlassSurface attributes, lines 151-154
+    evidence: |-
+      const resolvedLabel =
+        query.data?.canonicalName ?? nodeLabel ?? "carregando";
+      ...
+      role="complementary"
+      aria-label={`Detalhes do nó: ${resolvedLabel}`}
+  - node: rules/graph-explorer/the-panel-reads-the-node-by-id
+    held_at: >-
+      line 68
+    evidence: |-
+      const query = useNodeDetail(nodeId);
+looked_past: >-
+  Prose only, with no node of this set to answer to: the docstring's "NEVER opens a modal, drawer, or route change" claim contradicts the CurationDrawer this same file renders, and its progressive-disclosure, unidirectionality and file-size paragraphs are not facts of any node in this set. Also not examined as another judgment's: the GlassSurface and z-panel styling, and the data-status and data-testid attributes.

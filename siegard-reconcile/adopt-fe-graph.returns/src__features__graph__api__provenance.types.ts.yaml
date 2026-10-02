@@ -1,0 +1,148 @@
+findings:
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the `ProvenanceKind` declaration, line 19. The header comment at lines 9-12 lists the three URL shapes.
+    evidence: |-
+      export type ProvenanceKind = "links" | "attributes" | "fragments";
+      (header comment) GET /api/v1/provenance/fragments/:fragment_id
+    cost: >-
+      The graph-explorer contract holds only the link and attribute provenance reads. This file declares a
+      third read, `fragments`, that no graph-explorer node holds. The `fragments` provenance read is held
+      only by the curation-workspace contract. A reader checking what the node detail panel may call
+      finds two operations in the graph-explorer node and three in the code, and the third is stated in
+      another feature's contract.
+    kind: unstated
+    correction: >-
+      Either the graph-explorer contract gains a `read-fragment-provenance` operation, or the declared
+      vocabulary stops carrying a read the graph-explorer specification does not hold. The curation
+      contract names this read for the curation screen, not for the node detail panel.
+    node: contracts/curation-workspace/bff-curation-reads
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the header comment, lines 9-15 (endpoint family and the `useProvenance` kind picking).
+    evidence: |-
+      * Endpoint family — three URL shapes, identical body:
+      *   GET /api/v1/provenance/links/:link_id
+      *   GET /api/v1/provenance/attributes/:attribute_id
+    cost: >-
+      The two URLs are stated in prose while the running code builds them in `useProvenance.ts`. When
+      the contract moves, this comment is a second home that no check reaches.
+    kind: restates
+    correction: >-
+      Remove the comment. The URLs are held by code in src/features/graph/api/useProvenance.ts, which
+      builds `/api/v1/provenance/${kind}/${encodeURIComponent(id)}`.
+    node: contracts/graph-explorer/bff-node-reads
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the doc comment on `original_input` in `ProvenanceRawInformationWire`, lines 30-35.
+    evidence: |-
+      * `null` / absent outside the chat path. `'[REDACTED]'` after a
+      * `compliance_delete` redacted the row.
+    cost: >-
+      The redaction sentinel is stated in prose here. The code that tests it is
+      `REDACTED_SENTINEL = "[REDACTED]"` in NodeProvenanceChain.tsx, so the literal exists in code and in
+      this comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The sentinel is held by code in
+      src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx.
+    node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the doc comment on `receivedAtLabel`, line 68.
+    evidence: |-
+      /** Pre-formatted pt-BR label `DD/MM/YYYY HH:mm` for `received_at`. */
+    cost: >-
+      The display format is stated in prose. The code that produces it is `Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short", timeStyle: "short" })` in provenance.transforms.ts.
+    kind: restates
+    correction: >-
+      Remove the comment. The format is held by code in
+      src/features/graph/api/provenance.transforms.ts.
+    node: rules/graph-explorer/a-source-date-time-is-short-pt-br
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the doc comments on `title` and `documentDateLabel`, lines 70-72.
+    evidence: |-
+      /** `metadata.title` if present, else `null`. */
+      /** `metadata.document_date` (pt-BR `DD/MM/YYYY`) if present, else `null`. */
+    cost: >-
+      The source of the title and the document date is stated in prose. The code that derives them is
+      `readMetadataTitle` and `readMetadataDocumentDate` in provenance.transforms.ts.
+    kind: restates
+    correction: >-
+      Remove the comments. The derivation is held by code in
+      src/features/graph/api/provenance.transforms.ts.
+    node: rules/graph-explorer/title-and-document-date-come-from-metadata
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the doc comment on `originalInput` in `ProvenanceRawInformationView`, lines 74-79.
+    evidence: |-
+      * Raw passthrough of `wire.original_input` (v2.1 — TC-04). Three meanings:
+      *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
+      *  - `'[REDACTED]'` → render muted redaction indicator.
+    cost: >-
+      The passthrough rule and the three display branches are stated in prose. The code that passes the
+      value through is `{ ...base, originalInput: wire.original_input }` in provenance.transforms.ts. The
+      code that branches on the sentinel is in NodeProvenanceChain.tsx.
+    kind: restates
+    correction: >-
+      Remove the comment. The passthrough is held by code in
+      src/features/graph/api/provenance.transforms.ts and the branches by code in
+      src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx.
+    node: rules/graph-explorer/original-input-is-carried-only-when-answered
+  - file: src/features/graph/api/provenance.types.ts
+    where: >-
+      the doc comment on `offsetRangeLabel`, line 88.
+    evidence: |-
+      /** `"chars 0–1742"` — pre-formatted offset window (Phase C transform). */
+    cost: >-
+      The label format is stated in prose. The code that produces it is
+      `` `chars ${wire.offset_start}–${wire.offset_end}` `` in provenance.transforms.ts.
+    kind: restates
+    correction: >-
+      Remove the comment. The format is held by code in
+      src/features/graph/api/provenance.transforms.ts.
+    node: rules/graph-explorer/a-chunk-offset-window-is-shown-as-chars
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: >-
+      the wire interfaces `ProvenanceResponseWire`, `ProvenanceFragmentWire`, `ProvenanceChunkWire` and
+      `ProvenanceRawInformationWire`, lines 25-59, which declare the shape the provenance reads are read
+      as. The URLs are not built in this file, only listed in a comment.
+    evidence: |-
+      export interface ProvenanceResponseWire {
+        readonly fragments: ReadonlyArray<ProvenanceFragmentWire>;
+      }
+  - node: rules/graph-explorer/a-fragment-status-is-free-text
+    held_at: >-
+      the `status` field of `ProvenanceFragmentWire` and `ProvenanceFragmentView`, lines 53 and 101.
+    evidence: |-
+      readonly status: string;
+  - node: rules/graph-explorer/a-provenance-answer-is-a-list-of-fragments
+    held_at: >-
+      `ProvenanceFragmentWire` and `ProvenanceChunkWire`, lines 39-55, with their view counterparts at
+      lines 83-103.
+    evidence: |-
+      readonly id: string;
+      readonly text: string;
+      readonly confidence: number;
+      readonly status: string;
+      readonly chunks: ReadonlyArray<ProvenanceChunkWire>;
+      readonly chunk_index: number;
+      readonly offset_start: number;
+      readonly offset_end: number;
+      readonly excerpt: string;
+      readonly locator?: Readonly<Record<string, unknown>>;
+      readonly raw_information: ProvenanceRawInformationWire;
+looked_past: >-
+  Comments that state facts no code in the tree holds, such as the chat-path capture of `original_input`,
+  "Display-only — never a write/action target" and the `"92%"` label example, are prose-only and belong
+  to the comment route, not to this judgment.
+candidates_opened:
+  - rules/graph-explorer/a-chunk-offset-window-is-shown-as-chars
+  - rules/graph-explorer/a-source-date-time-is-short-pt-br
+  - rules/graph-explorer/a-redacted-original-input-is-never-shown
+  - rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+  - rules/graph-explorer/title-and-document-date-come-from-metadata
+  - rules/graph-explorer/original-input-is-carried-only-when-answered

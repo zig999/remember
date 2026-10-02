@@ -1,0 +1,46 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.copy.ts
+    where: >-
+      line 19, the attributesHeading entry of NODE_DETAIL_COPY (rendered as the h3 of the attributes section in NodeDetailPanel.success.tsx)
+    evidence: |-
+      attributesHeading: "Atributos",
+    cost: >-
+      This is text the system shows the owner, as the heading above the attributes table. No node names that heading. The attributes rule only says "a table of attribute, value and state", and the graph-screen contract lists the aliases and attributes without naming the heading. The wording therefore lives only in this file. A reader looking in the specification for what the attributes section is called will not find it, and a change to the specification cannot reach it.
+    kind: unstated
+    correction: >-
+      Give the attributes section's heading a node, or add it to the existing attributes-are-listed-as-received rule, the way the relationships section is already named "Relações" and the aliases list "Aliases".
+    node: rules/graph-explorer/attributes-are-listed-as-received
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.copy.ts
+    where: >-
+      the doc comment above originalInputRedacted, line 54
+    evidence: |-
+      /** Muted indicator shown when `original_input === '[REDACTED]'`. */
+    cost: >-
+      The comment restates the sentinel condition that rules/graph-explorer/a-redacted-original-input-is-never-shown holds. Code already holds that condition, so the comment is a second home outside behavior. When the rule moves, this comment will still say the old condition.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The condition is held by code in src/features/graph/components/NodeDetailPanel/NodeProvenanceChain.tsx, where originalInput is compared to REDACTED_SENTINEL.
+    node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+read:
+  - node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+    held_at: >-
+      originalInputRedacted and originalInputRedactedAria in NODE_DETAIL_COPY, lines 55 and 57. The sentinel test itself sits in NodeProvenanceChain.tsx, outside this file.
+    evidence: |-
+      originalInputRedacted: "Texto original redigido.",
+      originalInputRedactedAria: "Texto original redigido por conformidade.",
+  - node: rules/graph-explorer/inline-provenance-needs-an-entry
+    held_at: >-
+      the attributeProvenanceSummary and linkProvenanceSummary templates, lines 29-30 and 38-39. They hold the wording and the singular/plural count. The "only when at least one entry" condition is applied in the consuming rows, outside this file.
+    evidence: |-
+      `Proveniência (${n} ${n === 1 ? "entrada" : "entradas"})`
+      `Proveniência do link (${n} ${n === 1 ? "entrada" : "entradas"})`
+  - node: rules/graph-explorer/screen-readers-hear-the-direction
+    held_at: >-
+      directionOutgoingSr and directionIncomingSr, lines 40-41
+    evidence: |-
+      directionOutgoingSr: "direção: destino",
+      directionIncomingSr: "direção: origem",
+looked_past: >-
+  The module docstring cites TC-FE-08, dev_tc_001 and CLAUDE.md i18n, and says the copy is shared across sub-components. It states no domain fact, so I report it only here. The other emitted strings (loading, error and retry wording, Curar, Fechar detalhes do nó, Ver origem completa, Texto original do operador, the Relações and Aliases headings, and the attribute table column labels) are held by nodes outside this set. I did not review those nodes.
+candidates_opened:
+  - contracts/graph-explorer/graph-screen

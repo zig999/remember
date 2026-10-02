@@ -1,0 +1,66 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.shell.tsx
+    where: |-
+      ErrorView, the PanelHeader call at lines 131-135
+    evidence: |-
+      <PanelHeader
+        title={NODE_DETAIL_COPY.errorNotFound}
+        closeRef={closeRef}
+        onClose={onClose}
+      />
+    cost: |-
+      The header title is always "Nó não encontrado.", whatever the variant. A node whose read failed with BUSINESS_NODE_DELETED or with a generic failure therefore shows the not-found message in the header, above an alert that carries the deleted or generic message. The owner is told two different things at once. No node says the failure header shows any text, so the not-found header title is a fact the code applies that the specification does not hold.
+    kind: contradicts
+    correction: |-
+      The header should either carry the variant's own message or carry no title, as the loading view does when no label was given. The specification should say which, in the rule on node failure wording or in the contract's show-node-detail answer.
+    node: rules/graph-explorer/a-node-failure-reads-its-wording
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.shell.tsx
+    where: |-
+      the docstring of classifyError, lines 17-18
+    evidence: |-
+      /** Classify a top-level `useNodeDetail` error code into the state row to
+       *  render. 404 / 410 are terminal — only `generic` gets a retry button. */
+    cost: |-
+      The docstring restates the classification and retry rule a second time as prose. It also speaks of HTTP statuses 404 and 410, while the code keys on the codes RESOURCE_NOT_FOUND and BUSINESS_NODE_DELETED. If the node moves, this text is not reached by `--check`, and it names different identifiers from the ones the code uses. The code holds the fact at lines 20-24 and at `const showRetry = variant === "generic";`.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route. The fact stays held by the node and by the code.
+    node: rules/graph-explorer/a-failed-node-read-is-an-alert
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: |-
+      LoadingView (lines 83-106) for "Carregando detalhes…" with a spinner. ErrorView (lines 116-169) for the three failure messages and the retry action. The aria-label on the close button at line 60 for "Fechar detalhes do nó". The strings come from NODE_DETAIL_COPY. The ErrorView header title departs from the contract's wording (see the finding).
+    evidence: |-
+      <Loader2 className="size-5 shrink-0 animate-spin text-foreground" aria-hidden="true" /> <span aria-live="polite" className="text-xs text-foreground">{NODE_DETAIL_COPY.loading}</span>; aria-label={NODE_DETAIL_COPY.close}; <div ... role="alert" data-testid="node-detail-error" data-variant={variant}>
+  - node: domain/graph-explorer/node-detail-failure
+    held_at: |-
+      line 15, the ErrorVariant type
+    evidence: |-
+      export type ErrorVariant = "not-found" | "deleted" | "generic";
+  - node: rules/graph-explorer/a-failed-node-read-is-an-alert
+    held_at: |-
+      ErrorView, lines 128-165: role="alert" on the container and the retry button rendered only when showRetry is true
+    evidence: |-
+      const showRetry = variant === "generic"; ... role="alert" ... {showRetry && ( <button type="button" onClick={onRetry} data-testid="node-detail-retry"
+  - node: rules/graph-explorer/a-node-failure-is-classified-by-its-code
+    held_at: |-
+      classifyError, lines 19-25
+    evidence: |-
+      if (err === null || typeof err !== "object") return "generic"; const code = (err as { code?: unknown }).code; if (code === "RESOURCE_NOT_FOUND") return "not-found"; if (code === "BUSINESS_NODE_DELETED") return "deleted"; return "generic";
+  - node: rules/graph-explorer/a-node-failure-reads-its-wording
+    held_at: |-
+      the message selection in ErrorView, lines 122-127. The header title at line 132 shows the not-found message for every variant (see the finding).
+    evidence: |-
+      const message = variant === "not-found" ? NODE_DETAIL_COPY.errorNotFound : variant === "deleted" ? NODE_DETAIL_COPY.errorDeleted : NODE_DETAIL_COPY.errorGeneric; ... <PanelHeader title={NODE_DETAIL_COPY.errorNotFound}
+  - node: rules/graph-explorer/the-close-button-takes-focus
+    held_at: |-
+      Only the name is held here: the aria-label on the close button at line 60, with the button receiving closeRef at line 57. The code that moves focus on mount and on a node id change is not in this file, which only receives the ref. NodeDetailPanel.tsx is the file in the candidate index bound to it.
+    evidence: |-
+      <button ref={closeRef} type="button" onClick={onClose} aria-label={NODE_DETAIL_COPY.close}
+  - node: rules/graph-explorer/the-loading-view-says-it-is-loading
+    held_at: |-
+      LoadingView, lines 83-106
+    evidence: |-
+      const title = nodeLabel ?? ""; ... <PanelHeader title={title} ... /> ... <span aria-live="polite" className="text-xs text-foreground">{NODE_DETAIL_COPY.loading}</span>
+looked_past: |-
+  The file-header docstring ("300-line cap mandated by spec §11") and the icon colour choice (text-warning for generic, text-destructive otherwise) are a code-review and surface matter, not a domain fact.

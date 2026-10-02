@@ -1,0 +1,186 @@
+findings:
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      header docblock, lines 3-8 and 39-44 (the "Status transition" invariant)
+    evidence: |-
+      When the queue empties and the store status is `"revealing"`, advances
+      the status to `"ready"` so `GraphStatusOverlay` removes itself.
+      ...
+      *  - **Status transition** — `revealing → ready` fires only when the queue
+      drains AND the current status is `"revealing"`. Any other status
+      ("loading", "ready" already, "error", "empty") is left untouched
+    cost: |-
+      The docblock states the node's rule a second time outside behavior. The same rule is also written in code at lines 212-217, 141-143, 154-156 and 253-257. A later change to the node leaves this prose saying something else, and `--check` never reaches it.
+    kind: restates
+    correction: |-
+      Remove the prose. The code at `if (useGraphStore.getState().status === "revealing") { useGraphStore.getState().setStatus("ready"); }` already holds the fact.
+    node: rules/graph-explorer/empty-reveal-queue-ends-revealing
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      header docblock, lines 23-28 (AC-F.14) and the comment on DEFAULT_REVEAL_STAGGER_MS, lines 83-87
+    evidence: |-
+      the hook does NOT batch the queue
+      under normal motion. Each tick reveals exactly one id, separated by
+      `staggerMs` (default 90).
+      ...
+      /** Default inter-node delay used when the consumer does not provide one.
+      *  Matches GraphSpace.component.spec.md §2 (`revealStaggerMs` default = 90)
+    cost: |-
+      The 90 ms default and the one-at-a-time rule are written as prose in several places while code holds them at `export const DEFAULT_REVEAL_STAGGER_MS = 90;` and `timerRef.current = setTimeout(tick, delay);`. The prose also points at `GraphSpace.component.spec.md` as the authority for the value, so a reader is sent away from the node that holds it.
+    kind: restates
+    correction: |-
+      Remove the prose. The constant and the single-id `tick` hold the fact.
+    node: rules/graph-explorer/reveal-goes-one-node-at-a-time-in-queue-order
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      header docblock, lines 29-32 (AC-F.15)
+    evidence: |-
+      the hook only marks NODES as revealed.
+      Edge filtering is the consumer's responsibility (`GraphCanvas` reads the
+      returned Set and drops edges whose endpoints are still queued). This
+      file does not import `@xyflow/react`.
+    cost: |-
+      The prose repeats the node's "nodes only" rule. The code holds it too, since `revealOne` writes only `revealedIds` and the file has no edge logic. The prose also claims behavior for GraphCanvas, a file this judgment does not read. That claim has no node here and nothing checks it from this file.
+    kind: restates
+    correction: |-
+      Remove the prose. The `revealOne`/`drainAll` writes to `revealedIds` hold the fact.
+    node: rules/graph-explorer/reveal-marks-nodes-only
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      header docblock, lines 33-38 (AC-F.16) and the docblock of prefersReducedMotion, lines 96-107
+    evidence: |-
+      when
+      `window.matchMedia('(prefers-reduced-motion: reduce)').matches`, the
+      hook reveals every queued id in a single synchronous batch. No stagger,
+      no scale.
+      ...
+      Defaulting to "motion ON" is the safe choice
+    cost: |-
+      The reduced-motion rule and its "assume motion on when unreadable" fallback are written as prose while code holds both. A later change to the node leaves the prose behind, and the prose names AC-F.16 as the rule's source instead of the node.
+    kind: restates
+    correction: |-
+      Remove the prose. `if (typeof window.matchMedia !== "function") return false;` and the `if (prefersReducedMotion()) { drainAll(); return; }` branch hold the fact.
+    node: rules/graph-explorer/reduced-motion-reveals-everything-at-once
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      header docblock, lines 45-49 (AC-E.3) and the cleanup comment, lines 262-266
+    evidence: |-
+      on unmount,
+      or when the queue becomes empty mid-flight, every scheduled timer is
+      cleared. Already-revealed ids remain in `revealedIds`
+      ...
+      Remaining
+      queued ids stay in `revealQueue`
+    cost: |-
+      The stop semantics (cancel the pending step, keep revealed nodes revealed and queued nodes queued) are written as prose while code holds them in the effect cleanup. A later change to the node leaves the prose saying the old behavior.
+    kind: restates
+    correction: |-
+      Remove the prose. `clearTimeout(timerRef.current)` in the effect cleanup holds the fact. No code in this file deletes from `revealedIds` or `revealQueue`.
+    node: rules/graph-explorer/stopping-the-reveal-keeps-what-it-reached
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      docblock of revealOne, lines 159-164
+    evidence: |-
+      Idempotent: re-revealing an already-revealed id is a no-op (Set semantics
+      + a referential check before setState to avoid spurious renders).
+    cost: |-
+      The prose repeats the node's rule while `if (revealedIds.has(id)) return;` holds it. The two can drift apart without notice.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/graph-explorer/revealing-a-revealed-node-changes-nothing
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      the @param staggerMs JSDoc, lines 176-180
+    evidence: |-
+      Values ≤ 0 are coerced to a single tick of
+      `setTimeout(..., 0)` — the hook never falls back to a
+      blocking loop.
+    cost: |-
+      The zero-or-less rule is written as prose while code holds it at `const delay = Math.max(0, staggerRef.current);` followed by `setTimeout(tick, delay)`. The prose is a second statement of the rule that no running system reads.
+    kind: restates
+    correction: |-
+      Remove the prose. `Math.max(0, ...)` and the `setTimeout` call hold the fact.
+    node: rules/graph-explorer/a-gap-of-zero-or-less-is-zero
+  - file: src/features/graph/hooks/useGraphReveal.ts
+    where: |-
+      comment above staggerRef, lines 198-200
+    evidence: |-
+      Latest staggerMs ref — read inside the timer chain so a prop change
+      mid-reveal takes effect on the next tick without re-triggering the
+      effect (which would clear the timer chain and lose progress).
+    cost: |-
+      The rule that a gap change applies from the next reveal is written as prose while code holds it. `staggerRef.current = staggerMs;` is read as `Math.max(0, staggerRef.current)` each time the effect schedules a step. The comment restates the node's rule and gives a reason the node does not carry.
+    kind: restates
+    correction: |-
+      Remove the comment. The ref write and the per-schedule read hold the fact.
+    node: rules/graph-explorer/a-gap-change-applies-from-the-next-reveal
+read:
+  - node: rules/graph-explorer/a-gap-change-applies-from-the-next-reveal
+    held_at: |-
+      the staggerRef write at line 202 and the delay read inside the effect at line 232
+    evidence: |-
+      staggerRef.current = staggerMs;
+      ...
+      const delay = Math.max(0, staggerRef.current);
+  - node: rules/graph-explorer/a-gap-of-zero-or-less-is-zero
+    held_at: |-
+      the delay computation at line 232 and the setTimeout at line 260 (asynchronous even at 0)
+    evidence: |-
+      const delay = Math.max(0, staggerRef.current);
+      ...
+      timerRef.current = setTimeout(tick, delay);
+  - node: rules/graph-explorer/empty-reveal-queue-ends-revealing
+    held_at: |-
+      the empty-queue branch of the effect, lines 212-217. The same transition is in tick (lines 253-257) and in drainAll (lines 136-145 and 154-156). Only `revealing` is moved to `ready`.
+    evidence: |-
+      if (revealQueue.length === 0) {
+        if (useGraphStore.getState().status === "revealing") {
+          useGraphStore.getState().setStatus("ready");
+        }
+        return;
+      }
+  - node: rules/graph-explorer/reduced-motion-reveals-everything-at-once
+    held_at: |-
+      prefersReducedMotion() (lines 108-112) and the reduced-motion branch of the effect (lines 223-226), which calls drainAll() (lines 134-157)
+    evidence: |-
+      if (typeof window.matchMedia !== "function") return false;
+      return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+      ...
+      for (const id of revealQueue) next.add(id);
+      useGraphStore.setState({
+  - node: rules/graph-explorer/reveal-goes-one-node-at-a-time-in-queue-order
+    held_at: |-
+      DEFAULT_REVEAL_STAGGER_MS (line 88) and tick (lines 234-258). The 90 ms default and the one-id-per-step timing are here. Taking the head of the queue is delegated to `useGraphStore.getState().dequeueReveal()`, which is declared in another file.
+    evidence: |-
+      export const DEFAULT_REVEAL_STAGGER_MS = 90;
+      ...
+      const id = useGraphStore.getState().dequeueReveal();
+      if (id !== undefined) {
+        revealOne(id);
+      }
+  - node: rules/graph-explorer/reveal-marks-nodes-only
+    held_at: |-
+      revealOne (lines 165-171) and drainAll (lines 146-151). Both write only `revealedIds` and `revealQueue`. The file has no edge or link handling.
+    evidence: |-
+      const next = new Set(revealedIds);
+      next.add(id);
+      useGraphStore.setState({ revealedIds: next });
+  - node: rules/graph-explorer/revealing-a-revealed-node-changes-nothing
+    held_at: |-
+      the early return in revealOne, line 167
+    evidence: |-
+      if (revealedIds.has(id)) return;
+  - node: rules/graph-explorer/stopping-the-reveal-keeps-what-it-reached
+    held_at: |-
+      the cleanup function returned by the effect, lines 267-272. Nothing in the file deletes from `revealedIds` or `revealQueue`.
+    evidence: |-
+      return (): void => {
+        if (timerRef.current !== null) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+looked_past: |-
+  The header comment states facts that no code in this file holds and no node of the set holds. Examples are the "Single writer (D2) carve-out", the claim that the dispatcher owns the transition into `"revealing"`, and the claim that GraphCanvas drops edges whose endpoints are still queued. These are prose with no code behind them in this file, so they are not findings here, and the comment route would remove them.
+candidates_opened: []

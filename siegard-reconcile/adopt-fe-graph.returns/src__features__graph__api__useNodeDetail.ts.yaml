@@ -1,0 +1,106 @@
+findings:
+  - file: src/features/graph/api/useNodeDetail.ts
+    where: |-
+      the file docstring, lines 1-2, together with the header comment above `STALE_MS`
+    evidence: |-
+      * useNodeDetail — GET /api/v1/nodes/:id (TC-FE-08).
+    cost: |-
+      The request path is stated again in prose beside the code that builds it, `/api/v1/nodes/${encodeURIComponent(id as string)}`. If the contract moves, there are two places to change, and the comment can go stale without any check catching it.
+    kind: restates
+    correction: |-
+      Remove the prose. The path and the id encoding are held by the `http` call in `queryFn` of this file.
+    node: contracts/graph-explorer/bff-node-reads
+  - file: src/features/graph/api/useNodeDetail.ts
+    where: |-
+      the "Contract" docstring, lines 17-19, and the comment above `STALE_MS`, lines 38-39
+    evidence: |-
+      *  - Stable data → `staleTime: 5 * 60_000` (5min, per spec §9).
+       *  - `refetchOnWindowFocus: false` — opening the panel after a tab switch
+       *    must not flash spinner on cached node detail.
+    cost: |-
+      The five-minute freshness window and the no-refetch-on-focus rule are written again in prose, with a pointer to a section of the component spec. A reader can take that pointer as the place the value was decided. The values are held by `staleTime: STALE_MS` and `refetchOnWindowFocus: false` in this file.
+    kind: restates
+    correction: |-
+      Remove the docstring bullets and the `STALE_MS` comment. The code in this file holds the fact.
+    node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+  - file: src/features/graph/api/useNodeDetail.ts
+    where: |-
+      the "Contract" docstring, lines 20-22, and the comments in `queryFn` (line 56) and above the hook (lines 45-47)
+    evidence: |-
+      *  - `enabled` gate — guards against `useQuery({ queryFn() called with
+       *    undefined id })` when the parent unmounts the panel mid-flight
+    cost: |-
+      The rule that a read is never requested without a non-empty id is described again in prose. The condition itself is `enabled: typeof id === "string" && id.length > 0`. The comment "the cast is safe inside queryFn" depends on that condition and would go stale if it changed.
+    kind: restates
+    correction: |-
+      Remove the prose. The `enabled` expression in this file holds the rule.
+    node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+  - file: src/features/graph/api/useNodeDetail.ts
+    where: |-
+      the "Error surface" docstring, lines 24-29
+    evidence: |-
+      *  - `useQuery` exposes the raw `EnvelopeError` via `query.error`. [...]
+       *    The hook itself does NOT translate
+       *    the error — the central `QueryCache.onError` mapper in
+       *    `lib/error-routing.ts` is the single error router.
+    cost: |-
+      The pass-through rule is stated in prose, along with a claim about which module is the single error router. The code holds the rule by having no catch or translation around `http<NodeDetailWire>(...)`. The routing claim describes a file outside this one.
+    kind: restates
+    correction: |-
+      Remove the prose. The `queryFn` of this file holds the pass-through, because the failure is not caught or rewrapped.
+    node: rules/graph-explorer/read-failures-pass-through-unchanged
+  - file: src/features/graph/api/useNodeDetail.ts
+    where: |-
+      the comment above the hook, lines 45-49
+    evidence: |-
+      When `id` is missing we still produce a unique cache slot
+       * (`__noop__`) to keep the key shape stable.
+    cost: |-
+      The placeholder id is named in prose beside the code that uses it. The code holds it in `graphNodeKeys.detail(id ?? "__noop__")`, so the literal can be changed without the comment following.
+    kind: restates
+    correction: |-
+      Remove the prose. The `queryKey` line of this file holds the placeholder.
+    node: rules/graph-explorer/the-first-node-id-key-is-a-placeholder
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      `queryFn` of useNodeDetail, lines 55-62. This covers the read-node operation only; traverse and the provenance reads are in other files.
+    evidence: |-
+      const wire = await http<NodeDetailWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toNodeDetail(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: |-
+      the `enabled` option, line 63. This covers the node read. The provenance part of the rule has no counterpart in this file.
+    evidence: |-
+      enabled: typeof id === "string" && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: |-
+      `STALE_MS` and the two options at lines 64-65
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/node-detail-reads-share-a-key-by-node
+    held_at: |-
+      the `queryKey` line, 54, which keys the detail by node id with a placeholder when none. The separate relationships key is declared in keys.ts, not in this file.
+    evidence: |-
+      queryKey: graphNodeKeys.detail(id ?? "__noop__"),
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: |-
+      `queryFn`, lines 55-62. The `http` call is not wrapped, caught or translated, so the helper's error reaches `query.error`.
+    evidence: |-
+      const wire = await http<NodeDetailWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+  - node: rules/graph-explorer/the-first-node-id-key-is-a-placeholder
+    held_at: |-
+      the `queryKey` line, 54
+    evidence: |-
+      queryKey: graphNodeKeys.detail(id ?? "__noop__"),
+looked_past: |-
+  The docstring names the error codes RESOURCE_NOT_FOUND, BUSINESS_NODE_DELETED and SYSTEM_* that the panel branches on, and cites the state table in the component spec. That is prose about the panel's behavior and no code in this file carries it, so it is a prose-only fact for the comment route, not a finding here.
+candidates_opened: []

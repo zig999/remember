@@ -1,0 +1,419 @@
+findings:
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      header docstring, lines 14-15 (invariant I-7, the `done` half)
+    evidence: |-
+      * I-7 — `settleTurn` only flips status when a graph tool was in
+      flight this turn. `done` without delta → status unchanged;
+    cost: |-
+      A second home for the done-without-a-delta rule sits in prose. The code in settleTurn holds it, in the `else { set({ receivedDeltaThisTurn: false }); }` branch. When the node moves, this comment goes stale and nothing flags it. A reader may also take it as the place the rule was decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The settleTurn branch already holds the fact, and the node binds it.
+    node: rules/graph-explorer/turn-done-without-a-delta-leaves-the-status
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      header docstring, lines 15-16 (invariant I-7, the `error` half)
+    evidence: |-
+      `error`
+      while status is `empty` (no graph tool in flight) → unchanged.
+    cost: |-
+      The rule that an error turn changes only a busy pane is restated in prose. The code holds it in `graphToolInFlight(status)` and the settleTurn error branch. Two homes for one rule means a change to the node leaves this text claiming the old behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by graphToolInFlight and the settleTurn error branch.
+    node: rules/graph-explorer/turn-error-ends-a-busy-pane-in-error
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      header docstring, lines 19-21 (re-affirmation consolidates)
+    evidence: |-
+      * Re-affirmation consolidates, never duplicates (project principle):
+      `addNodes` merges into the existing Maps; only IDs not yet seen by
+      the reveal pipeline enter `revealQueue`.
+    cost: |-
+      The merge-by-identity rule is restated outside behaviour. The code holds it in addNodes through `nextNodes.set(node.id, node)` and `nextLinks.set(link.id, link)`. The comment is a second home that nobody reads when the node changes.
+    kind: restates
+    correction: |-
+      Remove the prose. addNodes holds the merge.
+    node: rules/graph-explorer/add-merges-by-identity
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      header docstring, lines 19-21 (only unseen ids enter revealQueue)
+    evidence: |-
+      only IDs not yet seen by
+      the reveal pipeline enter `revealQueue`.
+    cost: |-
+      The queue-only-unseen rule is stated in prose while addNodes holds it in `if (!state.revealedIds.has(node.id) && !nextNodes.has(node.id))`. A change to the node would leave this sentence claiming the earlier rule.
+    kind: restates
+    correction: |-
+      Remove the prose. The guard in addNodes holds the fact.
+    node: rules/graph-explorer/add-queues-only-unseen-nodes
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.errorMessage docstring, lines 79-82
+    evidence: |-
+      /** Optional error blurb rendered by `GraphStatusOverlay` when
+      `status === "error"`. Cleared on every non-error transition.
+    cost: |-
+      The rule that only error keeps its message is restated in prose. The code holds it in setStatus as `errorMessage: status === "error" ? errorMessage : undefined`. A second statement of it invites drift.
+    kind: restates
+    correction: |-
+      Remove the prose. setStatus holds the rule.
+    node: rules/graph-explorer/setting-a-status-keeps-the-error-message-only-for-error
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.receivedDeltaThisTurn docstring, lines 84-87 (set by addNodes)
+    evidence: |-
+      /** I-7 flag — set `true` by `addNodes` (any successful delta in the
+      current turn)
+    cost: |-
+      The rule that adding a delta marks it received is restated in prose. The code holds it as `receivedDeltaThisTurn: true` in the addNodes return. The comment is a second home outside behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. addNodes holds the mark.
+    node: rules/graph-explorer/add-marks-a-delta-received
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.receivedDeltaThisTurn docstring, lines 85-87 (reset at turn end)
+    evidence: |-
+      reset `false` at turn-start (`clear()` and inside
+      `settleTurn`).
+    cost: |-
+      The reset rule is restated in prose, and it is worded as turn-start while the node says turn end. The code holds the reset in every settleTurn branch (`receivedDeltaThisTurn: false`). The comment is therefore a second home that can mislead as well as drift.
+    kind: restates
+    correction: |-
+      Remove the prose. The settleTurn branches hold the reset.
+    node: rules/graph-explorer/ending-a-turn-resets-the-delta-mark
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.userPinned docstring, lines 89-95
+    evidence: |-
+      /** IDs of nodes the USER has repositioned via drag (TC-FE drag). A node
+      in this set keeps its `positions` entry as a permanent pin
+    cost: |-
+      The rule that a hand-moved node is recorded as pinned is restated in prose. The code holds it in setNodePosition (`nextUserPinned.add(id)`). The comment is a second home, and the node's own text is where a reader should look.
+    kind: restates
+    correction: |-
+      Remove the prose. setNodePosition holds the fact.
+    node: rules/graph-explorer/moving-a-node-pins-it
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.layoutAlgorithm docstring, lines 102-103
+    evidence: |-
+      /** Active layout algorithm (TC-02). Defaults to `'force'` so legacy
+      behaviour is preserved.
+    cost: |-
+      The default is restated in prose. The code holds it in makeInitialState (`layoutAlgorithm: "force"`). A change to the default would leave this comment stating the old one.
+    kind: restates
+    correction: |-
+      Remove the prose. makeInitialState holds the default.
+    node: rules/graph-explorer/layout-defaults-to-force
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.replaceNodes docstring, lines 114-122
+    evidence: |-
+      Links whose
+      endpoints are not among THIS delta's own nodes are dropped (no orphan
+      strokes). Leaves `status` untouched so the in-flight `"loading"` set on
+      `tool_start` flows into the reveal.
+    cost: |-
+      The replace rule is spelled out again in prose: keep only the delta's nodes and links, clear positions, pins and revealed, queue every node, leave the status. The code holds all of it in replaceNodes. A node change would leave this comment stating the old rule.
+    kind: restates
+    correction: |-
+      Remove the prose. replaceNodes holds the fact.
+    node: rules/graph-explorer/replace-keeps-only-the-delta
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.removeNodes docstring, lines 124-126
+    evidence: |-
+      /** Remove a set of node ids and any link whose `source` or `target`
+      references one of them (orphan cleanup). The positions entry and
+      revealed-ids membership for the removed nodes are dropped too. */
+    cost: |-
+      The removal rule is restated in prose while removeNodes holds it in code. A change to the node would leave the comment claiming the earlier scope of removal.
+    kind: restates
+    correction: |-
+      Remove the prose. removeNodes holds the fact.
+    node: rules/graph-explorer/removing-nodes-removes-everything-about-them
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.resetLayout docstring, lines 137-143
+    evidence: |-
+      Clears
+      `userPinned` and bumps `layoutNonce` (the force effect re-runs ignoring
+      pins). Positions are NOT cleared here
+    cost: |-
+      The reorganize rule is restated in prose. The code holds it in resetLayout (`userPinned: new Set<string>()`, `layoutNonce: state.layoutNonce + 1`, with positions untouched). The comment is a second home outside behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. resetLayout holds the fact.
+    node: rules/graph-explorer/reorganizing-releases-the-pins
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.setLayoutAlgorithm docstring, lines 145-150
+    evidence: |-
+      Sets
+      `layoutAlgorithm = algo` AND bumps `layoutNonce` — the
+      `useForceLayout` effect re-runs with the new runner and ignores the
+      pin set so the fresh layout is unobstructed (same semantics as
+      `resetLayout`, but also changes the algorithm). No-op if `algo`
+      equals the current algorithm
+    cost: |-
+      The choose-a-layout rule is restated in prose. The code holds it in setLayoutAlgorithm (`if (state.layoutAlgorithm === algo) return {};` followed by the algorithm, a cleared pin set and the nonce bump). A change to the node would leave this comment stating the old behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. setLayoutAlgorithm holds the fact.
+    node: rules/graph-explorer/choosing-a-layout-releases-the-pins
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.clear docstring, lines 152-154
+    evidence: |-
+      /** Reset to empty / `status === "empty"`. Called on conversation
+      switch — the right pane goes back to `GraphEmptyState`. Also
+      resets `receivedDeltaThisTurn` (new conversation = new turn). */
+    cost: |-
+      The clear-to-empty rule is restated in prose. The code holds it in `set(makeInitialState())`. The comment is a second home for the starts-and-clears-empty fact.
+    kind: restates
+    correction: |-
+      Remove the prose. clear and makeInitialState hold the fact.
+    node: rules/graph-explorer/pane-starts-and-clears-empty
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.settleTurn docstring, lines 166-169
+    evidence: |-
+      - `"done"`: if `receivedDeltaThisTurn` is `true` → advance to
+      `"ready"`. Otherwise leave `status` untouched
+    cost: |-
+      The rule that done after a delta makes the pane ready is restated in prose. The code holds it in settleTurn as `set({ status: "ready", errorMessage: undefined, receivedDeltaThisTurn: false })`. A second home outside behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. The settleTurn done branch holds the fact.
+    node: rules/graph-explorer/turn-done-after-a-delta-makes-the-pane-ready
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.getSnapshot docstring, lines 180-182
+    evidence: |-
+      /** Snapshot shape written to / read from the BFF persistence endpoint.
+      Bumped to `version: 2` in TC-02 to carry `layoutAlgorithm`.
+    cost: |-
+      The snapshot version and its fields are restated in prose. The code holds them in the GraphSnapshotV2 interface and the getSnapshot return (`version: 2 as const` with nodes, links, positions, user_pinned, layout_algorithm). The comment is a second home.
+    kind: restates
+    correction: |-
+      Remove the prose. GraphSnapshotV1, GraphSnapshotV2 and getSnapshot hold the fact.
+    node: rules/graph-explorer/a-snapshot-carries-its-version-and-fields
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.hydrate docstring, lines 185-189
+    evidence: |-
+      * Restore a saved snapshot (BR-42). Sets nodes/links/positions/userPinned
+      * from the saved data and makes all nodes immediately visible — NO 1-by-1
+      * reveal animation
+    cost: |-
+      The restore-shows-every-node-at-once rule is restated in prose. The code holds it in hydrate (`revealedIds: new Set<string>(allNodeIds)`, `revealQueue: []`, `status: "ready"`). The comment is a second home.
+    kind: restates
+    correction: |-
+      Remove the prose. hydrate holds the fact.
+    node: rules/graph-explorer/restoring-shows-every-node-at-once
+  - file: src/features/graph/state/graph-store.ts
+    where: |-
+      GraphState.hydrate docstring, lines 190-197
+    evidence: |-
+      - `version: 2` snapshots restore the stored `layoutAlgorithm` too.
+      - Any other version value is treated like v1 + default algorithm — we
+      never throw on hydrate
+    cost: |-
+      The rule that only version 2 restores its layout is restated in prose. The code holds it in `snapshot.version === 2 && "layout_algorithm" in snapshot ? snapshot.layout_algorithm : "force"`. A node change would leave the comment stating the old behaviour.
+    kind: restates
+    correction: |-
+      Remove the prose. The layoutAlgorithm expression in hydrate holds the fact.
+    node: rules/graph-explorer/only-a-version-2-view-restores-its-layout
+read:
+  - node: domain/chat/graph-layout
+    held_at: |-
+      the `GraphLayoutAlgorithm` type, line 57
+    evidence: |-
+      export type GraphLayoutAlgorithm = "force" | "tree" | "radial";
+  - node: domain/chat/graph-view
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares the snapshot payload (`GraphSnapshotV1` and `GraphSnapshotV2`, with `layout_algorithm` inside the snapshot). It declares no view shape with `snapshot` and `updated_at`, so the entity's shape is not held here.
+  - node: domain/graph-explorer/graph-snapshot-version
+    held_at: |-
+      the `version` literals of the `GraphSnapshotV1` and `GraphSnapshotV2` interfaces, lines 205-222
+    evidence: |-
+      export interface GraphSnapshotV1 {
+        version: 1;
+      export interface GraphSnapshotV2 {
+        version: 2;
+  - node: domain/graph-explorer/turn-end
+    held_at: |-
+      the `settleTurn` signature, line 176
+    evidence: |-
+      settleTurn: (frame: "done" | "error") => void;
+  - node: rules/chat-workspace/changing-conversation-clears-the-graph-and-the-detail
+    held_at: |-
+      nowhere
+    evidence: |-
+      `clear: () => { set(makeInitialState()); },` only resets the store. Nothing in this file reacts to a change of active conversation, and no node detail is held here. The only mention of a conversation switch is the comment "Called on conversation switch".
+  - node: rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation
+    held_at: |-
+      nowhere
+    evidence: |-
+      `getSnapshot` and `hydrate` are the primitives for saving and restoring, but nothing in this file reacts to a conversation change or triggers a save when the graph changes.
+  - node: rules/graph-explorer/a-snapshot-carries-its-version-and-fields
+    held_at: |-
+      the `GraphSnapshotV1` and `GraphSnapshotV2` interfaces and the `getSnapshot` return, lines 205-222 and 479-486
+    evidence: |-
+      return {
+        version: 2 as const,
+        nodes: Array.from(nodes.values()),
+        links: Array.from(links.values()),
+        positions: posObj,
+        user_pinned: Array.from(userPinned),
+        layout_algorithm: layoutAlgorithm,
+      };
+  - node: rules/graph-explorer/add-keeps-links-whose-nodes-are-missing
+    held_at: |-
+      addNodes, the links loop, lines 288-290
+    evidence: |-
+      for (const link of delta.links) {
+        nextLinks.set(link.id, link);
+      }
+  - node: rules/graph-explorer/add-marks-a-delta-received
+    held_at: |-
+      the addNodes return, line 296
+    evidence: |-
+      receivedDeltaThisTurn: true,
+  - node: rules/graph-explorer/add-merges-by-identity
+    held_at: |-
+      addNodes, lines 272-290
+    evidence: |-
+      const nextNodes = new Map(state.nodes);
+      nextNodes.set(node.id, node);
+      nextLinks.set(link.id, link);
+  - node: rules/graph-explorer/add-queues-only-unseen-nodes
+    held_at: |-
+      addNodes, line 282
+    evidence: |-
+      if (!state.revealedIds.has(node.id) && !nextNodes.has(node.id)) {
+        nextRevealQueue.push(node.id);
+      }
+  - node: rules/graph-explorer/choosing-a-layout-releases-the-pins
+    held_at: |-
+      setLayoutAlgorithm, lines 400-416
+    evidence: |-
+      if (state.layoutAlgorithm === algo) return {};
+      return {
+        layoutAlgorithm: algo,
+        userPinned: new Set<string>(),
+        layoutNonce: state.layoutNonce + 1,
+      };
+  - node: rules/graph-explorer/ending-a-turn-resets-the-delta-mark
+    held_at: |-
+      all four branches of settleTurn, lines 440-466
+    evidence: |-
+      set({ status: "ready", errorMessage: undefined, receivedDeltaThisTurn: false });
+      set({ receivedDeltaThisTurn: false });
+      set({ status: "error", receivedDeltaThisTurn: false });
+  - node: rules/graph-explorer/layout-defaults-to-force
+    held_at: |-
+      makeInitialState, line 259, for the default. The fallback for an unrecognized algorithm is not in this file. setLayoutAlgorithm and hydrate pass the value through typed but unvalidated, so that half may sit in the layout dispatcher, which is outside this file set.
+    evidence: |-
+      layoutAlgorithm: "force",
+  - node: rules/graph-explorer/moving-a-node-pins-it
+    held_at: |-
+      setNodePosition, lines 379-391
+    evidence: |-
+      if (!state.nodes.has(id)) return {};
+      nextPositions.set(id, position);
+      nextUserPinned.add(id);
+  - node: rules/graph-explorer/only-a-version-2-view-restores-its-layout
+    held_at: |-
+      the layoutAlgorithm expression in hydrate, lines 512-515
+    evidence: |-
+      snapshot.version === 2 && "layout_algorithm" in snapshot
+        ? snapshot.layout_algorithm
+        : "force";
+  - node: rules/graph-explorer/pane-starts-and-clears-empty
+    held_at: |-
+      makeInitialState and clear, lines 234-261 and 418-420
+    evidence: |-
+      status: "empty",
+      errorMessage: undefined,
+      receivedDeltaThisTurn: false,
+      layoutNonce: 0,
+      layoutAlgorithm: "force",
+  - node: rules/graph-explorer/removing-nodes-removes-everything-about-them
+    held_at: |-
+      removeNodes, lines 334-377
+    evidence: |-
+      if (ids.length === 0) return;
+      const nextRevealQueue = state.revealQueue.filter((id) => !idSet.has(id));
+      if (idSet.has(link.source) || idSet.has(link.target)) {
+        nextLinks.delete(linkId);
+  - node: rules/graph-explorer/reorganizing-releases-the-pins
+    held_at: |-
+      resetLayout, lines 393-398
+    evidence: |-
+      set((state) => ({
+        userPinned: new Set<string>(),
+        layoutNonce: state.layoutNonce + 1,
+      }));
+  - node: rules/graph-explorer/replace-keeps-only-the-delta
+    held_at: |-
+      replaceNodes, lines 301-332
+    evidence: |-
+      if (nextNodes.has(link.source) && nextNodes.has(link.target)) {
+        nextLinks.set(link.id, link);
+      }
+      positions: new Map<string, GraphPosition>(),
+      userPinned: new Set<string>(),
+      revealedIds: new Set<string>(),
+      revealQueue,
+      receivedDeltaThisTurn: true,
+  - node: rules/graph-explorer/restoring-keeps-orphan-positions
+    held_at: |-
+      hydrate, positions loop, lines 505-507
+    evidence: |-
+      for (const [id, pos] of Object.entries(snapshot.positions)) {
+        nextPositions.set(id, { x: pos.x, y: pos.y });
+      }
+  - node: rules/graph-explorer/restoring-shows-every-node-at-once
+    held_at: |-
+      the hydrate set call, lines 517-529
+    evidence: |-
+      revealedIds: new Set<string>(allNodeIds),
+      revealQueue: [],
+      status: "ready",
+      receivedDeltaThisTurn: false,
+      errorMessage: undefined,
+  - node: rules/graph-explorer/setting-a-status-keeps-the-error-message-only-for-error
+    held_at: |-
+      setStatus, lines 422-429
+    evidence: |-
+      errorMessage: status === "error" ? errorMessage : undefined,
+  - node: rules/graph-explorer/turn-done-after-a-delta-makes-the-pane-ready
+    held_at: |-
+      settleTurn, done branch, lines 449-451
+    evidence: |-
+      if (receivedDeltaThisTurn) {
+        set({ status: "ready", errorMessage: undefined, receivedDeltaThisTurn: false });
+  - node: rules/graph-explorer/turn-done-without-a-delta-leaves-the-status
+    held_at: |-
+      settleTurn, done branch else, lines 451-453
+    evidence: |-
+      } else {
+        set({ receivedDeltaThisTurn: false });
+      }
+  - node: rules/graph-explorer/turn-error-ends-a-busy-pane-in-error
+    held_at: |-
+      graphToolInFlight and the settleTurn error branch, lines 227-229 and 461-465
+    evidence: |-
+      return status === "loading" || status === "revealing";
+      if (graphToolInFlight(status)) {
+        set({ status: "error", receivedDeltaThisTurn: false });
+looked_past: |-
+  dequeueReveal pops the head of revealQueue, which a node outside this set (rules/graph-explorer/reveal-goes-one-node-at-a-time-in-queue-order) also covers. That node is bound to useGraphReveal.ts, and the code here is a primitive rather than a second statement of the rule. The comments naming the conversation switch and the persistence caller concern behaviour held outside this file.
+candidates_opened:
+  - domain/graph-explorer/graph-pane

@@ -1,0 +1,213 @@
+findings:
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the header docblock, lines 1-21 ("SAVE (debounced ~800ms)")
+    evidence: |-
+      * - SAVE (debounced ~800ms): subscribe to the store's nodes/positions/
+      *    layoutNonce identity — the 3 change points: graph_delta→addNodes,
+    cost: >-
+      The 800 ms wait is stated in the docblock as "~800ms", approximate, while the code holds 800 exactly. A reader who trusts the comment gets a different number than the node, and the comment is a second home for the fact that nothing keeps in step with the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the code, `}, 800);` in handleStoreChange, and by the node.
+    node: rules/graph-explorer/a-save-waits-800-milliseconds
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the header docblock, guards (a) and (b), lines 15-20, and the comments at lines 121 and 124-125
+    evidence: |-
+      *    (a) skip save when nodes.size === 0 (never overwrite a saved graph
+      *        with empty — also makes the clear() on switch a no-op for saving).
+      *    (b) skip the store-write caused by hydrate() itself (justHydrated ref)
+    cost: >-
+      The save-guard order (conversation, then at least one node, then the post-restore skip) is described a second time in prose beside the code that holds it. When the node moves, the comment keeps saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The guards are held by `if (!conversationId) return;`, `if (nodes.size === 0) return;` and the `justHydrated.current` branch in handleStoreChange.
+    node: rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the useEffect subscriber comment, lines 155-158, and the header docblock lines 12-14
+    evidence: |-
+      // Fire on any of the 3 change points:
+      //   1. addNodes       → nodes Map identity changes
+      //   2. setNodePosition → positions Map identity changes
+      //   3. resetLayout     → layoutNonce increments
+    cost: >-
+      The save triggers are listed in prose a second time, with store action names the node does not use. The comment can drift from the `if` that holds the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The triggers are held by the `state.nodes !== prevState.nodes || state.positions !== prevState.positions || state.layoutNonce !== prevState.layoutNonce` condition.
+    node: rules/graph-explorer/a-save-follows-a-graph-change
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the catch comments, lines 104-106 and 147-149
+    evidence: |-
+      // Restore is best-effort — a network error / 404 leaves the graph
+      // in its cleared state (the user sees an empty graph until the next
+      // turn produces a fresh delta). Do not surface the error.
+      // Save is best-effort — a transient failure is silent. The next
+      // user interaction will trigger another debounced save attempt.
+    cost: >-
+      Prose states that failures are silent, and also what happens afterwards (the user sees an empty graph, the next interaction saves again). The empty catch blocks hold the silence, and the node holds no retry. A reader gets a second, wider account of failure behavior that the node does not state.
+    kind: restates
+    correction: >-
+      Remove the prose. Silence is held by `catch {}` and `.catch(() => {})`, and the no-retry rule by the absence of any re-send.
+    node: rules/graph-explorer/view-failures-are-silent
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the GraphViewSnapshot doc comment, lines 27-30
+    evidence: |-
+      /** Wire shape of the snapshot stored in chat_graph_view.snapshot.
+       *  Discriminated by `version` — TC-02 bumps to v2 with an additive
+       *  `layout_algorithm` field. The hook accepts both versions on restore so
+       *  pre-TC-02 saved graphs keep working. */
+    cost: >-
+      The version history and the "v2 adds layout_algorithm" rule are told in prose next to the type that declares them. The comment cites a ticket and a table name the node does not carry.
+    kind: restates
+    correction: >-
+      Remove the prose. The union type and the `snapshot.version === 2` branch hold the fact.
+    node: rules/graph-explorer/a-saved-view-holds-positions-and-pins
+  - file: src/features/graph/api/use-graph-persistence.ts
+    where: >-
+      the timer callback in handleStoreChange, lines 136-138
+    evidence: |-
+      const snapshot = useGraphStore.getState().getSnapshot();
+      // nodes.size guard already passed — double-check after debounce.
+      if (snapshot.nodes.length === 0) return;
+    cost: >-
+      The code applies a second refusal when the wait ends: a save is skipped if the pane has emptied during the 800 ms. The node requires at least one node only at the moment of the change. The step lives only here, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      Give the fact a place in the save-guard rule, or in a sibling rule, stating whether the node count is re-checked when the wait ends.
+    node: rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+read:
+  - node: contracts/graph-explorer/bff-graph-view
+    held_at: >-
+      the GET in restoreSnapshot (lines 72-75) and the PUT in the debounce timer (lines 139-145)
+    evidence: |-
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/graph`,
+      { method: "GET", headers: authHeader() },
+      ...
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify(snapshot),
+  - node: domain/chat/graph-layout
+    held_at: >-
+      the `layout_algorithm` member of version 2 of the GraphViewSnapshot type, line 45
+    evidence: |-
+      readonly layout_algorithm: "force" | "tree" | "radial";
+  - node: domain/graph-explorer/graph-pane
+    held_at: >-
+      the GraphViewSnapshot type (lines 31-46) declares nodes, links, positions, user_pinned and layout_algorithm. The remaining pane attributes (status, reveal queue and the rest) are declared in the store, not this file.
+    evidence: |-
+      readonly nodes: unknown[];
+      readonly links: unknown[];
+      readonly positions: Record<string, { x: number; y: number }>;
+      readonly user_pinned: string[];
+  - node: domain/graph-explorer/graph-snapshot-version
+    held_at: >-
+      the `version` discriminants of the GraphViewSnapshot union, lines 33 and 40
+    evidence: |-
+      readonly version: 1;
+      ...
+      readonly version: 2;
+  - node: rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+    held_at: >-
+      handleStoreChange, lines 118-129, in the order conversation, nodes, then skip. A further refusal after the wait is reported as a finding.
+    evidence: |-
+      if (!conversationId) return;
+      const { nodes } = useGraphStore.getState();
+      if (nodes.size === 0) return;
+      if (justHydrated.current) {
+        justHydrated.current = false;
+        return;
+      }
+  - node: rules/graph-explorer/a-late-restore-answer-is-discarded
+    held_at: >-
+      the `cancelled` flag in the restore effect, lines 67, 76 and 111
+    evidence: |-
+      if (cancelled) return;
+      ...
+      return () => { cancelled = true; };
+  - node: rules/graph-explorer/a-pending-save-is-dropped-on-leaving
+    held_at: >-
+      the cleanup of the subscribe effect, lines 167-173, which re-runs when conversationId changes (handleStoreChange depends on it) and when the screen unmounts
+    evidence: |-
+      return () => {
+        unsubscribe();
+        if (debounceTimer.current !== null) {
+          clearTimeout(debounceTimer.current);
+          debounceTimer.current = null;
+        }
+      };
+  - node: rules/graph-explorer/a-save-follows-a-graph-change
+    held_at: >-
+      the subscribe callback condition, lines 159-165
+    evidence: |-
+      state.nodes !== prevState.nodes ||
+      state.positions !== prevState.positions ||
+      state.layoutNonce !== prevState.layoutNonce
+  - node: rules/graph-explorer/a-save-is-a-put-of-json
+    held_at: >-
+      the http call in the timer callback, lines 139-145
+    evidence: |-
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify(snapshot),
+  - node: rules/graph-explorer/a-save-waits-800-milliseconds
+    held_at: >-
+      the setTimeout in handleStoreChange, lines 131-150. The previous timer is cleared on each change, so each change restarts the wait.
+    evidence: |-
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current);
+      }
+      debounceTimer.current = setTimeout(() => {
+      ...
+      }, 800);
+  - node: rules/graph-explorer/a-saved-view-holds-positions-and-pins
+    held_at: >-
+      the GraphViewSnapshot type, lines 31-46. The body is built by the store's getSnapshot, which is not in this file.
+    evidence: |-
+      readonly version: 2;
+      readonly nodes: unknown[];
+      readonly links: unknown[];
+      readonly positions: Record<string, { x: number; y: number }>;
+      readonly user_pinned: string[];
+      readonly layout_algorithm: "force" | "tree" | "radial";
+  - node: rules/graph-explorer/graph-view-requests-carry-the-same-token-header-as-chat
+    held_at: >-
+      the import of authHeader from the chat feature and its use on both requests, lines 24, 74 and 143
+    evidence: |-
+      import { authHeader } from "@/features/chat/api/_request";
+      ...
+      headers: { "Content-Type": "application/json", ...authHeader() },
+  - node: rules/graph-explorer/restore-reads-the-saved-view-of-the-conversation
+    held_at: >-
+      the restore effect, lines 64-112. The effect returns early without a conversation, a null answer changes nothing, and a present view goes to hydrate.
+    evidence: |-
+      if (!conversationId) return;
+      ...
+      if (snapshot !== null) {
+        justHydrated.current = true;
+        hydratedFor.current = conversationId;
+  - node: rules/graph-explorer/restore-restores-the-layout-of-a-version-2-view
+    held_at: >-
+      the version branch in restoreSnapshot, lines 84-101
+    evidence: |-
+      if (snapshot.version === 2) {
+        useGraphStore.getState().hydrate({
+          version: 2,
+          ...
+          layout_algorithm: snapshot.layout_algorithm,
+      } else {
+        useGraphStore.getState().hydrate({
+          version: 1,
+  - node: rules/graph-explorer/view-failures-are-silent
+    held_at: >-
+      the empty `catch {}` of restoreSnapshot (lines 103-107) and the `.catch(() => {})` of the PUT (lines 146-149). No retry is issued.
+    evidence: |-
+      } catch {
+      ...
+      ).catch(() => {
+looked_past: >-
+  The `hydratedFor` ref (written, never read), the `import("../types")` inline casts, and the comment-only citations of the plan file and docs/specs/domains/chat/openapi.yaml are not facts of the nodes: the first two are code-review matters, and the citations are prose.

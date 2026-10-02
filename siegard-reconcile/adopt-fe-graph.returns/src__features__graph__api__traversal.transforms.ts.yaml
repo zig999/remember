@@ -1,0 +1,105 @@
+findings:
+  - file: src/features/graph/api/traversal.transforms.ts
+    where: |-
+      the module docstring, lines 4-11 (spec references, link direction and neighbour lookup)
+    evidence: |-
+      link direction: `link.source_node_id === nodeId` → "→" (outgoing,
+           label from `link.link_type`); else "←" (incoming, label from
+           `link.link_inverse_name`).
+    cost: |-
+      The docstring states the direction and wording rule a second time as prose. The code in toLinkView already holds it, so a reader may take the comment as the place the rule is decided. The comment cites a `docs/specs` path rather than the node, so it will not follow the node if the node moves.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route. The code in this same file holds both facts: `const isOutgoing = wire.source_node_id === currentNodeId;` and `directionLabel: isOutgoing ? wire.link_type : wire.link_inverse_name`.
+    node: rules/graph-explorer/direction-picks-the-link-wording
+  - file: src/features/graph/api/traversal.transforms.ts
+    where: |-
+      the module docstring, line 10 (neighbour canonical name lookup)
+    evidence: |-
+      neighbor canonical name: look up `result.nodes` by the other endpoint.
+    cost: |-
+      The docstring restates the neighbour rule in prose. The code holds it in toLinkView through `neighborId` and `nodesById.get(neighborId)`, so the comment is a second home for the same fact.
+    kind: restates
+    correction: |-
+      Remove the line through the comment route. The code in this file holds the fact: `const neighborId = isOutgoing ? wire.target_node_id : wire.source_node_id;`.
+    node: rules/graph-explorer/the-neighbour-is-the-other-end
+  - file: src/features/graph/api/traversal.transforms.ts
+    where: |-
+      the comment above neighborName, lines 50-52
+    evidence: |-
+      // Defensive: if the BFF omitted the neighbor from `nodes[]` (should not
+      // happen — `TraversalResult.nodes` MUST include all reachable nodes), fall
+      // back to the raw id. Surface still renders; we never throw.
+    cost: |-
+      The comment states the fall-back to the id with an empty type as prose. The code holds it in `neighbor?.canonical_name ?? neighborId` and `neighbor?.node_type ?? ""`, so the fact has two homes.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. The code in this file holds the fact.
+    node: rules/graph-explorer/the-neighbour-is-the-other-end
+  - file: src/features/graph/api/traversal.transforms.ts
+    where: |-
+      the comment above confidenceLabel, lines 67-69
+    evidence: |-
+      // `formatConfidenceLabel` returns `null` for `null|undefined|NaN`; here
+          // the wire field is required so we coerce defensively to "0%" to avoid
+          // a blank cell on a malformed payload.
+    cost: |-
+      The comment restates the 0% rule as prose. The code holds it in `formatConfidenceLabel(wire.confidence) ?? "0%"`, so the rule has a second home outside behaviour.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. The code holds the fact.
+    node: rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+read:
+  - node: rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node
+    held_at: |-
+      toLinkView, the `isOutgoing` and `direction` constants, lines 46-47
+    evidence: |-
+      const isOutgoing = wire.source_node_id === currentNodeId;
+        const direction: LinkDirection = isOutgoing ? "outgoing" : "incoming";
+  - node: rules/graph-explorer/a-relationship-shows-fixed-fields
+    held_at: |-
+      the object returned by toLinkView, lines 55-75. It carries linkType, effectiveStatus, isInEffect, confidence, confidenceLabel, validFromLabel, validToLabel, flags and provenance. It carries none of status, is_current, recorded_at, superseded_at, hop or score.
+    evidence: |-
+      linkType: wire.link_type,
+          effectiveStatus: wire.effective_status,
+          isInEffect: wire.is_in_effect,
+          confidence: wire.confidence,
+          confidenceLabel: formatConfidenceLabel(wire.confidence) ?? "0%",
+          validFromLabel: formatDateLabel(wire.valid_from),
+          validToLabel: formatDateLabel(wire.valid_to),
+          flags: wire.flags ?? [],
+          provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  - node: rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+    held_at: |-
+      the confidenceLabel field of toLinkView, line 70. The 0% fallback for fragment confidence is not in this file.
+    evidence: |-
+      confidenceLabel: formatConfidenceLabel(wire.confidence) ?? "0%",
+  - node: rules/graph-explorer/direction-picks-the-link-wording
+    held_at: |-
+      the directionLabel and directionArrow fields of toLinkView, lines 58 and 60
+    evidence: |-
+      directionLabel: isOutgoing ? wire.link_type : wire.link_inverse_name,
+          direction,
+          directionArrow: isOutgoing ? "→" : "←",
+  - node: rules/graph-explorer/lists-keep-the-answered-order
+    held_at: |-
+      toTraversalResult, line 85. The links are mapped one to one, and indexNodes does not reorder the nodes.
+    evidence: |-
+      links: wire.links.map((l) => toLinkView(l, wire.starting_node_id, nodesById)),
+  - node: rules/graph-explorer/missing-flags-and-provenance-are-empty-lists
+    held_at: |-
+      the flags and provenance fields of toLinkView, lines 73-74
+    evidence: |-
+      flags: wire.flags ?? [],
+          provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  - node: rules/graph-explorer/the-neighbour-is-the-other-end
+    held_at: |-
+      toLinkView, lines 48-53 and 61-63
+    evidence: |-
+      const neighborId = isOutgoing ? wire.target_node_id : wire.source_node_id;
+        const neighbor = nodesById.get(neighborId);
+        const neighborName = neighbor?.canonical_name ?? neighborId;
+        const neighborType = neighbor?.node_type ?? "";
+looked_past: |-
+  The comment on lines 50-52 also says `TraversalResult.nodes` MUST include all reachable nodes, a fact no code or emitted text in this file carries and no contract under specification/contracts/graph-explorer states (a grep for "reachable" returned nothing), so it is prose only and goes to the comment route.
+candidates_opened: []

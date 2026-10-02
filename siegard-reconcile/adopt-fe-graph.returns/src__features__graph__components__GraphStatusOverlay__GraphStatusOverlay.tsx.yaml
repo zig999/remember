@@ -1,0 +1,107 @@
+findings:
+  - file: src/features/graph/components/GraphStatusOverlay/GraphStatusOverlay.tsx
+    where: >-
+      the className of the GlassSurface card, line 90 (inside the JSX at lines 81-95)
+    evidence: |-
+      className={cn(
+                "pointer-events-auto",
+                "flex items-center gap-sm px-lg py-md",
+                "min-w-0 max-w-md",
+              )}
+    cost: >-
+      The node says the overlay must not capture the pointer. The outer wrapper does let events through, but the card re-enables them with pointer-events-auto, so the card captures the pointer. Pan, zoom and click on the canvas stop working under the card, which sits at the centre of the canvas. A reader who trusts the node would expect the whole overlay to be transparent to the pointer. The comments in the file (lines 24-27 and 86-88) present the re-enable as intended, so it reads as a decision made in code.
+    kind: contradicts
+    correction: >-
+      Either the card drops pointer-events-auto so nothing in the overlay captures the pointer, or the node is amended through analysis to state the exception. The file cannot decide which.
+    node: rules/graph-explorer/the-overlay-lets-the-pointer-through
+  - file: src/features/graph/components/GraphStatusOverlay/GraphStatusOverlay.tsx
+    where: >-
+      the file header comment lines 12-14 and 19, and the comment above GRAPH_STATUS_ERROR_DEFAULT_COPY lines 41-42
+    evidence: |-
+      *  - `error`   — same surface with an error-coloured accent and the error
+       *                blurb (or a default pt-BR sentence when no message is given).
+      ...
+       *  - No retry button (I-6 from temp/chat-graphspace-plan.md §6.7).
+    cost: >-
+      Prose states the node's rule (error message or the default, and no action) a second time. The code already holds it, in the message expression and in the absence of any control in the JSX. The comment cites temp/chat-graphspace-plan.md as the authority, so a reader looking for the rule's home is sent to a document that is not the specification.
+    kind: restates
+    correction: >-
+      Remove the comments. The fact is held by the message expression and the JSX of this same file, and by the node.
+    node: rules/graph-explorer/error-overlay-shows-the-message-or-the-default
+  - file: src/features/graph/components/GraphStatusOverlay/GraphStatusOverlay.tsx
+    where: >-
+      the file header comment line 12 and the comment above GRAPH_STATUS_LOADING_COPY, lines 37-38
+    evidence: |-
+      *  - `loading` — frosted glass panel with the spinner and "Buscando na memória…".
+    cost: >-
+      Prose restates the loading overlay's text and spinner a second time. The code holds both, in the constant and in the Loader2 branch, so the comment is a second home for the fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comments. The fact is held by GRAPH_STATUS_LOADING_COPY and the Loader2 branch in this same file.
+    node: rules/graph-explorer/loading-overlay-says-it-is-searching
+  - file: src/features/graph/components/GraphStatusOverlay/GraphStatusOverlay.tsx
+    where: >-
+      the file header comment lines 16-18 and the comment above role/aria-live, lines 73-75
+    evidence: |-
+      *  - `aria-live="polite"` — status changes are announced to assistive tech
+       *    without yanking focus (GraphSpace.component.spec.md §8).
+    cost: >-
+      Prose restates the polite status region rule and cites GraphSpace.component.spec.md as its authority. The code holds the rule in role="status", aria-live="polite" and the aria-label on the card, so a reader may take the cited document, not the node, as the place where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the comments. The fact is held by role, aria-live and aria-label in the JSX of this same file.
+    node: rules/graph-explorer/the-overlay-is-a-polite-status-region
+  - file: src/features/graph/components/GraphStatusOverlay/GraphStatusOverlay.tsx
+    where: >-
+      the comment above the message span's className, lines 113-115
+    evidence: |-
+      // Truncate horizontally instead of wrapping more than two
+      // lines — error messages from the backend are usually short
+      // sentences; long-form goes to the chat bubble.
+    cost: >-
+      Prose restates the two-line clamp that "min-w-0 line-clamp-2" already enforces. It adds a claim about backend message length and the chat bubble that no code and no node in this set holds.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the line-clamp-2 class on the span in this same file.
+    node: rules/graph-explorer/the-overlay-message-is-two-lines-at-most
+read:
+  - node: rules/graph-explorer/error-overlay-shows-the-message-or-the-default
+    held_at: >-
+      the message constant, lines 53-55, with GRAPH_STATUS_ERROR_DEFAULT_COPY at lines 43-44. The JSX has no button or other control.
+    evidence: |-
+      const message = isError
+          ? (errorMessage ?? GRAPH_STATUS_ERROR_DEFAULT_COPY)
+          : GRAPH_STATUS_LOADING_COPY;
+      export const GRAPH_STATUS_ERROR_DEFAULT_COPY =
+        "Não foi possível carregar o grafo agora.";
+  - node: rules/graph-explorer/loading-overlay-says-it-is-searching
+    held_at: >-
+      GRAPH_STATUS_LOADING_COPY at line 39, and the Loader2 branch of the JSX at lines 100-105
+    evidence: |-
+      export const GRAPH_STATUS_LOADING_COPY = "Buscando na memória…";
+      {!isError && (
+          <Loader2
+            className="size-4 shrink-0 animate-spin text-foreground"
+  - node: rules/graph-explorer/the-overlay-is-a-polite-status-region
+    held_at: >-
+      the outer div at lines 76-77 and the aria-label passed to GlassSurface at line 94. Whether GlassSurface forwards aria-label to the DOM is not visible in this file.
+    evidence: |-
+      role="status"
+      aria-live="polite"
+      aria-label={isError ? "Erro do grafo" : "Carregando grafo"}
+  - node: rules/graph-explorer/the-overlay-lets-the-pointer-through
+    held_at: >-
+      the outer div's className at lines 67-72 holds "pointer-events-none". The card's "pointer-events-auto" at line 90 contradicts the rule, as the finding records.
+    evidence: |-
+      "absolute inset-0 z-frame",
+      "flex items-center justify-center",
+      "pointer-events-none",
+      ...
+      "pointer-events-auto",
+  - node: rules/graph-explorer/the-overlay-message-is-two-lines-at-most
+    held_at: >-
+      the className of the message span, line 116
+    evidence: |-
+      "min-w-0 line-clamp-2",
+looked_past: >-
+  The glass-card styling, the error accent, the spinner's aria-hidden and size, the z-frame stacking and the comment citations of tokens.md and CLAUDE.md are presentation and prose with no domain fact held by a node, so they are other judgments' to make.

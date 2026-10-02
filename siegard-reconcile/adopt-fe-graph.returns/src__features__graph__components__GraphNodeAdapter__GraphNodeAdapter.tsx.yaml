@@ -1,0 +1,58 @@
+findings:
+  - file: src/features/graph/components/GraphNodeAdapter/GraphNodeAdapter.tsx
+    where: >-
+      the file header docstring, lines 7-12 (items 2 and 3 of the adapter's responsibilities)
+    evidence: |-
+      * 2. Maps `NodeProps<GraphNode>.data` (a `GraphNodeData` payload) to the
+      *         presentational `GraphNodeProps`.
+      *      3. Forwards React Flow's `selected` flag so the node renders its
+      *         focus ring when the user selects it.
+    cost: >-
+      The docstring says in prose that the node is drawn with its type, label, optional state, optional subtitle and selected flag. The component body already does this (`<DsGraphNode type={data.type} label={data.label} {...stateProp} {...subtitleProp} selected={selected ?? false} />`). A reader can take the docstring as a second home for the fact, and it will not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file holds the fact, and the node binds it.
+    node: rules/graph-explorer/a-node-is-drawn-with-its-type-label-state-and-selection
+  - file: src/features/graph/components/GraphNodeAdapter/GraphNodeAdapter.tsx
+    where: >-
+      the comment above HANDLE_CLASSES, lines 30-44
+    evidence: |-
+      The handles MUST remain in the DOM
+      — React Flow still uses them to recognise this node as a routing
+      endpoint and to read the cardinal `Position` for the bezier handle
+      direction — but they MUST NOT be visible or interactive. `opacity-0`
+      removes the visual; `pointer-events-none` removes the hit area so the
+      handle never intercepts node drag/click events.
+    cost: >-
+      The comment says in prose that the link endpoints are invisible and inert. The code already holds this through `isConnectable={false}`, `aria-hidden="true"` and the `opacity-0 pointer-events-none` classes in HANDLE_CLASSES. The prose is a second home for the node's rule. Anyone who edits the rule will see the comment as one more place to keep in step.
+    kind: restates
+    correction: >-
+      Remove the comment. The `<Handle>` props and HANDLE_CLASSES in this file hold the fact, and the node binds it.
+    node: rules/graph-explorer/a-node-s-link-endpoints-are-inert
+read:
+  - node: rules/graph-explorer/a-node-is-drawn-with-its-type-label-state-and-selection
+    held_at: >-
+      the `<DsGraphNode ... />` element in GraphNodeAdapter (lines 66-72), with `stateProp` and `subtitleProp` built at lines 54 and 56
+    evidence: |-
+      <DsGraphNode
+        type={data.type}
+        label={data.label}
+        {...stateProp}
+        {...subtitleProp}
+        selected={selected ?? false}
+      />
+  - node: rules/graph-explorer/a-node-s-link-endpoints-are-inert
+    held_at: >-
+      the two `<Handle>` elements (lines 59-65 and 73-79) and the HANDLE_CLASSES constant (line 45)
+    evidence: |-
+      <Handle
+        type="target"
+        position={Position.Top}
+        isConnectable={false}
+        aria-hidden="true"
+        className={HANDLE_CLASSES}
+      />
+      const HANDLE_CLASSES =
+        "!size-2 !min-w-0 !rounded-pill !border !border-border-glass !bg-surface-glass-panel opacity-0 pointer-events-none";
+looked_past: >-
+  Prose in the header docstring names the structural unidirectionality of AC-U.3, the no-`forwardRef` convention and the "no event listeners" stance. These are about code structure rather than a domain fact of these two nodes, so they belong to another judgment.

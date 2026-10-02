@@ -1,0 +1,176 @@
+findings:
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      header docblock lines 9 and 19 (the `empty` bullet and the `{status==="empty" && <GraphEmptyState />}` composition line), and the comment at lines 184-189 above `showEmptyState`
+    evidence: |-
+      * - `empty`                     → `GraphEmptyState` (no canvas mounted).
+      // The empty-state shortcut: spec §3 rule — "when status is 'empty' and
+      // the pane has never had data, only `GraphEmptyState` is shown (no
+      // canvas)".
+    cost: |-
+      Three comments restate when the empty state shows alone. `showEmptyState = status === "empty" && nodes.length === 0` already holds that. The comments word the condition as "never had data", while the node and the code say "holds no nodes". When the node moves, the comments keep the old wording and nothing flags them.
+    kind: restates
+    correction: |-
+      Remove the three comments. The fact is already held by the `showEmptyState` branch, and the node is bound to this file.
+    node: rules/graph-explorer/empty-status-without-nodes-shows-only-the-empty-state
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      header docblock lines 10-14, and the comment at lines 128-129 above `overlayVariant`
+    evidence: |-
+      *   - `loading` / `error`         → `GraphStatusOverlay` over the canvas
+      *                                    (canvas remains visible when prior
+      *                                    nodes existed — overlay is a partial
+      *                                    scrim).
+      // Loading / error overlay variant. `null` skips the overlay entirely
+      // for `revealing` / `ready` — the canvas is fully visible.
+    cost: |-
+      The overlay rule is stated in prose a second time. The code that holds it is `overlayVariant` and the `GraphStatusOverlay` rendered after `GraphCanvas`. The comment adds "partial scrim", which is a visual detail no node holds. The comment is where a reader would look for the rule, but it is not what runs.
+    kind: restates
+    correction: |-
+      Remove the comments. `overlayVariant` and the conditional `GraphStatusOverlay` hold the fact.
+    node: rules/graph-explorer/loading-and-error-overlay-the-canvas
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      header docblock line 18, the composition sketch
+    evidence: |-
+      *   <section role="region" aria-label="Grafo de conhecimento">
+    cost: |-
+      The accessible name appears in a docblock sketch as well as in the JSX. A change to the name would have to reach two places, and the sketch would stay stale.
+    kind: restates
+    correction: |-
+      Remove the sketch. The `<section role="region" aria-label="Grafo de conhecimento">` element holds the fact.
+    node: rules/graph-explorer/pane-is-a-region-named-after-the-graph
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      header docblock lines 26-30, and the comment at lines 222-225 above `<ReactFlowProvider>`
+    evidence: |-
+      * provider stays mounted across status transitions so the React Flow
+      * instance is stable — toggling the provider would re-create the viewport
+      // Provider stays mounted across loading/revealing/ready/error so
+      // the React Flow instance + viewport survive status transitions.
+    cost: |-
+      The mounted-canvas rule is restated twice in prose. The ternary on `showEmptyState` holds it, and `ReactFlowProvider` and `GraphCanvasRegion` are rendered in every non-empty branch. If the node changes, the two comments stay behind and a reader will believe them over the ternary.
+    kind: restates
+    correction: |-
+      Remove both comments. The `showEmptyState ? <GraphEmptyState /> : <ReactFlowProvider>…` ternary holds the fact.
+    node: rules/graph-explorer/the-canvas-stays-mounted-outside-the-empty-state
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      comments at lines 107-119 above `setNodePosition`, `resetLayout`, `layoutAlgorithm` and `setLayoutAlgorithm`
+    evidence: |-
+      // Drag-and-drop commit (TC-FE drag). The store action pins the dragged
+      // node; `useForceLayout` honours the pin on the next force pass.
+      // "Reorganizar" (Phase 2) — re-flow the layout, discarding user drags.
+      // TC-02 — algorithm picker.
+    cost: |-
+      The comments restate which store action each canvas control is wired to, and add claims about pinning and discarding drags. The code holds the wiring: `onNodePositionCommit={setNodePosition}`, `onResetLayout={resetLayout}`, `layoutAlgorithm={layoutAlgorithm}` and `onLayoutAlgorithmChange={setLayoutAlgorithm}`. The pinning and discarding claims belong to the store's own nodes.
+    kind: restates
+    correction: |-
+      Remove the comments. The four props on `<GraphCanvas>` hold the wiring.
+    node: rules/graph-explorer/the-pane-wires-the-owner-s-arrangement-to-the-store
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      comment at lines 175-178 above `revealStaggerMs = DEFAULT_REVEAL_STAGGER_MS`
+    evidence: |-
+      // Consumed by `useGraphReveal` (TC-FE-09). Default in this layer must
+      // mirror GraphSpace.component.spec.md §2 (90ms). The hook also exports
+      // its own DEFAULT_REVEAL_STAGGER_MS — both sources are kept in sync via
+      // a shared constant.
+    cost: |-
+      The comment states a literal gap of 90ms that no node holds. The node says only that the default is the reveal step's own default gap. The code takes that default by importing the constant, and the literal 90 sits in `src/features/graph/hooks/useGraphReveal.ts` (`export const DEFAULT_REVEAL_STAGGER_MS = 90;`). A reader who trusts the comment treats 90ms as decided here.
+    kind: restates
+    correction: |-
+      Remove the comment. The default parameter `revealStaggerMs = DEFAULT_REVEAL_STAGGER_MS` holds the fact. The value 90 is code in the hook file, which is another judgment's.
+    node: rules/graph-explorer/the-pane-reveals-at-the-hooks-default-gap
+  - file: src/features/graph/components/GraphSpace/GraphSpace.tsx
+    where: |-
+      comments at lines 192-194 above `isBusy`, and at lines 205-207 above the `aria-busy` spread
+    evidence: |-
+      // `aria-busy="true"` only while the graph is actively in flight or
+      // animating in — covers `loading` AND `revealing` per spec §8.
+      // `aria-busy` reflects in-flight state for assistive tech (spec §8).
+    cost: |-
+      The busy rule is stated twice in prose and cites a spec section. The code already holds it in `isBusy = status === "loading" || status === "revealing"` and `{...(isBusy ? { "aria-busy": true } : {})}`. The citation points at a document rather than the node.
+    kind: restates
+    correction: |-
+      Remove both comments. `isBusy` and the conditional `aria-busy` attribute hold the fact.
+    node: rules/graph-explorer/pane-is-busy-only-while-loading-or-revealing
+read:
+  - node: domain/graph-explorer/graph-pane-status
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file does not declare the five-value enumeration. It only compares `status` against "empty", "loading", "error" and "revealing" and takes the type from `GraphSpaceProps["status"]` imported from "./GraphSpace.types". The shape is declared in another file.
+  - node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+    held_at: |-
+      GraphSpace forwards `onNodeSelect` unchanged (`canvasNodeSelectProp`, spread onto GraphCanvas), lines 141-142 and 160
+    evidence: |-
+      const canvasNodeSelectProp =
+          onNodeSelect !== undefined ? { onNodeSelect } : {};
+      ...
+      {...canvasNodeSelectProp}
+  - node: rules/graph-explorer/empty-status-without-nodes-shows-only-the-empty-state
+    held_at: |-
+      `showEmptyState` and the ternary in GraphSpace, lines 190 and 219-237
+    evidence: |-
+      const showEmptyState = status === "empty" && nodes.length === 0;
+      ...
+      {showEmptyState ? (
+        <GraphEmptyState />
+      ) : (
+        <ReactFlowProvider>
+  - node: rules/graph-explorer/loading-and-error-overlay-the-canvas
+    held_at: |-
+      `overlayVariant` and the conditional `GraphStatusOverlay` rendered after `GraphCanvas` in GraphCanvasRegion, lines 130-131 and 151-165
+    evidence: |-
+      const overlayVariant =
+          status === "loading" ? "loading" : status === "error" ? "error" : null;
+      ...
+      <GraphCanvas nodes={nodes} links={links} ... />
+      {overlayVariant !== null && (
+        <GraphStatusOverlay variant={overlayVariant} {...overlayErrorProp} />
+      )}
+  - node: rules/graph-explorer/pane-is-a-region-named-after-the-graph
+    held_at: |-
+      the `<section>` in GraphSpace, lines 202-204; nodes, links, status and errorMessage arrive as props and the file never writes them
+    evidence: |-
+      <section
+        role="region"
+        aria-label="Grafo de conhecimento"
+  - node: rules/graph-explorer/pane-is-busy-only-while-loading-or-revealing
+    held_at: |-
+      `isBusy` and the conditional `aria-busy` spread in GraphSpace, lines 194 and 208
+    evidence: |-
+      const isBusy = status === "loading" || status === "revealing";
+      ...
+      {...(isBusy ? { "aria-busy": true } : {})}
+  - node: rules/graph-explorer/the-canvas-stays-mounted-outside-the-empty-state
+    held_at: |-
+      the else branch of the `showEmptyState` ternary, lines 226-236, which renders `ReactFlowProvider` and `GraphCanvasRegion` for every status other than the empty state
+    evidence: |-
+      <ReactFlowProvider>
+        <GraphCanvasRegion
+          nodes={nodes}
+          links={links}
+          status={status}
+  - node: rules/graph-explorer/the-pane-reveals-at-the-hooks-default-gap
+    held_at: |-
+      the default parameter in the GraphSpace signature, line 179, and its use at line 126
+    evidence: |-
+      revealStaggerMs = DEFAULT_REVEAL_STAGGER_MS,
+      ...
+      const revealedIds = useGraphReveal(revealStaggerMs);
+  - node: rules/graph-explorer/the-pane-wires-the-owner-s-arrangement-to-the-store
+    held_at: |-
+      the store selectors at lines 111-119 and the props on `<GraphCanvas>` at lines 156-159
+    evidence: |-
+      const setNodePosition = useGraphStore((s) => s.setNodePosition);
+      const resetLayout = useGraphStore((s) => s.resetLayout);
+      ...
+      onNodePositionCommit={setNodePosition}
+      onResetLayout={resetLayout}
+      layoutAlgorithm={layoutAlgorithm}
+      onLayoutAlgorithmChange={setLayoutAlgorithm}
+looked_past: |-
+  The file's comments also state facts that no code in this file holds, and no node of this set holds either: the "ONLY caller of useForceLayout" contract, the "dispatcher clears nodes before setting status to empty" claim, the structural no-import-from-chat test, and the claim that `useGraphReveal` owns the revealing-to-ready status transition (whether that hook writing status conflicts with "without writing them" is for the hook's own file to show). These are prose for the comment route, not findings here.
+candidates_opened: []

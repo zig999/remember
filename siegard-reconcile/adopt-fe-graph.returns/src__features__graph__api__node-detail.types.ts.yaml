@@ -1,0 +1,185 @@
+findings:
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      line 36, the exported type NodeWireStatus
+    evidence: |-
+      export type NodeWireStatus = "active" | "needs_review" | "merged" | "deleted";
+      Node domain/knowledge-base/node-status holds the values: active, needs-review, merged, deleted.
+    cost: >-
+      The node-status enumeration spells the second value with a hyphen, and this file's declaration of the node's
+      states spells it with an underscore. A reader who goes to the node for the value finds a different spelling
+      from the one the code compares against. Rules of the same context (node-badge-follows-the-node-status,
+      node-state-follows-its-status-alone) also use needs_review, so the specification holds two spellings and
+      nobody can tell which was decided.
+    kind: contradicts
+    correction: >-
+      Decide which spelling the enumeration holds, and align the node or this declaration to that one.
+    node: domain/knowledge-base/node-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 39-44, the exported type AttributeWireAssertionStatus
+    evidence: |-
+      export type AttributeWireAssertionStatus =
+        | "proposed"
+        | "accepted"
+        | "uncertain"
+        | "disputed"
+        | "superseded";
+      Node domain/knowledge-base/assertion-status holds the values: active, uncertain, disputed, superseded, deleted.
+    cost: >-
+      The file declares the state of an attribute with a vocabulary that differs from the node's. It adds proposed
+      and accepted, which the node does not hold, and leaves out active and deleted. Anyone who reads this type as
+      the attribute's assertion states reads states the business did not decide, and an attribute answered as
+      active or deleted has no place in the declared type.
+    kind: contradicts
+    correction: >-
+      Declare the values the node holds, or, if the wire really does answer proposed and accepted, give them a node
+      through the analysis.
+    node: domain/knowledge-base/assertion-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 47-51, the exported type AttributeWireEffectiveStatus
+    evidence: |-
+      export type AttributeWireEffectiveStatus =
+        | "active"
+        | "inactive"
+        | "uncertain"
+        | "disputed";
+      Node domain/knowledge-base/effective-status holds the values: active, inactive, uncertain, disputed, superseded, deleted.
+    cost: >-
+      The declared enumeration is narrower than the node's. superseded and deleted are missing, so an attribute read
+      with either effective status is outside the type that NodeAttributeView.effectiveStatus carries to the panel.
+      The panel's types state a closed set smaller than the one the business decided.
+    kind: contradicts
+    correction: >-
+      Declare the six values the node holds.
+    node: domain/knowledge-base/effective-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 17-20 of the file's header comment
+    evidence: |-
+      Attributes sorted: `in_effect: true` first, then by `attribute_key`
+       *    ascending (spec §9).
+    cost: >-
+      The ordering rule is stated in prose here while the code holds it in sortAttributes in
+      src/features/graph/api/_transforms.ts. The comment's wording ("ascending") is not the node's (compared in pt-BR
+      ignoring case and accents), so the prose can drift from the rule without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is sortAttributes in src/features/graph/api/_transforms.ts.
+    node: rules/graph-explorer/attributes-in-effect-come-first-by-key
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 21-24 of the file's header comment
+    evidence: |-
+      `valid_from` / `valid_to` formatted as `DD/MM/YYYY` (pt-BR) — the raw
+       *    ISO strings stay on the surface object too
+    cost: >-
+      The date format is stated here in prose while formatDateLabel in src/features/graph/api/_transforms.ts holds
+      it. The comment also claims that the raw ISO strings stay on the surface object, but NodeAttributeView
+      declares only validFromLabel and validToLabel, so the prose says something the types do not.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is formatDateLabel in src/features/graph/api/_transforms.ts.
+    node: rules/graph-explorer/a-validity-date-is-shown-day-month-year
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 15-18 of the file's header comment
+    evidence: |-
+      `node.status` → `ConfidenceState` (for the `StateBadge`) via
+       *    `mapNodeStatusToBadge` (spec §9 "Response transforms" row).
+    cost: >-
+      The node-status-to-badge mapping is cited here in prose, and the code holds it in mapNodeStatusToBadge in
+      src/features/graph/api/_transforms.ts. The prose invites the reader to look for the rule in a spec section
+      instead of in the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is mapNodeStatusToBadge in
+      src/features/graph/api/_transforms.ts.
+    node: rules/graph-explorer/node-badge-follows-the-node-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 114-116, the comment on ProvenanceEntryView.confidenceLabel
+    evidence: |-
+      /** Confidence formatted as integer percent (e.g. `"92%"`) — `null` when
+         *  the wire field was missing. */
+    cost: >-
+      The percentage rule is stated in prose on the field, and formatConfidenceLabel in
+      src/features/graph/api/_transforms.ts holds it, so there are two homes for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is formatConfidenceLabel in
+      src/features/graph/api/_transforms.ts.
+    node: rules/graph-explorer/confidence-is-a-rounded-percentage
+  - file: src/features/graph/api/node-detail.types.ts
+    where: >-
+      lines 140-142, the comment on NodeAttributeView.provenance
+    evidence: |-
+      Defaults to `[]` when the wire field is absent.
+    cost: >-
+      The empty default is stated in prose on the field, while toAttributeView in
+      src/features/graph/api/_transforms.ts holds it with `(wire.provenance ?? [])`, so there are two homes for the
+      rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is toAttributeView in src/features/graph/api/_transforms.ts.
+    node: rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: >-
+      NodeDetailWire, NodeSummaryWire, NodeAliasWire and AttributeWire, lines 54-104. They declare the read-node
+      answer as node, aliases and attributes. The traverse and provenance answers are declared in other files of the
+      binding.
+    evidence: |-
+      export interface NodeDetailWire {
+        readonly node: NodeSummaryWire;
+        readonly aliases: ReadonlyArray<NodeAliasWire>;
+        readonly attributes: ReadonlyArray<AttributeWire>;
+      }
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      the kind field of NodeAliasWire, line 57
+    evidence: |-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: |-
+      The file declares AttributeWireAssertionStatus = "proposed" | "accepted" | "uncertain" | "disputed" | "superseded", whose values differ from the node's active, uncertain, disputed, superseded, deleted.
+  - node: domain/knowledge-base/effective-status
+    held_at: nowhere
+    evidence: |-
+      The file declares AttributeWireEffectiveStatus = "active" | "inactive" | "uncertain" | "disputed", which leaves out superseded and deleted.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: |-
+      export type NodeWireStatus = "active" | "needs_review" | "merged" | "deleted"; the node holds needs-review, not needs_review.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the value_type field of AttributeWire, line 77
+    evidence: |-
+      readonly value_type: "text" | "number" | "date" | "bool";
+  - node: rules/graph-explorer/an-attribute-hides-its-bookkeeping-fields
+    held_at: >-
+      the NodeAttributeView interface, lines 126-143
+    evidence: |-
+      export interface NodeAttributeView {
+        readonly id: string;
+        readonly key: string;
+        readonly value: string;
+        readonly valueType: AttributeWire["value_type"];
+        readonly effectiveStatus: AttributeWireEffectiveStatus;
+        readonly isInEffect: boolean;
+        readonly state: ConfidenceState;
+        readonly validFromLabel: string | null;
+        readonly validToLabel: string | null;
+        readonly provenance: ReadonlyArray<ProvenanceEntryView>;
+      }
+      The view carries none of is_current, confidence or node_id.
+looked_past: >-
+  The wire shapes cite docs/specs/domains/knowledge-graph/openapi.yaml as their mirror, a documentation pointer that no node judges.
+candidates_opened:
+  - rules/graph-explorer/attributes-in-effect-come-first-by-key
+  - rules/graph-explorer/a-validity-date-is-shown-day-month-year
+  - rules/graph-explorer/confidence-is-a-rounded-percentage
+  - rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+  - rules/graph-explorer/node-badge-follows-the-node-status

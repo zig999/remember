@@ -1,0 +1,111 @@
+findings:
+  - file: src/features/graph/lib/layout-radial.ts
+    where: |-
+      The module docstring (lines 4-9) and the inline comments at lines 84-88 and 145-149, above the `.separation(...)` call and the polar-to-Cartesian projection.
+    evidence: |-
+      " * `(angle, radius)` then projects to Cartesian `(x, y)` with
+       * `x = r·sin(θ)` / `y = -r·cos(θ)`. The negation on y places angle 0 at the
+       * top of the canvas"
+      "`.separation` is the canonical radial idiom: siblings get a unit gap,
+         // cousins twice that, and dividing by `a.depth` keeps inner rings"
+      The code holds the same fact: `.separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth)`, `const x = radius * Math.sin(theta);` and `const y = -radius * Math.cos(theta);`, with ring 0 given `radius` 0.
+    cost: |-
+      The comments restate the node's convention a second time (root at the centre, angle 0 at the top, gap 1 for siblings and 2 for other neighbours divided by depth). When the node moves, a comment that no tool checks keeps saying the old numbers, and the next reader cannot tell which one was decided.
+    kind: restates
+    correction: |-
+      Remove the comments, by the route that answers prose. The code in this file already holds the fact.
+    node: rules/graph-explorer/radial-layout-puts-the-root-at-the-centre
+  - file: src/features/graph/lib/layout-radial.ts
+    where: |-
+      The module docstring (lines 20-22 and 24-28) and the doc comments on `NODE_FOOTPRINT` (lines 50-54) and `MIN_RING_GAP` (lines 56-59). The inline comments at lines 112-120 repeat the same facts.
+    evidence: |-
+      " *    r[d] = max( d · MIN_RING_GAP,                       // radial gap between rings
+       *                (count[d] · NODE_FOOTPRINT) / (2π) )     // arc ≥ footprint per node
+       *    r[d] = max( r[d], r[d-1] + MIN_RING_GAP )            // keep rings monotonic"
+      "`r ≥ footprint / (2·sin(π/count))`. With one node on the ring there is no
+          // neighbour, so the term is 0."
+      The code holds it too: `const NODE_FOOTPRINT = 270;`, `const MIN_RING_GAP = 200;`, `NODE_FOOTPRINT / (2 * Math.sin(Math.PI / count))` for `count >= 2`, and `Math.max(d * MIN_RING_GAP, angularTerm, prevRadius + MIN_RING_GAP)`.
+    cost: |-
+      The ring-radius rule and its constants 200 and 270 are written in prose several times as well as in code. The docstring formula even uses the arc estimate `count·footprint / 2π`, which differs from the chord formula the code and the node use. A reader who trusts the comment gets a different radius than the one the system computes.
+    kind: restates
+    correction: |-
+      Remove the prose. The code in this file holds the rule, and the node holds the values 200 and 270.
+    node: rules/graph-explorer/radial-rings-take-the-largest-radius
+  - file: src/features/graph/lib/layout-radial.ts
+    where: |-
+      The module docstring step 5 (lines 37-38).
+    evidence: |-
+      " *  5. Pinned positions override the projection — same contract as the other
+       *     two runners."
+      The code holds the same fact: `const pinned = pinnedPositions.get(id); if (pinned !== undefined) { out.set(id, { x: pinned.x, y: pinned.y }); continue; }`
+    cost: |-
+      The "keep what is positioned" rule has a second home in the docstring. The other runners are cited only as "the same contract", so the comment points at a rule it does not state and nothing reads it.
+    kind: restates
+    correction: |-
+      Remove the step 5 comment. The branch in the output loop holds the fact.
+    node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+  - file: src/features/graph/lib/layout-radial.ts
+    where: |-
+      The module docstring step 6 (line 39) and the inline comment at lines 94-96. The comment at lines 112-114 repeats it.
+    evidence: |-
+      " *  6. The virtual super-root (forest case) is dropped from the output."
+      "the super-root, when present, sits at depth 0
+        // but is not rendered — we skip it so it never inflates a ring"
+      The code holds it: `if (node.data.id === SUPER_ROOT_ID) continue;` in the count loop, and `if (id === SUPER_ROOT_ID) continue;` in the output loop. The id literal is declared in ./spanning-tree and only imported here.
+    cost: |-
+      The "virtual root is never positioned" rule is restated in prose where the code already holds it. The comment says "not rendered", but the node's rule is about positions, so the comment drifts from the node's wording.
+    kind: restates
+    correction: |-
+      Remove the comments. The two `continue` branches hold the fact, and the id `__super_root__` is declared in src/features/graph/lib/spanning-tree.ts.
+    node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+  - file: src/features/graph/lib/layout-radial.ts
+    where: |-
+      Lines 74-78, in `runRadialLayout`, the two early returns.
+    evidence: |-
+      `if (nodeIds.length === 0) return out;`
+      `if (rootSpan === null) return out;`
+    cost: |-
+      The "an empty graph has no positions" rule is implemented here a second time. The node is bound only to src/features/graph/hooks/useForceLayout.ts, so when it moves, `--check` never reaches this file and nobody knows which copy was decided.
+    kind: contradicts
+    correction: |-
+      Bind this file to rules/graph-explorer/an-empty-graph-has-no-positions. Code never reads the specification, so what closes this is the bind, not a change to the code.
+    node: rules/graph-explorer/an-empty-graph-has-no-positions
+read:
+  - node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+    held_at: |-
+      The pinned branch of the output loop in runRadialLayout (lines 140-144).
+    evidence: |-
+      const pinned = pinnedPositions.get(id);
+      if (pinned !== undefined) {
+        out.set(id, { x: pinned.x, y: pinned.y });
+        continue;
+      }
+  - node: rules/graph-explorer/radial-layout-puts-the-root-at-the-centre
+    held_at: |-
+      The `tree().size([2 * Math.PI, 1]).separation(...)` call (lines 89-91) and the projection in the output loop (lines 150-154).
+    evidence: |-
+      .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth);
+      const x = radius * Math.sin(theta);
+      const y = -radius * Math.cos(theta);
+      ring 0 has `radius = d === 0 ? 0 : ...`, so a single root lands at (0, 0).
+  - node: rules/graph-explorer/radial-rings-take-the-largest-radius
+    held_at: |-
+      The radiusPerDepth loop and the constants NODE_FOOTPRINT and MIN_RING_GAP (lines 54, 59, 108-135).
+    evidence: |-
+      const angularTerm = count >= 2
+        ? NODE_FOOTPRINT / (2 * Math.sin(Math.PI / count))
+        : 0;
+      const radius = d === 0
+        ? 0
+        : Math.max(d * MIN_RING_GAP, angularTerm, prevRadius + MIN_RING_GAP);
+  - node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+    held_at: |-
+      Both `continue` branches on SUPER_ROOT_ID, in the per-depth count loop and in the output loop (lines 99 and 139). The hanging under a virtual root, and the id literal, are declared in src/features/graph/lib/spanning-tree.ts, not here.
+    evidence: |-
+      if (id === SUPER_ROOT_ID) continue;
+      The `SUPER_ROOT_ID` import `from "./spanning-tree"`, which is only read here, never declared.
+looked_past: |-
+  The d3-hierarchy choice, the `?? 0` fallbacks and the use of the shared `buildSpanningTree` are implementation choices carrying no new domain fact, and are not this judgment's.
+candidates_opened:
+  - rules/graph-explorer/an-empty-graph-has-no-positions
+  - rules/graph-explorer/tree-and-radial-layouts-share-one-spanning-tree

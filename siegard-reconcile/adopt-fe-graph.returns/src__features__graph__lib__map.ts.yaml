@@ -1,0 +1,122 @@
+findings:
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the module header comment, lines 7-12 (the `mapNodeType` bullet), repeated in the comment above FALLBACK_NODE_TYPE (lines 58-60) and in the JSDoc of mapNodeType (lines 63-73, 75-76)
+    evidence: |-
+      * - `mapNodeType(wireType)` → `GraphNodeType`. Safe fallback for unknown
+      *    slugs ... We never throw — we return `"concept"`
+      * - Trims and lowercases input defensively before lookup so a trailing
+      *   space or accidental casing variant from the wire still matches.
+    cost: |-
+      The prose restates the trim, lower-case and fall back to concept rule that the code already holds in mapNodeType (`wireType.trim().toLowerCase()`, `KNOWN_NODE_TYPES.has(...)`, `FALLBACK_NODE_TYPE`). The rule now has a second home in comments that nothing keeps in step with the node, so a later change to the node leaves comments that say something different.
+    kind: restates
+    correction: |-
+      Remove the comments through the route that answers prose. The code in this file holds the rule, and the node binds it.
+    node: rules/graph-explorer/node-type-is-trimmed-lowercased-and-falls-back-to-concept
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the module header comment, lines 14-19 (the `deriveNodeState` bullet), repeated in the status table and JSDoc of deriveNodeState (lines 83-101) and in the comment inside the default branch (lines 112-115)
+    evidence: |-
+      * - `deriveNodeState(status)` → `ConfidenceState | undefined`. **Status
+      *    ONLY** (I-2) — nodes do not carry `flags`. `merged` / `deleted` map to
+      *    `undefined` because the dispatcher filters those nodes out
+      *  | "active"       | "accepted"           | green StateBadge                  |
+      *  | "needs_review" | "uncertain"          | amber StateBadge                  |
+    cost: |-
+      The status-to-state mapping and the merged/deleted/unknown-means-hidden rule are stated in prose while the switch in deriveNodeState already holds them (`case "active": return "accepted"`, `case "needs_review": return "uncertain"`, `return undefined`). The table is a second copy of the node's facts, and it adds colour claims such as green and amber that no node holds.
+    kind: restates
+    correction: |-
+      Remove the header bullet, the table and the default-branch comment through the route that answers prose. The switch holds the rule. Two nodes cover this code, node-state-follows-its-status-alone and merged-or-deleted-node-has-no-state-and-is-left-off, and they are settled separately. This finding is filed against the first.
+    node: rules/graph-explorer/node-state-follows-its-status-alone
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the module header comment, lines 14-17 and 96-100 (the `merged` / `deleted` to `undefined` signal), and the default-branch comment at lines 112-115
+    evidence: |-
+      * @returns `undefined` for `merged` / `deleted` — the dispatcher uses this
+      *          as the filter signal (do not include this node in the surface
+      *          shape).
+      // ... At runtime, the default is defensive: an unknown status
+      // is treated like `merged`/`deleted` (hidden).
+    cost: |-
+      The rule that a merged, deleted or unknown node gets no state and is left off the pane is stated in prose a second time. The code in deriveNodeState holds it (`case "merged": case "deleted": return undefined;` and `default: return undefined;`). The prose also claims how the dispatcher consumes the value, which this file does not show.
+    kind: restates
+    correction: |-
+      Remove the comments through the route that answers prose. The switch holds the fact.
+    node: rules/graph-explorer/merged-or-deleted-node-has-no-state-and-is-left-off
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the module header comment, lines 21-27 (the precedence list), and the JSDoc and inline comment of deriveLinkState (lines 120-132, 140, 142-144)
+    evidence: |-
+      *    Precedence (highest to lowest):
+      *      1. `superseded` status → `"superseded"`
+      *      2. `disputed` flag → `"disputed"`
+      *      3. `low_confidence` flag → `"low-confidence"`
+      *      4. `uncertain` flag → `"uncertain"`
+      *      5. otherwise → `"accepted"`
+    cost: |-
+      The precedence of link states is written out in prose while the if-chain in deriveLinkState holds it (`if (status === "superseded")`, `flags.includes("disputed")`, `flags.includes("low_confidence")`, `flags.includes("uncertain")`, `return "accepted"`). The comments also give a rationale, "StateBadge palette severity ladder", that no node holds. A change to the node would leave the comments claiming the old order.
+    kind: restates
+    correction: |-
+      Remove the comments through the route that answers prose. The code in this file holds the precedence.
+    node: rules/graph-explorer/link-state-follows-a-fixed-precedence
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the module header comment, lines 28-29, and the JSDoc of deriveLinkState (lines 130-131)
+    evidence: |-
+      *    This mirrors the §3.5 / §6.6 ConfidenceState vocabulary in
+      *    `remember-modelagem-v7.md` and the StateBadge spec.
+    cost: |-
+      The comment claims the five-value state vocabulary as its own authority. The code does not declare that vocabulary in this file. It imports `ConfidenceState` from "@/components/ds/StateBadge", and the string literals it returns are checked against that type. The prose is a second statement of the node's enumeration, and it points at documents that are not the specification.
+    kind: restates
+    correction: |-
+      Remove the comment through the route that answers prose. The vocabulary is held where the `ConfidenceState` type is declared, outside this file, and this file only uses it.
+    node: domain/graph-explorer/confidence-state
+  - file: src/features/graph/lib/map.ts
+    where: |-
+      the JSDoc of mapLinkTypeLabel (lines 158-174) and the inline comments at lines 179-181 and 185-190
+    evidence: |-
+      * `"participa de"`) alongside the slug `link_type` (`"participates_in"`). The
+      * frontend renders the label — never the slug — but legacy frames or unknown
+      * link types may omit the projection. In that case we humanize the slug
+      * (underscores → spaces) as a graceful fallback
+    cost: |-
+      The rule that the shown text is the untrimmed label when it is present and not blank, and otherwise the slug with underscores replaced by spaces, is restated in prose. The code in mapLinkTypeLabel already holds it (`linkTypeLabel.trim().length > 0` then `return linkTypeLabel`, else `linkType.replace(/_/g, " ")`). The comments also add behavioural claims no node holds, such as the fallback being "meant to look slightly different" and the pt-BR example.
+    kind: restates
+    correction: |-
+      Remove the comments through the route that answers prose. The function body holds the rule.
+    node: rules/graph-explorer/link-text-is-the-catalog-label-or-the-spaced-slug
+read:
+  - node: domain/graph-explorer/confidence-state
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file imports the type rather than declaring it: `import type { ConfidenceState } from "@/components/ds/StateBadge";`. It only returns members of it (`return "accepted"`, `return "low-confidence"`), so the enumeration's shape is declared outside this file.
+  - node: rules/graph-explorer/link-state-follows-a-fixed-precedence
+    held_at: |-
+      the if-chain in deriveLinkState, lines 137-155
+    evidence: |-
+      if (status === "superseded") { return "superseded"; } ... if (flags.includes("disputed")) { return "disputed"; } if (flags.includes("low_confidence")) { return "low-confidence"; } if (flags.includes("uncertain")) { return "uncertain"; } ... return "accepted";
+  - node: rules/graph-explorer/link-text-is-the-catalog-label-or-the-spaced-slug
+    held_at: |-
+      the body of mapLinkTypeLabel, lines 182-191
+    evidence: |-
+      if (linkTypeLabel !== undefined && linkTypeLabel.trim().length > 0) { return linkTypeLabel; } return linkType.replace(/_/g, " ");
+  - node: rules/graph-explorer/merged-or-deleted-node-has-no-state-and-is-left-off
+    held_at: |-
+      the merged, deleted and default branches of the switch in deriveNodeState, lines 108-116
+    evidence: |-
+      case "merged": case "deleted": return undefined; default: return undefined;
+  - node: rules/graph-explorer/node-state-follows-its-status-alone
+    held_at: |-
+      the first two cases of the switch in deriveNodeState, lines 103-107, with a signature that takes status only
+    evidence: |-
+      export function deriveNodeState(status: GraphNodeWireStatus): ConfidenceState | undefined { switch (status) { case "active": return "accepted"; case "needs_review": return "uncertain";
+  - node: rules/graph-explorer/node-type-is-trimmed-lowercased-and-falls-back-to-concept
+    held_at: |-
+      mapNodeType together with KNOWN_NODE_TYPES and FALLBACK_NODE_TYPE, lines 45-81
+    evidence: |-
+      const normalized = wireType.trim().toLowerCase(); return KNOWN_NODE_TYPES.has(normalized as GraphNodeType) ? (normalized as GraphNodeType) : FALLBACK_NODE_TYPE;
+looked_past: |-
+  KNOWN_NODE_TYPES lists ten slugs that agree with the catalog's ten node types, and the node says "ten known node types" without listing them, so the list is a fact the catalog holds elsewhere. Comments naming I-2, UC-CG-12, G-B, TC-FE-01 and a `LINK_STROKE_CLASS` usage are prose only, with no running code carrying them, so no finding is filed on them.
+candidates_opened:
+  - rules/knowledge-base/catalog-node-types
