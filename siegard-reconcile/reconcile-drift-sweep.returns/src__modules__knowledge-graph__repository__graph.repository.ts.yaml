@@ -1,0 +1,35 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the ListNodesFilter.name_prefix_norm doc comment (line 54) and the listNodes docstring (lines 67-74)
+    evidence: >-
+      /** Already-normalised prefix (`norm(name_prefix)`); compared via LIKE. */
+      and "List nodes filtered by status, optional NodeType, optional name-prefix
+      lookup (via `node_alias.alias_norm`)."
+    cost: >-
+      The comments restate how the name-prefix match works: the prefix is normalised, then compared
+      against the normalised alias. A second home for the fact sits outside behavior, so a reader
+      can take the comment for where the matching is decided. The code holds the fact in the
+      aliasJoin construct in this file.
+    kind: restates
+    correction: >-
+      Remove the two comments by the route that answers prose. Behavior is unchanged, since the
+      match is held by the `na.alias_norm LIKE $n || '%'` join.
+    node: rules/knowledge-base/node-listing-name-prefix
+read:
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      listNodes(), the aliasJoin construct (lines 91-96), together with the countSql and dataSql
+      that apply it through baseFrom
+    evidence: >-
+      aliasJoin = `JOIN node_alias na ON na.node_id = kn.id
+                         AND na.alias_norm LIKE $${params.length} || '%'`;
+      The bound parameter is the already-normalised prefix. The comparison is against the
+      normalised alias column, so a node is kept only when one of its aliases matches the
+      normalised prefix followed by any text. The prefix is not escaped, so `%` and `_` act as
+      LIKE wildcards for any text and any one character.
+looked_past: >-
+  The file's other comments restate facts held by nodes outside this set, such as BR numbers, the
+  uncertain filter, the node-listing order and the default status, and the code holds those facts
+  too. They belong to the comment-removal route and to those nodes' own bindings, not to this
+  node's pass.

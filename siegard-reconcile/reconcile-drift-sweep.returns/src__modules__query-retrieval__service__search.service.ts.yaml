@@ -1,0 +1,122 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the header comment, lines 1 to 14
+    evidence: >-
+      // searchKnowledge service — composes the three-layer FTS pipeline:
+      //   1. parse the tsquery (BR-05) — empty parse short-circuits to
+      //      InvalidSearchQueryError.
+      ...
+      //   7. rank with deterministic tie-breakers (BR-15).
+      //   8. paginate; return total = pre-pagination length.
+    cost: >-
+      The header restates, as numbered prose, rules the specification already holds: the parse refusal, the
+      ranking order and the total before pagination. The next reader may take it for the place the pipeline was
+      decided, and when a node moves the comment stays as it was.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds each step in this file, in parseTsQuery, filtered.sort and the
+      `total = filtered.length` line.
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment above `const layers = resolveLayers(input.layers)`, lines 96 to 99
+    evidence: >-
+      // (a) Validate `layers[]` against the closed set (BR-04). Zod accepts
+      //     any string; the service is the authoritative gate.
+    cost: >-
+      The comment restates the refusal of a layer outside the closed set. It also claims where the refusal is
+      decided, so a reader looks for the rule in this comment instead of in the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal is held by resolveLayers in this file, which throws
+      InvalidSearchLayerError, and by ALLOWED_LAYERS in dto/search.dto.ts.
+    node: rules/knowledge-base/search-layer-outside-set-refused
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment above `const chunksById`, lines 166 to 169
+    evidence: >-
+      // Count chunk hits that a fragment in the result set anchors (BR-10). The
+      // per-fragment collapse map is not needed: chunks are dropped from the final
+      // list unconditionally (see the BR-10 note below), so only the metric count
+      // is consumed (logged as `dedup_collapsed_count`).
+    cost: >-
+      The comment restates that a chunk match never becomes a search item. It also points to a "BR-10 note
+      below" that does not exist in the file, so it misleads a reader about where the rule sits.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held here by the fact that no code path pushes a chunk hit into `items`.
+    node: rules/knowledge-base/chunk-match-never-surfaces
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment inside the node-alias loop, lines 233 to 235
+    evidence: >-
+      // BR-13 of back spec / OpenAPI: `provenance` minItems: 1. A node
+      // hit without ANY accepted-fragment trace is dropped — we never
+      // surface a node without a provenance chain.
+    cost: >-
+      The comment restates when a matched node surfaces, citing a back spec and an OpenAPI minItems instead of
+      the node, so the rule appears to be decided in a document the specification does not hold.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by `if (provenance.length === 0) continue;` in this file.
+    node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the trailing comment on the node item's recordedAtTs, line 250
+    evidence: >-
+      recordedAtTs: 0, // node has no recorded_at axis; tie-break falls through
+    cost: >-
+      The comment restates how a knowledge node counts in the ranking, apart from the node that holds it.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the `recordedAtTs: 0` value and by the sort comparator in this file.
+    node: rules/knowledge-base/search-ranking
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment inside the link loop, lines 320 to 321
+    evidence: >-
+      // BR-13 / OpenAPI: links without provenance are an alarm but
+      // we MUST NOT emit a `provenance: []` row. Log warn and drop.
+    cost: >-
+      The comment restates that an expanded link surfaces only with provenance, and cites a back spec and an
+      OpenAPI document as its authority.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the `provenance.length === 0` branch that logs and continues, in
+      this file.
+    node: rules/knowledge-base/expanded-link-requires-provenance
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment above the `filtered` constant, lines 361 to 365
+    evidence: >-
+      // (h) include_uncertain filter on the in-memory list (node hits).
+      //     Fragment partial GIN already filters status=accepted; uncertain
+      //     applies to graph rows only.
+    cost: >-
+      The comment restates the exclusion of uncertain items on request. It also claims where the exclusion
+      applies, which the code does not limit that way, so a reader is told a narrower rule than the one in force.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the `items.filter((it) => it.status !== "uncertain")` branch, and
+      by the link-level `meta.status === "uncertain"` check, both in this file.
+    node: rules/knowledge-base/uncertain-items-excluded-on-request
+read:
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      toProvenanceEntry only maps a repository row to the response entry: `fragment_id: row.fragment_id,
+      fragment_text: row.fragment_text, ... received_at: row.received_at.toISOString()`. The file declares no
+      shape for the provenance record and carries no recorded_at. Its shape sits in dto/response.dto.ts and
+      the repository.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The file imports the enumeration and does not declare it: `import { ALLOWED_LAYERS, type SearchLayer }
+      from "../dto/search.dto.js";`. resolveLayers only checks against it with
+      `(ALLOWED_LAYERS as readonly string[]).includes(layer)`. The values fragment, node and chunk are
+      declared in dto/search.dto.ts.
+looked_past: >-
+  Every comment citing BR-xx numbers or the back spec belongs to the comment route, and I filed those that restate a
+  node's fact; the code beside them also states search facts held by nodes outside this file's set (the
+  200-candidate cap, the 0.4 low-confidence threshold, the expansion decay, the item flags, the link summary format),
+  which agree with those nodes and so are no finding here.

@@ -1,0 +1,41 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchLayerError, the `allowed` field, line 28
+    evidence: >-
+      public readonly allowed = ["fragment", "node", "chunk"] as const;
+    cost: >-
+      The enumeration of search layers is declared a second time in a file that
+      domain/knowledge-base/search-layer is not bound to. That node is bound to
+      src/modules/query-retrieval/dto/search.dto.ts and
+      src/modules/query-retrieval/service/search.service.ts. The dto already
+      declares it as `ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const`.
+      If the node adds or removes a layer, a check on the bound files never
+      reaches this list. The refusal would then name layers that no longer
+      match what the node decided, and nobody could tell which list was meant.
+    kind: contradicts
+    correction: >-
+      The refusal should draw its allowed layers from the single declaration in
+      a file the search-layer node is bound to, rather than carrying its own
+      list. Alternatively, this file could be bound to the node.
+    node: domain/knowledge-base/search-layer
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The four error classes. InvalidSearchQueryError, InvalidSearchLayerError,
+      FragmentNotAcceptedError and RawInformationDeletedError carry the
+      refusals' code and HTTP status. EmptyProvenanceError carries the
+      empty-provenance refusal's code and status. All five are in this file.
+    evidence: >-
+      BUSINESS_INVALID_SEARCH_QUERY with statusCode 422;
+      BUSINESS_INVALID_SEARCH_LAYER with statusCode 422;
+      BUSINESS_FRAGMENT_NOT_ACCEPTED with statusCode 404;
+      BUSINESS_RAW_INFORMATION_DELETED with statusCode 410 and a `deletedAt`
+      field; SYSTEM_INTERNAL_ERROR with statusCode 500. Each matches the
+      contract's answers (422, 422, 404, 410 naming the deletion, 500). The
+      "query exceeds 1000 characters" message agrees with
+      rules/knowledge-base/search-query-length.
+looked_past: >-
+  The emitted messages "(legacy-data inconsistency)" and "query parsed by websearch_to_tsquery is empty" carry implementation wording the contract does not specify, and that is another judgment's.
+candidates_opened:
+  - domain/knowledge-base/search-layer

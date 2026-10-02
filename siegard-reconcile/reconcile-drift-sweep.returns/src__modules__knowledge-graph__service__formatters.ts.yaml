@@ -1,0 +1,42 @@
+findings:
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the ASSERTION_STATUS constant, lines 26-32
+    evidence: >-
+      const ASSERTION_STATUS: ReadonlySet<AssertionStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", ]);
+    cost: >-
+      The five assertion-status values are declared a second time, as a runtime set in this file. The type that carries them is imported from ../dto/enums.dto.js. A change to the enumeration node reaches the DTO declaration, and this set can go on accepting or refusing the old values. The two would disagree with nothing flagging it, so nobody could tell which one the business decided.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/assertion-status to this file in the trace, or derive the set from the single enumeration declaration in dto/enums.dto.ts so only one file declares the vocabulary.
+    node: domain/knowledge-base/assertion-status
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the EFFECTIVE_STATUS constant, lines 34-41
+    evidence: >-
+      const EFFECTIVE_STATUS: ReadonlySet<EffectiveStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", "inactive", ]);
+    cost: >-
+      The effective-status vocabulary is declared again here. It already appears in dto/enums.dto.ts, where line 40 also holds "inactive". When the node moves, this copy is not reached by the trace check, and a value could be accepted from the database here that the enumeration no longer holds.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/effective-status to this file, or take the set from the one enumeration declaration.
+    node: domain/knowledge-base/effective-status
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the SOURCE_TYPE constant, lines 43-51
+    evidence: >-
+      const SOURCE_TYPE: ReadonlySet<SourceType> = new Set([ "pdf", "email", "ata", "chat", "artigo", "transcricao", "outro", ]);
+    cost: >-
+      The source-type vocabulary is declared a second time here. It is also declared in dto/enums.dto.ts, where line 76 holds "transcricao". The node names the values as meeting-minutes, article, transcript and other, with `ata`, `artigo`, `transcricao` and `outro` as the material's own words. A change to the node would not reach this copy, so what is a source type could differ between the DTO and the formatter.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/source-type to this file, or take the set from the one enumeration declaration.
+    node: domain/knowledge-base/source-type
+read:
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      toNodeAlias only maps a row onto the response, with `id: row.id, alias: row.alias, kind: row.kind, created_at: formatTimestamptz(row.created_at) ?? new Date(0).toISOString()`. It passes the element's fields along and does not declare its shape. The shape is the imported types NodeAliasRow and NodeAliasResponse, declared in other files.
+looked_past: >-
+  deriveFlags implements rules/knowledge-base/graph-item-flags (uncertain and disputed flags, never low-confidence) as the only code holding it, so it is not a second home, but that node is not in this file's pack. The `?? new Date(0).toISOString()` fallbacks for timestamps are defensive code, not a code-review matter for this pass.

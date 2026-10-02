@@ -1,0 +1,33 @@
+findings:
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the file's header comment, lines 1-7
+    evidence: >-
+      // normalisation of the name_prefix (norm()), the merged / deleted policy
+    cost: >-
+      Prose that no running system emits says a second time that the listing normalises the prefix with norm(). The code holds that fact at the call on line 65 and in norm.ts, so the comment gives a reader a second place to look for it. When the node moves, nothing updates this prose.
+    kind: restates
+    correction: >-
+      Remove the header comment, with its BR-number citations. The comment route lands the removal, followed by /reconcile over this file. The behavior is correct and the node already holds the fact.
+    node: rules/knowledge-base/name-normalization
+read:
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      listNodesService, lines 64-65, which applies the single project normalisation function to the listing's name prefix. The lower-casing, accent removal, trimming and whitespace collapsing are declared in norm.ts, not in this file.
+    evidence: >-
+      const name_prefix_norm =
+          input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      listNodesService, lines 64-73, which normalises the prefix and forwards it to the repository as name_prefix_norm. The matching against aliases, with the trailing "any text" and the percent and underscore wildcards, is carried out in graph.repository.ts and not in this file.
+    evidence: >-
+      const repoResult = await repoListNodes(client, {
+          node_type_id: nodeTypeId,
+          name_prefix_norm,
+          status,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        (the repository's na.alias_norm LIKE $N || '%' is the matching)
+looked_past: >-
+  The file also holds other comments restating facts that nodes outside this set hold, namely the active default status filter, the merged node read as itself, and the deleted node refusal, plus a knowledge_graph_empty_provenance log line that is observability and not a domain fact. None of these is a fact of this pack's two nodes.

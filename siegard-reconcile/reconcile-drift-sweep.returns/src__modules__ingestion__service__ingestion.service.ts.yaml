@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the comment above the INSERT try/catch in ingestRawInformation (lines 101-104)
+    evidence: >-
+      // Attempt the INSERT; catch UNIQUE violation on content_hash and switch to
+      // the no-op path. Any other 23505 (e.g. on idempotency_key alone, which
+      // would mean a state inconsistency since content_hash is the primary anchor)
+      // is logged and re-raised as 500 by the global error handler.
+    cost: >-
+      The comment restates that content hashes are unique and that a duplicate takes the no-op path. The
+      catch branch beneath it, `if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) { return await noopExisting(...) }`,
+      holds that behavior already. A second statement of the fact in prose would not follow the node if the
+      node moved.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch below it holds the fact, and the node binds the file.
+    node: rules/knowledge-base/content-hash-unique
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the comment inside the insertLlmRun catch block (lines 153-157)
+    evidence: >-
+      // Possible only if a concurrent caller raced us with the same
+      // (content_hash, model, prompt_version) tuple and inserted the run
+      // between our `insertRawInformation` and `insertLlmRun` — extremely
+      // unlikely because we hold the row lock from the first INSERT in the
+      // same transaction. Surface as 500 (the global handler maps it).
+    cost: >-
+      The comment explains when an idempotency-key collision can occur, which is a second statement of
+      "no two LLM runs hold the same idempotency key". The code holds the fact too, in
+      `if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) { throw new InvariantError(...) }`. Prose
+      about which tuple forms the key would not follow the node if the key's composition changed.
+    kind: restates
+    correction: >-
+      Remove the comment. The collision branch holds the fact, and the node binds the file.
+    node: rules/knowledge-base/idempotency-key-unique
+read:
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      The catch branch of the insertRawInformation try block in ingestRawInformation (lines 117-122). It
+      treats a unique violation on the content-hash constraint as an already-held raw information. The
+      constraint itself is declared in the repository and the schema, not in this file.
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {
+            return await noopExisting(client, contentHash, idempotencyKey);
+          }
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      The catch branch of the insertLlmRun try block (lines 152-165), which refuses a key collision on a
+      freshly inserted raw information. The run lookup by key in noopExisting (lines 205-212) relies on the
+      same uniqueness. The constraint itself is declared in the repository and the schema, not in this file.
+    evidence: >-
+      if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) {
+            throw new InvariantError(
+              `llm_run idempotency_key collision on a freshly inserted raw_information (${rawInformationRow.id}); ` +
+      and `const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);`
+looked_past: >-
+  The 404 message `${entity} ${entityId} not found.` (for example "raw_information <id> not found.") and the
+  other emitted text belong to the ingestion contract's read operations, which this pack does not bind and
+  which names only the code RESOURCE_NOT_FOUND. The comments citing BR-01, BR-02 and BR-09 and the
+  layering prose carry other nodes' facts and are for the comment route to handle.

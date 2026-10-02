@@ -1,0 +1,41 @@
+findings:
+  - file: src/app.ts
+    where: >-
+      the JSDoc of buildApp, `bodyLimit` bullet, lines 82-83, and the comment above BODY_LIMIT_BYTES, lines 90-91
+    evidence: >-
+      "- `bodyLimit`: 11 MiB (`ingestion.back.md §1` requires 10 MiB content +
+      envelope overhead). Domain routes can override per-route if needed."
+      and "// 11 MiB — headroom for `ingest_document` one-shot payloads (a full document
+      plus envelope), above the largest expected single-document ingest."
+      The code holds the same figure: `const BODY_LIMIT_BYTES = 11 * 1024 * 1024;` and `bodyLimit: BODY_LIMIT_BYTES,`
+    cost: >-
+      The 11 MiB ceiling is stated in two comments as well as in the constant. A reader looking for where it was decided finds a back-spec citation and a rationale in prose, not the node that holds it. If the node moves, the prose stays behind.
+    kind: restates
+    correction: >-
+      Remove the two comments. The constant already holds the fact, and the node constraints/request-body-ceiling holds it in the specification. That node is not in this file's pack, so the file is not bound to it. The bind that claims this declaration is what closes it.
+    node: constraints/request-body-ceiling
+  - file: src/app.ts
+    where: >-
+      the comment above the `fastifyCors` registration, lines 104-112
+    evidence: >-
+      "// CORS — registered FIRST so its `onRequest` hook runs before the `/api/v1`
+      // auth preHandler. That ordering is what makes preflight work: a browser
+      // OPTIONS request is answered (and `Access-Control-Allow-Origin` set) by the
+      // plugin before the JWT check would otherwise reject it."
+      The code holds the behaviour: `await app.register(fastifyCors, {` runs before `scoped.addHook("preHandler", auth.preHandler);`
+    cost: >-
+      The preflight-without-authentication rule is restated in prose beside the code that implements it. The next reader takes the comment for the rule's home and does not look in the specification.
+    kind: restates
+    correction: >-
+      Remove the comment. The registration order in the code holds the fact, and the node constraints/preflight-needs-no-authentication holds it in the specification. That node is not in this file's pack, so the file is not bound to it.
+    node: constraints/preflight-needs-no-authentication
+read:
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file passes only the endpoint's whitelist: `toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"],` to `registerCurationMcpTransport`. It states no NOT_FOUND answer and no "Tool '<name>' is not available on this endpoint." message. The answer is emitted in `src/mcp/sdk-http-transport.ts`, which is outside this file set.
+looked_past: >-
+  The default CORS origin list (`"http://localhost:5173"`, `"http://127.0.0.1:5173"`) and the `/health` 200/503 mapping look like configuration and implementation of facts other nodes hold (read-health, preflight). I treated them as outside this node's question and did not report them.
+candidates_opened:
+  - constraints/request-body-ceiling
+  - constraints/preflight-needs-no-authentication

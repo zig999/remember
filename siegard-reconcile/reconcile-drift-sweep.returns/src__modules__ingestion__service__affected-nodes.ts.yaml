@@ -1,0 +1,48 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the comment inside affectedIdsFromEnvelope, lines 105-108
+    evidence: >-
+      // `propose_node` does not carry an `outcome` field — it carries `resolution`.
+      // For node it is always contributing on ok:true (resolution is one of
+      // matched_existing / created_new / needs_review — all three contribute).
+    cost: >-
+      The three resolutions of a node proposal are listed a second time in prose
+      here. The enumeration is declared in another file, so a change to the node
+      would not reach this comment and a reader would see two lists.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is
+      backend/src/modules/ingestion/dto/propose-node.dto.ts
+      (`export type ProposeNodeResolution = "matched_existing" | "created_new" | "needs_review";`).
+    node: domain/knowledge-base/node-resolution
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the CONTRACT block of the header comment, lines 19-25
+    evidence: >-
+      //   `affected_nodes` is attached to a `LlmRunResponse` ONLY when the run's
+      //   status === 'completed'.
+    cost: >-
+      The rule that a run lists its affected nodes only when completed is restated
+      as prose in a file that does not enforce it. The check is made in
+      llm-run.service.ts, so a change to the node would not reach this comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is
+      backend/src/modules/ingestion/service/llm-run.service.ts
+      (`if (row.status === "completed") {` followed by the cache and derive calls).
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+read:
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      This file declares no type, schema or enumeration of the resolution. The
+      values appear in the `isContributingOutcome` switch
+      (`case "created_new": case "matched_existing": case "needs_review":`) as an
+      allow-list on link and attribute outcomes. In `affectedIdsFromEnvelope`,
+      `propose_node` is read only through `node_id`. The enumeration is declared
+      in dto/propose-node.dto.ts.
+looked_past: >-
+  This file's comments also restate rules that the rules/knowledge-base/affected-nodes-of-a-run, affected-nodes-follow-merges and affected-nodes-omit-absent nodes hold, and the LRU cache with its capacity of 256 is an implementation detail rather than a domain fact; I also saw that those three nodes are not in this file's pack.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-only-when-completed

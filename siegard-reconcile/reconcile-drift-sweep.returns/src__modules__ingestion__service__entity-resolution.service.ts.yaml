@@ -1,0 +1,54 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      TRIGRAM_CANDIDATE_LIMIT (line 28) and the candidate query's `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}` (line 146), which feeds decideFromCandidates and the entity_match_review inserts (lines 177-184)
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10;
+      ... GROUP BY na.node_id
+      ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}
+      ... for (const cand of decision.candidates) { INSERT INTO entity_match_review ...
+    cost: >-
+      The ceiling of ten candidates is a domain value that no node holds. The rule states that the proposal is paired with "each such node" at a similarity of 0.55 or more. A proposal with more than ten active nodes at or above 0.55 gets reviews for only the ten most similar. The owner's queue silently omits the rest, and the cap exists only in this file, so the next reader looks for it in the specification and does not find it.
+    kind: contradicts
+    correction: >-
+      Either the specification states the cap (analysis gives it a node, or amends the rule so that it is explicit), or the code drops the cap so every active node at or above 0.55 is paired.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of resolveOrCreateNode, lines 65-90
+    evidence: >-
+      * 2. Tries exact `alias_norm = norm(name)` match against active nodes of
+      *      `nodeTypeId`. Hit → reuse; resolution = `matched_existing`.
+      ...
+      *      - Ambiguous → INSERT a new node with `status = 'needs_review'`, one
+      *        `entity_match_review` row per candidate with `sim >= MATCH_FLOOR`,
+      *        resolution = `needs_review`.
+      *      - Novel → INSERT a new node with `status = 'active'`,
+      *        resolution = `created_new`.
+    cost: >-
+      The docstring is a second home for the exact-alias, ambiguous-candidate and no-candidate rules outside behavior. Code in this same file already holds them (the exact-match query, decideFromCandidates, the INSERTs). When a rule moves, `--check` does not reach this prose, so it can silently go stale.
+    kind: restates
+    correction: >-
+      Remove the docstring prose by the comment route. The behavior is held by the code in this file, so nothing else changes.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+read:
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts rows, `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity) VALUES ($1, $2, $3)`, and declares no shape for the element. The only local shape is `interface TrigramCandidate { node_id; sim }`, which is a query row and not the review.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only writes rows, `INSERT INTO knowledge_node (node_type_id, canonical_name, status) VALUES ($1, $2, 'needs_review')`, and declares no knowledge-node shape. `ResolveOrCreateNodeResult` carries only `node_id` and `resolution`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file returns the values as literals, `return { node_id: nodeId, resolution: "matched_existing" }`, `"needs_review"` and `"created_new"`. The enumeration's shape is declared in `ProposeNodeResolution`, which is imported from ../dto/propose-node.dto.js.
+looked_past: >-
+  The header comment's rationale that thresholds are constants and tuned by code change (BR-25), together with the BR and section citations, is prose with no emitted behavior, and it belongs to the comment route rather than to this judgment. The 0.85 and 0.55 thresholds, the exact-alias match, the canonical-alias insert and the advisory lock are held by rules nodes outside this set and are implemented consistently with them.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review
