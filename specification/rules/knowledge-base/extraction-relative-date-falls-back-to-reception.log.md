@@ -8,4 +8,8 @@ entries:
   unstated: Which basis the v4 prompt asks for on the reception fallback
   decided: The basis received
   why: The prompt text names received explicitly for the fallback.
+- field: statement
+  unstated: Which basis the v4 prompt asks for on the reception fallback
+  decided: None is stated by the node; the earlier wording naming received is withdrawn
+  why: Naming received here would contradict the rule that no proposal states it.
 ---
