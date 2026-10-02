@@ -7,7 +7,6 @@ import {
 } from "./extraction.v1.js";
 import { system as systemV3 } from "./extraction.v3.js";
 
-/** Identifier — used by the registry (`./index.ts`) and logged per run. */
 export const PROMPT_VERSION = "v4" as const;
 
 export { MAX_TOKENS, user };
@@ -24,15 +23,13 @@ export const RECEIVED_AT_ANCHOR_DIRECTIVE = [
   "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
   "  deictics), resolve it AGAINST `document_date` if it is present (basis",
   "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
-  "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
-  "  use basis `\"received\"`.",
+  "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string).",
   "- This supersedes v3's rule of \"omit the date when `document_date` is unknown\":",
   "  with `received_at` always present, you now HAVE an anchor — use it.",
   "- The rule applies ONLY to relative dates. Absolute dates stated in the chunk",
   "  text remain `\"stated\"`; never invent a date.",
 ].join("\n");
 
-/** v3 SYSTEM prompt + the received_at-anchor directive (v4 delta). */
 export function system(catalog: CatalogSnapshot): string {
   return `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`;
 }
