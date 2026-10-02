@@ -496,6 +496,142 @@ scope: system
 
 None.
 
+=== contracts/chat-workspace/bff-conversations
+---
+type: api
+direction: consumed
+upstream: contracts/chat/conversations
+operations:
+- send-message
+- cancel-turn
+- create-conversation
+- list-conversations
+- read-conversation
+- update-conversation
+- delete-conversation
+- list-messages
+- read-conversation-usage
+answers:
+- operation: send-message
+  accepted: "POST /api/v1/conversations/{id}/messages with the id URL-encoded, the JSON body { content } with model only when the caller names one, Content-Type application/json, Accept text/event-stream and an Idempotency-Key header, answered by a stream of event and data frames read as llm_start, text_delta (delta), tool_start (tool, args_summary), tool_result (ok), done (stop_reason), error (code, message) and graph_delta (source_tool, nodes, links)"
+  refusals:
+  - when: "The request cannot be sent and was not aborted."
+    answer: "an error frame SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - when: "The owner aborts before the answer arrives or while the stream is read."
+    answer: "no frame, the stream ending quietly"
+  - when: "The answer has no body, whatever its status."
+    answer: "an error frame SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor sem corpo.\""
+  - when: "The answer is not 2xx and its body is the failure envelope."
+    answer: "an error frame with the envelope's own code and message, a missing or non-string field falling back to the fallback for the status"
+  - when: "The answer has status 500 or above and no readable envelope."
+    answer: "an error frame SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is not 2xx, is below status 500 and has no readable envelope, a 401 included."
+    answer: "an error frame SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+  - when: "Reading the stream fails and was not aborted."
+    answer: "an error frame SYSTEM_NETWORK reading \"Falha de rede durante o streaming.\" and the stream ending"
+- operation: cancel-turn
+  accepted: "POST /api/v1/conversations/{id}/cancel with no body, answered { cancelled: true }"
+- operation: create-conversation
+  accepted: "POST /api/v1/conversations with the JSON body { title } or {}, answered with a conversation read as id, title, archived_at and created_at, the rolling summary and the update time not kept"
+- operation: list-conversations
+  accepted: "GET /api/v1/conversations with limit, cursor and include_archived sent only when given, answered with items and next_cursor"
+- operation: read-conversation
+  accepted: "GET /api/v1/conversations/{id} with the id URL-encoded, answered with a conversation"
+- operation: update-conversation
+  accepted: "PATCH /api/v1/conversations/{id} with the JSON body of title and archived_at as supplied, answered with a conversation"
+- operation: delete-conversation
+  accepted: "DELETE /api/v1/conversations/{id} with no body, where only HTTP 204 is a success"
+  refusals:
+  - when: "The request is aborted."
+    answer: "a failure SYSTEM_ABORTED with HTTP status 0 reading \"Requisição cancelada.\""
+  - when: "The request cannot be sent."
+    answer: "a failure SYSTEM_NETWORK with HTTP status 0 reading \"Falha de rede ao contactar o servidor.\""
+  - when: "The answer is not 204 and its body is the failure envelope."
+    answer: "a failure carrying the answer's status and the envelope's code, message and details"
+  - when: "The answer is not 204, has status 500 or above and no envelope."
+    answer: "a failure SYSTEM_UPSTREAM with the answer's status reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is not 204, is below status 500 and has no envelope, a 200 included."
+    answer: "a failure SYSTEM_UNKNOWN with the answer's status reading \"Erro desconhecido do servidor.\""
+- operation: list-messages
+  accepted: "GET /api/v1/conversations/{id}/messages with limit and before sent only when given, answered with items, each read as id, conversation_id, role, content blocks, stop_reason, idempotency_key, model, tokens_in, tokens_out, latency_ms and created_at, and next_before"
+- operation: read-conversation-usage
+  accepted: "GET /api/v1/conversations/{id}/usage answered with messages (kept as the message count), tokens_in, tokens_out and tool_calls"
+---
+
+## Description
+
+The requests the chat screen makes to the back end and how it reads the answers.
+The upstream publishes what each answer carries, and this contract states only how the screen sends and reads it.
+
+=== contracts/chat-workspace/bff-conversations.log
+---
+entries:
+- field: answers
+  unstated: The material does not say whether the send stream and the delete, which skip the shared request helper, are bound by the same transport behaviour as the other chat requests.
+  decided: The consumed contract states the send stream and the no-body delete with the failures they report themselves, and the other requests as the shared request helper answers them.
+  why: The code sends the stream and the delete without the shared helper, so only the shared helper's requests inherit its cutoff and refresh.
+---
+
+=== contracts/chat-workspace/chat-screen
+---
+type: api
+direction: published
+operations:
+- show-conversation
+- compose-message
+- read-history
+- show-turn-progress
+- show-usage
+answers:
+- operation: show-conversation
+  accepted: "the conversation section named \"Conversa\", the message list named \"Mensagens da conversa\" and the composer named \"Compositor de mensagem\""
+  refusals:
+  - when: "No conversation is active."
+    answer: "\"Selecione ou crie uma conversa para começar.\""
+  - rule: "rules/chat-workspace/archived-conversation-offers-no-input"
+    answer: "the banner \"Conversa arquivada\" reading \"Esta conversa está arquivada. Reative para enviar novas mensagens.\" with the action \"Reativar\""
+- operation: compose-message
+  accepted: "the text field labelled \"Mensagem para o assistente\", the send button named \"Enviar mensagem\" and the stop button named \"Parar geração\", in a band named \"Compositor de mensagem\""
+  refusals:
+  - rule: "rules/chat-workspace/content-needs-a-character"
+    answer: "an inline alert \"Digite uma mensagem antes de enviar.\" and nothing sent"
+  - rule: "rules/chat-workspace/content-has-at-most-32768-characters"
+    answer: "an inline alert \"A mensagem é muito longa. Reduza o texto.\" while typing and nothing sent"
+  - when: "The last send ended with BUSINESS_CHAT_DISABLED."
+    answer: "the text field and the send button disabled with the inline notice \"O chat está temporariamente indisponível (desativado).\""
+  - when: "The last send ended with BUSINESS_CHAT_PROVIDER_UNAVAILABLE."
+    answer: "the text field and the send button disabled with the inline notice \"O provedor do chat está indisponível. Tente novamente em instantes.\""
+  - rule: "rules/chat-workspace/any-other-code-leaves-the-composer-usable"
+    answer: "the composer stays usable, the typed text is kept and no notice is shown"
+- operation: read-history
+  accepted: "the messages as bubbles in a list named \"Mensagens da conversa\""
+  refusals:
+  - rule: "rules/chat-workspace/loading-history-shows-three-placeholders"
+    answer: "three placeholder bubbles and the list marked busy"
+  - when: "The history cannot be loaded."
+    answer: "the inline alert \"Não foi possível carregar o histórico. Tente novamente.\" with the action \"Tentar novamente\""
+  - when: "The conversation has no messages and no turn is streaming."
+    answer: "\"Nenhuma mensagem ainda. Envie uma mensagem para começar.\""
+- operation: show-turn-progress
+  accepted: "while the assistant is thinking the hint \"pensando…\", while a tool call runs the hint \"consultando a memória… (<tool>)\" naming the most recent tool still waiting or \"consultando a memória…\" when none waits, and each tool-call chip with the tool's name, the summary of its arguments, the status \"em andamento\", \"concluído\" or \"erro\" and the accessible name \"<tool> — <status>\""
+- operation: show-usage
+  accepted: "the three counts of the conversation usage under the accessible name \"Uso: X tokens de entrada, Y tokens de saída, Z chamadas de ferramenta\""
+---
+
+## Description
+
+What the owner reads and can do on the chat screen.
+The graph pane beside it belongs to the graph feature.
+
+=== contracts/chat-workspace/chat-screen.log
+---
+entries:
+- field: answers
+  unstated: The material does not say which boundary holds the texts, notices and accessible names of the chat screen.
+  decided: The chat screen is a published api whose caller is the owner, and every text or accessible name that tells the owner what happened, was refused or what a control is called is an answer of it.
+  why: A text or an accessible name changes what the owner learns or can do, while a colour, a spacing or an icon does not.
+---
+
 === contracts/chat/conversations
 ---
 type: api
@@ -2091,6 +2227,171 @@ type: capability
 ## Description
 
 An external identity provider recognises the owner by e-mail address and password and issues the access token the application's back end verifies.
+
+=== domain/chat-workspace/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The chat workspace holds the screen where the owner talks to the assistant about the knowledge base, follows each answer as it streams and keeps the conversations that came out of it.
+
+## Responsibility
+
+It lets the owner pick or create a conversation, send a message, watch the turn stream and stop it, and see the graph the assistant showed while it answered.
+
+=== domain/chat-workspace/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether the chat screen is where the business differs or a solved problem.
+  decided: supporting
+  why: The screen carries the owner's questions to the assistant the business builds elsewhere, so it serves the core without being it.
+---
+
+=== domain/chat-workspace/chat-session
+---
+type: aggregate-root
+attributes:
+- name: conversation_id
+  type: string
+- name: draft
+  type: string
+- name: chat_status
+  type: chat-status
+  required: true
+- name: streamed_text
+  type: string
+  required: true
+- name: tool_chips
+  type: tool-chip
+  many: true
+- name: idempotency_key
+  type: string
+- name: is_streaming
+  type: boolean
+  required: true
+- name: last_outcome
+  type: send-outcome
+- name: history_state
+  type: message-list-state
+operations:
+- select-conversation
+- send-message
+- stop-turn
+- cancel-turn
+- reactivate-conversation
+---
+
+## Description
+
+One sitting of the owner at the chat screen, from the conversation chosen to the turn being streamed.
+
+## Responsibility
+
+It keeps the conversation shown, what the owner typed, the turn in flight and the outcome of the last send, so that the screen shows one consistent state.
+
+=== domain/chat-workspace/chat-status
+---
+type: enumeration
+values:
+- idle
+- thinking
+- streaming
+- tool-running
+- error
+---
+
+## Description
+
+The phases the screen shows a turn in.
+
+## Responsibility
+
+It names the one phase the owner is told about.
+
+=== domain/chat-workspace/message-list-state
+---
+type: enumeration
+values:
+- loading
+- error
+- streaming
+- empty
+- success
+---
+
+## Description
+
+The states the message list can be in.
+
+## Responsibility
+
+It names the one state the owner sees.
+
+=== domain/chat-workspace/send-outcome
+---
+type: value-object
+attributes:
+- name: stop_reason
+  type: domain/chat/assistant-stop-reason
+- name: error_code
+  type: string
+- name: error_message
+  type: string
+- name: idempotency_key
+  type: string
+  required: true
+---
+
+## Description
+
+How a send ended, with the stop reason of a finished turn or the code and message of a failed one.
+
+## Responsibility
+
+It tells the composer whether the owner can try again or must wait.
+
+=== domain/chat-workspace/tool-chip
+---
+type: value-object
+attributes:
+- name: tool
+  type: string
+  required: true
+- name: args_summary
+  type: string
+  required: true
+- name: outcome
+  type: tool-chip-outcome
+  required: true
+---
+
+## Description
+
+One tool call of the turn as the screen shows it, with its name, a summary of its arguments and its outcome.
+
+## Responsibility
+
+It lets the owner see what the assistant looked up and whether it worked.
+
+=== domain/chat-workspace/tool-chip-outcome
+---
+type: enumeration
+values:
+- pending
+- succeeded
+- failed
+---
+
+## Description
+
+Where a tool call stands.
+
+## Responsibility
+
+It names the one outcome a chip shows.
 
 === domain/chat/_context
 ---
@@ -5259,6 +5560,1569 @@ The kinds a failed sign-in falls into, each with its own message to the owner.
 ## Responsibility
 
 It names the one category of failure the owner is told about.
+
+=== rules/chat-workspace/a-turn-is-never-resent-by-the-screen
+---
+type: invariant
+statement: "The screen MUST NOT resend a turn by itself, each stream being opened once."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/aborting-and-cancelling-do-not-trigger-each-other
+---
+type: invariant
+statement: "Aborting the stream and cancelling the turn MUST each leave the other undone."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/aborting-ends-the-reading-quietly
+---
+type: invariant
+statement: "Aborting before the answer arrives or while the stream is read MUST end the reading with no error frame, the messages and usage still being read again."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/active-conversation-is-named-by-the-address
+---
+type: invariant
+statement: "The active conversation MUST be the one the address's conversation parameter names, and none when it is absent."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/an-outcome-settles-the-most-recent-chip
+---
+type: invariant
+statement: "A tool call's outcome MUST settle the most recently added tool chip and change nothing when the turn has none."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+- domain/chat-workspace/tool-chip-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/any-other-code-leaves-the-composer-usable
+---
+type: invariant
+statement: "Any other error code from the last send MUST leave the composer usable."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/any-status-may-follow-any-status
+---
+type: invariant
+statement: "The turn state MUST accept any chat status after any chat status, enforcing no transitions itself."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/archived-conversation-offers-no-input
+---
+type: invariant
+statement: "An archived conversation MUST offer no text field and no send button, only a banner."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/cancel-goes-through-the-back-end-request-helper
+---
+type: invariant
+statement: "The cancel request MUST go through the back end request helper and so be cut off after thirty seconds, refresh the token once on a 401 and redirect to sign-in when it cannot."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/cancel-targets-the-conversation-it-was-created-for
+---
+type: invariant
+statement: "The cancel MUST target the conversation its hook was created for and take no conversation argument."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+---
+type: invariant
+statement: "Cancelling a turn MUST be a separate request to the conversation's cancel endpoint with no body, carrying the bearer when a token is held."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/changing-conversation-clears-the-graph-and-the-detail
+---
+type: invariant
+statement: "Changing the active conversation MUST clear the graph pane's subgraph and close any open node detail."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/changing-conversation-does-not-stop-the-turn
+---
+type: invariant
+statement: "Changing the active conversation MUST NOT stop a turn in flight, which is aborted only when the message list leaves the screen."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/chip-is-a-status-region-named-by-tool-and-status
+---
+type: invariant
+statement: "A tool-call chip MUST be a status region whose accessible name joins the tool's name and its status."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+- domain/chat-workspace/tool-chip-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/chip-shows-the-tool-and-its-summary
+---
+type: invariant
+statement: "A tool-call chip MUST show the tool's name and, when it is not empty, the summary of the call's arguments."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+- domain/chat-workspace/tool-chip-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/clicking-a-node-swaps-the-pane-to-its-detail
+---
+type: invariant
+statement: "Clicking a node in the graph pane MUST swap the pane to that node's detail, and closing the detail MUST bring the graph back."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/comment-and-colonless-lines-are-ignored
+---
+type: invariant
+statement: "A line starting with a colon, and a line with no colon, MUST be ignored."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/composer-footer-is-empty
+---
+type: invariant
+statement: "The composer's footer row MUST be rendered empty, with no usage readout under the composer."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/composer-never-clears-the-last-outcome
+---
+type: invariant
+statement: "The composer MUST NOT clear the last send's outcome, so the disabled notice stays while the composer stays on screen."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/composer-send-carries-the-identifier-and-the-content
+---
+type: invariant
+statement: "A send from the composer MUST carry only the active conversation's identifier and the typed content, naming no model."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/content-has-at-most-32768-characters
+---
+type: invariant
+statement: "The composer's content MUST be at most 32768 characters long."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/content-is-checked-on-every-change
+---
+type: invariant
+statement: "The content MUST be checked on every change, so the too-long message appears while the owner types."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/content-is-sent-as-the-caller-gives-it
+---
+type: invariant
+statement: "The screen MUST send the content exactly as the caller gives it, with no trim, no length check and no refusal of an empty one in the send itself."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/content-needs-a-character
+---
+type: invariant
+statement: "The composer's content MUST be at least one character long."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/conversation-is-archived-when-its-detail-says-so
+---
+type: invariant
+statement: "A conversation MUST count as archived when its detail carries a non-null archive moment, and as not archived until the detail has loaded or when it fails to load."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+---
+type: invariant
+statement: "A conversation's details, the conversation listing and a conversation's usage MUST stay fresh for thirty seconds."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/create-and-delete-do-not-navigate
+---
+type: invariant
+statement: "Creating or deleting a conversation MUST NOT navigate."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/create-refreshes-every-conversation-read
+---
+type: invariant
+statement: "After a successful create every conversation-scoped read MUST be marked stale and read again."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/delete-removes-the-conversations-reads
+---
+type: invariant
+statement: "After a successful delete the details, messages and usage of that conversation MUST be removed and every conversation-scoped read marked stale and read again."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/delete-uses-the-no-body-helper
+---
+type: invariant
+statement: "Deleting a conversation MUST use the no-body request helper and give the caller nothing back."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/details-and-listing-are-read-again-on-focus
+---
+type: invariant
+statement: "A conversation's details and the conversation listing MUST be read again when the window regains focus."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/disabling-codes-lock-the-composer
+---
+type: invariant
+statement: "A send that ended with BUSINESS_CHAT_DISABLED or BUSINESS_CHAT_PROVIDER_UNAVAILABLE MUST disable the text field and the send button and show an inline notice."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/done-settles-the-turn-and-makes-the-status-idle
+---
+type: invariant
+statement: "A done frame MUST settle the graph pane's turn as done, make the chat status idle and make its stop reason the result of the send."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/each-frame-kind-requires-its-fields
+---
+type: invariant
+statement: "A frame MUST carry the fields its event requires: none for llm_start, delta for text_delta, tool and args_summary for tool_start, ok for tool_result, stop_reason for done, code and message for error and source_tool, nodes and links for graph_delta."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/enter-sends-and-shift-enter-breaks-the-line
+---
+type: invariant
+statement: "Enter without Shift MUST send the message through the same checks as the send button, and Shift+Enter MUST insert a new line."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/error-settles-the-turn-and-makes-the-status-error
+---
+type: invariant
+statement: "An error frame MUST settle the graph pane's turn as failed, make the chat status error and make its code and message the result of the send."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/error-status-stays-until-the-next-send
+---
+type: invariant
+statement: "The error chat status MUST stay after the turn ends until the next send clears it."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/escape-aborts-the-turn-from-anywhere
+---
+type: invariant
+statement: "While a turn streams Escape MUST abort it from anywhere on the page, and MUST do nothing when no turn is in flight."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/event-names-the-frame-and-data-carries-it
+---
+type: invariant
+statement: "The event line MUST name the frame and the data line carry its JSON, several data lines being joined with a newline and the last event line winning."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/every-send-has-a-new-idempotency-key
+---
+type: invariant
+statement: "Every send MUST generate a new random identifier as its idempotency key."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/failed-turn-gets-no-wording-from-the-list
+---
+type: invariant
+statement: "A turn that ends in failure MUST get no failure wording from the message list."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/first-graph-delta-replaces-and-later-ones-add
+---
+type: invariant
+statement: "The first graph_delta with nodes of a turn MUST replace the graph the pane held and every later one with nodes in the same turn MUST be added onto it, a delta with no nodes not counting as the replacement."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/first-jump-happens-once
+---
+type: invariant
+statement: "The first jump MUST happen once while the message list stays on screen, switching conversation not repeating it."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/first-load-jumps-to-the-bottom
+---
+type: invariant
+statement: "When the history first loads the list MUST jump to the bottom without animation."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/frame-lines-are-field-value-pairs
+---
+type: invariant
+statement: "Each line of a frame MUST be read as a field and a value, dropping a carriage return at the end of the line and one space after the colon."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/frames-end-at-a-blank-line
+---
+type: invariant
+statement: "Frames MUST end at a blank line and each complete frame MUST be applied as soon as it arrives."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/graph-delta-with-no-nodes-leaves-the-graph
+---
+type: invariant
+statement: "A graph_delta frame MUST be converted to a graph slice, and a slice with no nodes MUST leave the graph pane as it was."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/graph-pane-receives-the-status-and-the-error
+---
+type: invariant
+statement: "The graph pane MUST receive the graph's status and, when one exists, its error message."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/graph-tool-start-puts-the-graph-pane-into-loading
+---
+type: invariant
+statement: "The start of a graph tool, one of traverse, get_node, list_nodes, search and ingest_directed matched by its exact name, MUST put the graph pane into loading and any other tool MUST leave it as it was."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation
+---
+type: invariant
+statement: "Changing the active conversation MUST restore that conversation's saved graph view, and the graph MUST be saved again whenever it changes."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/hint-hides-in-every-other-phase
+---
+type: invariant
+statement: "The waiting hint MUST NOT show in any phase other than thinking and tool-running."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/hint-is-a-polite-atomic-status-region
+---
+type: invariant
+statement: "The waiting hint MUST be a polite, atomic status region so every change is announced whole."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/history-failure-offers-a-retry
+---
+type: invariant
+statement: "The history-failure alert MUST offer a retry that loads the history again."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/history-keeps-the-listed-order
+---
+type: invariant
+statement: "The history MUST be shown in the order the message listing returns it."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/in-flight-bubble-is-removed-when-streaming-ends
+---
+type: invariant
+statement: "When streaming ends for any reason the in-flight bubble MUST be removed and no in-flight text kept."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/invalid-content-sends-nothing
+---
+type: invariant
+statement: "Content that fails either length bound MUST send nothing."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/invalid-field-is-marked-and-described
+---
+type: invariant
+statement: "A field with a validation message MUST be marked invalid and described by the message line present."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/last-terminal-frame-sets-the-result
+---
+type: invariant
+statement: "When two done frames or two error frames arrive the last one MUST set the result."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/leaving-the-list-aborts-the-turn
+---
+type: invariant
+statement: "When the message list leaves the screen it MUST abort any turn in flight."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/listing-excludes-archived-by-default
+---
+type: invariant
+statement: "The conversation listing MUST exclude archived conversations unless asked otherwise."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/listing-sends-its-options-only-when-asked
+---
+type: invariant
+statement: "The conversation listing MUST send limit only when given, cursor only when given and include_archived=true only when archived conversations are asked for, and the message listing limit and before only when given."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/llm-start-makes-the-status-thinking
+---
+type: invariant
+statement: "An llm_start frame MUST make the chat status thinking."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/loading-history-shows-three-placeholders
+---
+type: invariant
+statement: "While the history loads the list MUST show three placeholder bubbles, assistant then owner then assistant, and be marked busy."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/malformed-frames-are-skipped-silently
+---
+type: invariant
+statement: "A frame MUST be skipped silently when it lacks an event or data line, its data is not a JSON object, its event is unknown or a field its event requires is missing or of the wrong type."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/message-is-a-bubble-styled-by-its-role
+---
+type: invariant
+statement: "Each message MUST be shown as a bubble styled by its role."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/message-list-is-a-polite-live-region
+---
+type: invariant
+statement: "The message list MUST be a polite live region in every state and be marked busy only while loading or while a turn streams."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/message-passes-its-stop-reason-to-its-bubble
+---
+type: invariant
+statement: "A message with a stop reason MUST pass it to its bubble and one with none MUST pass none."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/message-text-joins-its-blocks
+---
+type: invariant
+statement: "A message's shown text MUST join the text of its content blocks in order, a block without text adding nothing."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/messages-and-usage-are-not-read-again-on-focus
+---
+type: invariant
+statement: "The messages and the usage of a conversation MUST NOT be read again when the window regains focus."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/messages-are-stale-as-soon-as-they-are-read
+---
+type: invariant
+statement: "A conversation's messages MUST count as stale as soon as they are read."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/no-body-request-has-no-cutoff-and-no-refresh
+---
+type: invariant
+statement: "A no-body request MUST have no client cutoff and no token refresh on a 401."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/no-body-request-succeeds-only-on-204
+---
+type: invariant
+statement: "A no-body request MUST treat only HTTP 204 as success and any other status, 200 included, as a failure."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/no-page-size-is-fixed-by-the-screen
+---
+type: invariant
+statement: "The screen MUST fix no page size for the conversation listing or the message listing."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/node-detail-receives-the-clicked-label
+---
+type: invariant
+statement: "The node detail MUST be given the clicked node's label at click time, and none when the node has no label."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/one-message-line-under-the-field
+---
+type: invariant
+statement: "The composer MUST show at most one message line under the field, a validation message taking precedence over the disabled notice."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/one-validation-message-per-field
+---
+type: invariant
+statement: "Only the first problem found MUST be shown as the field's validation message."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/owner-message-is-appended-before-the-answer
+---
+type: invariant
+statement: "Before a send goes out the owner's message MUST be appended at the end of the conversation's cached messages with role user, one text block, an optimistic identifier built from the idempotency key and the browser's time, and a one-item list when none was cached."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/reactivating-sends-an-unarchive-update
+---
+type: invariant
+statement: "Reactivating an archived conversation MUST send an update for it with archivedAt null."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/read-and-write-failures-surface-unchanged
+---
+type: invariant
+statement: "A failed read or write MUST fail with the error its request helper raised, the screen mapping no code and showing no text of its own."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/reading-continues-after-a-terminal-frame
+---
+type: invariant
+statement: "The screen MUST keep reading after a done or error frame until the server closes the stream, and apply a frame that arrives later."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/reads-need-a-conversation-id
+---
+type: invariant
+statement: "A read of a conversation's details, messages or usage MUST be requested only when the conversation id is a non-empty string."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/refused-send-keeps-the-owner-message-until-reread
+---
+type: invariant
+statement: "A refused send MUST leave the owner's message in place until the message re-read replaces the cache."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/reset-restores-every-field-at-once
+---
+type: invariant
+statement: "Resetting the turn MUST restore every field of the turn state to its starting value at once."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/selecting-a-node-sends-nothing
+---
+type: invariant
+statement: "Selecting a node or closing its detail MUST send no message and MUST NOT change the turn."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/send-carries-the-access-token-when-held
+---
+type: invariant
+statement: "A send MUST carry the owner's access token as a bearer, read once when the send starts, and no Authorization header when none is held, the request being sent all the same."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/send-clears-the-previous-turn
+---
+type: invariant
+statement: "Before a send goes out the turn state MUST be cleared of the earlier turn's text, tool chips and error status, and the new key and abort handle stored."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/send-never-refreshes-the-token
+---
+type: invariant
+statement: "A send answered 401 before the stream opens MUST fail like any other refusal, with no token refresh and no redirect to sign-in."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/send-never-refreshes-the-token.log
+---
+entries:
+- field: statement
+  unstated: The material shows the send stream failing on a 401 with no refresh while the cancel request refreshes the token, and does not say why they differ.
+  decided: A send answered 401 before the stream opens fails like any other refusal, with no token refresh and no redirect.
+  why: The code calls the stream directly, so the refresh and the redirect belong only to requests that go through the shared helper.
+---
+
+=== rules/chat-workspace/send-resolves-with-the-turn-outcome
+---
+type: invariant
+statement: "A send MUST resolve, never fail, with the stop reason of a done frame, the code and message of an error frame and the idempotency key it used, a refused or failed send resolving with the code and message set and the stop reason empty."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/send-stream-has-no-client-cutoff
+---
+type: invariant
+statement: "The send stream MUST have no client cutoff and end only when the server closes it, it fails or the owner aborts it."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/started-tool-calls-accumulate-at-the-end
+---
+type: invariant
+statement: "Each tool call that starts MUST be added to the end of the turn's tool chips."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/stop-button-aborts-the-turn
+---
+type: invariant
+statement: "The stop button MUST abort the turn in flight."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/stream-end-clears-streaming-and-the-handle
+---
+type: invariant
+statement: "When the stream ends for any reason the streaming flag MUST be cleared and the abort handle released."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/stream-end-reads-messages-and-usage-again
+---
+type: invariant
+statement: "After the stream ends the conversation's messages and usage MUST be read again."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/stream-is-read-as-utf-8
+---
+type: invariant
+statement: "The answer body MUST be read as a byte stream decoded as UTF-8."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streamed-text-accumulates-at-the-end
+---
+type: invariant
+statement: "Each streamed piece of text MUST be added to the end of the turn's accumulated text."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streamed-text-growth-scrolls-to-the-bottom
+---
+type: invariant
+statement: "Each time the streamed text grows the list MUST scroll to the bottom, smoothly or without animation under reduced motion, and nothing else MUST trigger that scroll."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streaming-adds-an-in-flight-assistant-bubble
+---
+type: invariant
+statement: "While a turn streams an extra assistant bubble below the history MUST show the assistant text received so far, marked as streaming."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streaming-cursor-is-hidden-from-assistive-technology
+---
+type: invariant
+statement: "The streaming cursor MUST be hidden from assistive technology."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streaming-disables-the-field-and-swaps-the-button
+---
+type: invariant
+statement: "While a turn streams the text field MUST be disabled and the send button replaced by a stop button."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/streaming-flag-is-separate-from-the-status
+---
+type: invariant
+statement: "The streaming flag MUST be set separately from the chat status, nothing in the state tying the two together."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/successful-cancel-reads-the-usage-again
+---
+type: invariant
+statement: "A successful cancel MUST read the conversation's usage again and not its messages."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/successful-send-empties-the-field
+---
+type: invariant
+statement: "A successful send MUST empty the text field, and a failed one MUST keep the typed text."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/text-delta-appends-and-makes-the-status-streaming
+---
+type: invariant
+statement: "A text_delta frame MUST append its delta to the streamed answer and make the chat status streaming, even when no llm_start came first."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/title-is-sent-as-given
+---
+type: invariant
+statement: "The screen MUST send a conversation's title as given and never check its length or content before sending."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/tool-call-waits-while-its-outcome-is-null
+---
+type: invariant
+statement: "A tool call MUST count as waiting for its result while its outcome is null."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+- domain/chat-workspace/tool-chip-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/tool-hint-names-the-waiting-tool
+---
+type: invariant
+statement: "While a tool call runs the hint MUST name the most recent tool call still waiting for its result, or none when none is waiting."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+- domain/chat-workspace/tool-chip
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/tool-result-settles-the-last-chip
+---
+type: invariant
+statement: "A tool_result frame MUST give the most recently added tool chip its outcome and make the chat status streaming."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+- domain/chat-workspace/tool-chip
+- domain/chat-workspace/tool-chip-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/tool-start-adds-a-chip-and-makes-the-status-tool-running
+---
+type: invariant
+statement: "A tool_start frame MUST add a tool chip with the tool's name, its argument summary and a pending outcome and make the chat status tool-running."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+- domain/chat-workspace/tool-chip
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-holds-one-abort-handle
+---
+type: invariant
+statement: "The turn MUST hold one abort handle for the request in flight."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-holds-the-idempotency-key
+---
+type: invariant
+statement: "The turn MUST hold the idempotency key of the current send attempt."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-starts-empty-and-idle
+---
+type: invariant
+statement: "A turn's state MUST start with empty streamed text, no tool chips, no abort handle, no idempotency key, streaming off and the chat status idle."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-state-holds-the-abort-handle-while-the-stream-is-open
+---
+type: invariant
+statement: "While the stream is open the turn state MUST hold its abort handle so another part of the screen can stop the turn."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-state-lives-in-memory-only
+---
+type: invariant
+statement: "The turn state MUST live only in memory for the session and never be persisted."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-text-and-chips-stay-until-the-next-send
+---
+type: invariant
+statement: "The streamed text and the tool chips MUST stay after the turn ends until the next send clears them."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/tool-chip
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-without-a-terminal-frame-keeps-the-last-status
+---
+type: invariant
+statement: "A turn that ends with no done or error frame MUST leave the chat status where its last frame put it."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/turn-without-a-terminal-frame-resolves-empty
+---
+type: invariant
+statement: "A turn that ends with no done or error frame MUST resolve with the stop reason, the code and the message all empty."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/send-outcome
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/unparseable-timestamp-becomes-an-invalid-date
+---
+type: invariant
+statement: "A timestamp of an answer that cannot be parsed MUST become an invalid date without failing the read."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/unterminated-last-frame-is-read
+---
+type: invariant
+statement: "A frame left at the end of the stream without a closing blank line MUST still be read."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/update-refreshes-the-details-and-every-read
+---
+type: invariant
+statement: "After a successful update the conversation's details MUST be marked stale and then every conversation-scoped read."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/update-sends-only-the-fields-supplied
+---
+type: invariant
+statement: "An update MUST carry title only when supplied, a null title as null, and archived_at only when supplied, a timestamp archiving and null un-archiving, and with neither it MUST still send an empty body."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/usage-badge-shows-nothing-until-usage-arrives
+---
+type: invariant
+statement: "The usage badge MUST show nothing while the usage loads or when it is unavailable, a failed load included."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/usage-badge-shows-the-three-counts
+---
+type: invariant
+statement: "The usage badge MUST show the tokens in, the tokens out and the tool calls of the conversation and not the message count."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/validation-message-is-an-alert
+---
+type: invariant
+statement: "A validation message MUST be announced as an alert and the disabled notice MUST NOT."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/waiting-hint-sits-below-the-last-bubble
+---
+type: invariant
+statement: "The waiting hint MUST sit below the last bubble in the list's non-empty state only, and not while the history loads or after it failed to load."
+constrains:
+- domain/chat-workspace/chat-session
+- domain/chat-workspace/message-list-state
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/whitespace-only-content-passes
+---
+type: invariant
+statement: "The minimum length MUST be checked on the content as typed, without trimming, so whitespace-only content passes the composer's check."
+constrains:
+- domain/chat-workspace/chat-session
+---
+
+## Description
+
+None.
 
 === rules/chat/archived-conversation-takes-no-turn
 ---
@@ -16930,6 +18794,69 @@ constrains:
 ## Description
 
 None.
+
+=== scenarios/chat-workspace/escape-stops-a-streaming-turn
+---
+subject: rules/chat-workspace/escape-aborts-the-turn-from-anywhere
+given:
+- "a turn is streaming and focus is on the graph pane"
+when:
+- "the owner presses Escape"
+then:
+- "the turn is aborted"
+---
+
+## Description
+
+Escape stops the turn even when focus is elsewhere.
+
+=== scenarios/chat-workspace/failed-send-keeps-the-typed-text
+---
+subject: rules/chat-workspace/successful-send-empties-the-field
+given:
+- "the owner typed a message and the back end answers an error frame"
+when:
+- "the send resolves"
+then:
+- "the text field still holds the typed text"
+---
+
+## Description
+
+A failed send costs the owner nothing they typed.
+
+=== scenarios/chat-workspace/malformed-frame-is-skipped
+---
+subject: rules/chat-workspace/malformed-frames-are-skipped-silently
+given:
+- "the stream carries a text_delta frame whose data is not JSON between two good ones"
+when:
+- "the stream is read"
+then:
+- "the bad frame is skipped silently"
+- "the good frames are applied"
+---
+
+## Description
+
+One bad frame does not end the turn.
+
+=== scenarios/chat-workspace/second-graph-delta-adds-to-the-first
+---
+subject: rules/chat-workspace/first-graph-delta-replaces-and-later-ones-add
+given:
+- "the pane holds the graph of the last turn"
+- "two graph_delta frames with nodes arrive in the new turn"
+when:
+- "the second frame is applied"
+then:
+- "the first frame replaced the old graph"
+- "the second was added onto it"
+---
+
+## Description
+
+One turn builds one graph, replacing the old one only once.
 
 === scenarios/curation-workspace/changing-tab-counts-the-difference-as-new
 ---

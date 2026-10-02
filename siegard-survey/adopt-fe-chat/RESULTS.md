@@ -1,0 +1,13 @@
+# adopt-fe-chat — frontend, contexto chat
+
+Início: ver /tmp (registrado no telemetry da janela)
+
+## TC.1–TC.2 — survey
+- Layout: `api/` (14), `components/` (14), `state/chat-turn.ts`, `types.ts`; 3 áreas: `stream` (7 arquivos), `conversations` (9), `ui` (14). 3 surveyors em paralelo, sem recusa, sem cerca.
+- `trace.py --survey`: stream.md `100 fact line(s) over 7 file(s) — Facts 68, Answers 17, Vocabularies 5, Upstream artifacts 10`; conversations.md `69 fact line(s) over 9 file(s) — Facts 55, Answers 6, Vocabularies 4, Upstream artifacts 4`; ui.md `95 fact line(s) over 14 file(s) — Facts 73, Answers 8, Vocabularies 5, Upstream artifacts 9`. Total 264.
+- Tokens dos surveyors: 117 593 + 108 842 + 115 906 = 342 341.
+- Observed: (a) o cache de mensagens é gravado como `{items, nextCursor}` e lido como `{items, nextBefore}`; (b) o envio e o cancelamento tratam sessão expirada de modo diferente; (c) o delete usa um helper sem cutoff e sem refresh; (d) `UsageBadge`, `ToolCallChip` e `StreamingCursor` não são montados em lugar nenhum fora de testes; (e) o primeiro scroll não reinicia ao trocar de conversa.
+
+## TC.3 — análise
+- Contexto novo `domain/chat-workspace`: 6 elementos, 125 regras, 4 cenários, contratos `chat-screen` (published), `bff-conversations` (consumed, upstream `contracts/chat/conversations`). Fatos de formato ligados a nós existentes de `domain/chat` (`conversation`, `message`, `tool-call`, `conversation-usage`, `turn-event-kind`, `message-role`, `assistant-stop-reason`) e `rules/chat/conversation-listing-excludes-archived`.
+- 4 decisões em log. `trace.py --ledger`: `ledger sound: 264 fact line(s) over 3 material file(s) — 250 landed in 144 node(s), 14 left out with a reason`.
