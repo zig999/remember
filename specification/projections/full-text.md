@@ -1630,6 +1630,99 @@ entries:
   why: The search schema is strict and serves both transports.
 ---
 
+=== contracts/owner-access/identity-provider
+---
+type: api
+direction: consumed
+upstream: contracts/system/owner-identity
+operations:
+- sign-in-with-credentials
+- obtain-access-token
+answers:
+- operation: sign-in-with-credentials
+  accepted: any 2xx answer to POST /sign-in/email with the JSON body { email, password } and the browser's credentials included, whose body is ignored
+  refusals:
+  - when: The answer's body names the code INVALID_EMAIL_OR_PASSWORD, at any status.
+    answer: the credentials are rejected
+  - when: The answer has status 401 with any other code or none.
+    answer: the credentials are rejected
+  - when: The answer is any other status outside 2xx.
+    answer: a failure carrying the code of the answer's JSON body when it has one, otherwise no code
+  - when: The identity provider cannot be reached, because the request fails before any answer, offline, by name resolution, by origin policy or by abort.
+    answer: no answer
+- operation: obtain-access-token
+  accepted: a 2xx answer to GET /token with the browser's credentials included, whose JSON object carries a token that is a non-empty string, and that token is the owner's access token
+  refusals:
+  - when: The answer has status 401.
+    answer: the identity provider holds no session for the owner
+  - when: The answer is any other status outside 2xx.
+    answer: a failure carrying the code of the answer's JSON body when it has one, otherwise no code
+  - when: The answer is 2xx and its body is not JSON.
+    answer: no access token
+  - when: The answer is 2xx and its body is not an object or carries no token that is a non-empty string.
+    answer: no access token
+  - when: The identity provider cannot be reached, because the request fails before any answer, offline, by name resolution, by origin policy or by abort.
+    answer: no answer
+---
+
+## Description
+
+The identity provider's own answers to the two requests the application makes to sign the owner in.
+The access token request depends on the session the sign-in request established, and both requests carry the browser's credentials to reach it.
+An error body of the identity provider has the shape { code, message }, and the code INVALID_EMAIL_OR_PASSWORD is the only one the application recognises.
+
+=== contracts/owner-access/sign-in
+---
+type: api
+direction: published
+operations:
+- open-sign-in
+- submit-sign-in
+answers:
+- operation: open-sign-in
+  accepted: the sign-in form with the e-mail and password fields empty, preceded by the notice "Sua sessão expirou. Faça login novamente." when the caller reports that the owner's session expired, and by no notice otherwise
+- operation: submit-sign-in
+  accepted: the owner is taken to the sign-in destination, with no notice
+  refusals:
+  - rule: rules/owner-access/sign-in-requires-valid-email
+    answer: the e-mail field shows "Informe um e-mail válido." and nothing is sent to the identity provider
+  - rule: rules/owner-access/sign-in-requires-password
+    answer: the password field shows "Informe a senha." and nothing is sent to the identity provider
+  - rule: rules/owner-access/rejected-credentials-are-a-credential-failure
+    answer: a form-level alert and an error notice, both reading "E-mail ou senha incorretos."
+  - rule: rules/owner-access/unreachable-provider-is-a-network-failure
+    answer: a form-level alert and an error notice, both reading "Erro de conexão. Verifique sua rede e tente novamente."
+  - rule: rules/owner-access/network-looking-failure-is-a-network-failure
+    answer: a form-level alert and an error notice, both reading "Erro de conexão. Verifique sua rede e tente novamente."
+  - rule: rules/owner-access/missing-session-or-token-is-a-session-failure
+    answer: a form-level alert and an error notice, both reading "Erro ao obter sessão. Tente novamente."
+  - rule: rules/owner-access/any-other-sign-in-failure-is-unknown
+    answer: a form-level alert and an error notice, both reading "Erro inesperado. Tente novamente."
+---
+
+## Description
+
+What the owner reads and can do at the sign-in screen.
+The notice about an expired session and the alert of a failed attempt each depend on their own condition, so both can be shown together.
+
+=== contracts/owner-access/sign-in.log
+---
+entries:
+- field: answers
+  unstated: The material does not say which boundary holds the messages the owner reads at the sign-in screen, nor whether a message is a fact of the domain or only a label.
+  decided: The sign-in screen is a published api whose caller is the owner, and every message that tells the owner what was refused or what happened is an answer of it, while control labels, headings and placeholders are held by no node.
+  why: A message changes what the owner learns, which is what separates a fact from presentation, whereas a relabelled control keeps doing the same thing.
+---
+
+=== contracts/system/owner-identity
+---
+type: capability
+---
+
+## Description
+
+An external identity provider recognises the owner by e-mail address and password and issues the access token the application's back end verifies.
+
 === domain/chat/_context
 ---
 strategic: supporting
@@ -4334,6 +4427,118 @@ The type the values of an attribute key take.
 ## Responsibility
 
 None.
+
+=== domain/owner-access/_context
+---
+strategic: supporting
+---
+
+## Description
+
+Owner access holds how the owner signs in to the application and what the owner is told when signing in fails.
+
+## Responsibility
+
+It turns the credentials the owner types into an access token the application holds and takes the owner to where they were going.
+
+=== domain/owner-access/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether signing in is where the business differs or a solved problem.
+  decided: supporting
+  why: Signing in only gates the application behind an external identity provider and holds nothing the business differs on, so it is specific to this application without being core.
+---
+
+=== domain/owner-access/sign-in-attempt
+---
+type: aggregate-root
+attributes:
+- name: credentials
+  type: sign-in-credentials
+  required: true
+- name: failure_kind
+  type: sign-in-failure-kind
+- name: destination
+  type: sign-in-destination
+operations:
+- submit-credentials
+- request-access-token
+- classify-failure
+- resolve-destination
+---
+
+## Description
+
+One try of the owner at signing in, from the credentials typed to the destination reached.
+
+## Responsibility
+
+It keeps what the owner typed, the kind of the failure shown and the destination chosen, so that each try starts clean.
+
+=== domain/owner-access/sign-in-credentials
+---
+type: value-object
+attributes:
+- name: email
+  type: string
+  required: true
+- name: password
+  type: string
+  required: true
+---
+
+## Description
+
+The e-mail address and the password the owner types into the sign-in form, labelled "Login" and "Senha" on screen.
+
+## Responsibility
+
+It carries what the identity provider needs to recognise the owner.
+
+=== domain/owner-access/sign-in-credentials.log
+---
+entries:
+- field: attributes
+  unstated: The material names the two fields login and senha, in Portuguese, while the specification is written in English.
+  decided: The attributes are email and password, and the labels Login and Senha stay in the description.
+  why: The material's own words are the on-screen labels and the specification translates names, so the e-mail address the field holds is named for what it is.
+---
+
+=== domain/owner-access/sign-in-destination
+---
+type: value-object
+attributes:
+- name: path
+  type: string
+  required: true
+---
+
+## Description
+
+The address inside the application the owner is taken to after signing in.
+
+## Responsibility
+
+It keeps the owner from being sent anywhere outside the application.
+
+=== domain/owner-access/sign-in-failure-kind
+---
+type: enumeration
+values:
+- credential
+- network
+- session
+- unknown
+---
+
+## Description
+
+The kinds a failed sign-in falls into, each with its own message to the owner.
+
+## Responsibility
+
+It names the one category of failure the owner is told about.
 
 === rules/chat/archived-conversation-takes-no-turn
 ---
@@ -12477,6 +12682,200 @@ constrains:
 
 None.
 
+=== rules/owner-access/access-token-is-held-before-the-owner-moves-on
+---
+type: invariant
+statement: The owner MUST hold the access token before being taken to the destination.
+constrains:
+- domain/owner-access/sign-in-attempt
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/any-other-sign-in-failure-is-unknown
+---
+type: invariant
+statement: A sign-in failure no other failure kind claims MUST be classified as unknown.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/missing-session-or-token-is-a-session-failure
+---
+type: invariant
+statement: A sign-in failure MUST be classified as session when the identity provider holds no session for the owner or answers the token request without a usable access token.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/network-looking-failure-is-a-network-failure
+---
+type: invariant
+statement: A sign-in failure that did not come out of the exchange with the identity provider MUST be classified as network when it is a type error or its message mentions a failed fetch or the network.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/network-looking-failure-is-a-network-failure.log
+---
+entries:
+- field: statement
+  unstated: The material does not say whether a failure that did not come out of the exchange with the identity provider is read by its message or only by its type.
+  decided: It is a network failure when it is a type error or its message mentions a failed fetch or the network, and a failure the exchange raised is never read by its message.
+  why: The code reads the message only after every recognised failure of the exchange has been classified by its cause, so the message reading applies to the remainder and nothing else.
+---
+
+=== rules/owner-access/rejected-credentials-are-a-credential-failure
+---
+type: invariant
+statement: A sign-in failure MUST be classified as credential when the identity provider rejects the credentials.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-attempt-in-flight-accepts-no-second-submission
+---
+type: invariant
+statement: A sign-in attempt in flight MUST NOT accept a second submission.
+constrains:
+- domain/owner-access/sign-in-attempt
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-attempt-in-flight-accepts-no-second-submission.log
+---
+entries:
+- field: statement
+  unstated: The material says the fields and the submit button are disabled while an attempt is in flight, and does not say what that protects.
+  decided: The condition is that an attempt in flight accepts no second submission.
+  why: Disabling the controls is the means, and what the owner can no longer do is submit again before the first attempt ends, which is the obligation a reader can hold the screen to.
+---
+
+=== rules/owner-access/sign-in-destination-defaults-to-chat
+---
+type: invariant
+statement: After a successful sign-in the owner MUST be taken to the destination the address requested, or to /chat when the address requested none or one that is not a valid sign-in destination.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-destination
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-destination-is-a-local-path
+---
+type: invariant
+statement: A sign-in destination MUST be a path of at most 2048 characters that starts with a single slash and contains neither a scheme separator nor a backslash.
+constrains:
+- domain/owner-access/sign-in-destination
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-failure-shows-only-its-kind-message
+---
+type: invariant
+statement: A sign-in failure MUST be shown to the owner only as the message of its failure kind, never as a message of the identity provider.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-failure-stays-until-the-next-attempt
+---
+type: invariant
+statement: The failure kind of a sign-in attempt MUST stay shown until the owner submits the next attempt.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-requires-password
+---
+type: invariant
+statement: A sign-in attempt MUST NOT be sent to the identity provider while its password is empty.
+constrains:
+- domain/owner-access/sign-in-attempt
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/sign-in-requires-valid-email
+---
+type: invariant
+statement: A sign-in attempt MUST NOT be sent to the identity provider while its e-mail is not a valid e-mail address.
+constrains:
+- domain/owner-access/sign-in-attempt
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/token-is-requested-after-credentials-accepted
+---
+type: invariant
+statement: The access token MUST be requested only after the identity provider has accepted the credentials.
+constrains:
+- domain/owner-access/sign-in-attempt
+---
+
+## Description
+
+None.
+
+=== rules/owner-access/unreachable-provider-is-a-network-failure
+---
+type: invariant
+statement: A sign-in failure MUST be classified as network when the identity provider cannot be reached.
+constrains:
+- domain/owner-access/sign-in-attempt
+- domain/owner-access/sign-in-failure-kind
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/email-without-blank-line-is-one-block
 ---
 subject: rules/knowledge-base/email-quote-blocks
@@ -12662,3 +13061,65 @@ then:
 ## Description
 
 None.
+
+=== scenarios/owner-access/expired-session-notice-stays-beside-a-failure
+---
+subject: contracts/owner-access/sign-in
+given:
+- the caller reported that the owner's session expired and the owner submitted wrong credentials
+when:
+- the identity provider rejects the credentials
+then:
+- the notice "Sua sessão expirou. Faça login novamente." is still shown
+- the alert "E-mail ou senha incorretos." is shown beside it
+---
+
+## Description
+
+A failed attempt does not clear the notice about the expired session, and neither hides the other.
+
+=== scenarios/owner-access/external-destination-falls-back-to-chat
+---
+subject: rules/owner-access/sign-in-destination-defaults-to-chat
+given:
+- the address of the sign-in screen asks for the destination //other.example/page
+when:
+- the owner signs in successfully
+then:
+- the owner is taken to /chat
+---
+
+## Description
+
+A requested destination that leaves the application is replaced, never followed.
+
+=== scenarios/owner-access/offline-fetch-error-is-a-network-failure
+---
+subject: rules/owner-access/network-looking-failure-is-a-network-failure
+given:
+- a failure that did not come out of the exchange with the identity provider, whose message says "Failed to fetch"
+when:
+- the owner's sign-in attempt ends with that failure
+then:
+- the failure is classified as network
+- the owner reads "Erro de conexão. Verifique sua rede e tente novamente."
+---
+
+## Description
+
+The message of a failure outside the exchange decides its kind, and only there.
+
+=== scenarios/owner-access/whitespace-only-password-is-sent
+---
+subject: rules/owner-access/sign-in-requires-password
+given:
+- the owner typed a valid e-mail address and a password made only of spaces
+when:
+- the owner submits the sign-in form
+then:
+- the attempt is sent to the identity provider
+---
+
+## Description
+
+A password made only of spaces is not empty, so the form does not hold it back.

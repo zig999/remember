@@ -8,6 +8,7 @@ Derived by spec.py from the specification files; never edited.
 |---|---|---|---|---|---|
 | chat | supporting | 17 | 131 | 1 | 0 |
 | knowledge-base | core | 75 | 401 | 5 | 10 |
+| owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
 
@@ -24,10 +25,11 @@ Derived by spec.py from the specification files; never edited.
 - knowledge-base/node-attribute — 0 entity(ies) inside, 9 attribute(s) on the root
 - knowledge-base/node-type — 0 entity(ies) inside, 3 attribute(s) on the root
 - knowledge-base/raw-information — 1 entity(ies) inside, 11 attribute(s) on the root
+- owner-access/sign-in-attempt — 0 entity(ies) inside, 3 attribute(s) on the root
 
 ## Capabilities
 
-None.
+- owner-identity — consumed by owner-access
 
 ## Constraints
 
@@ -71,4 +73,4 @@ None.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-241 decision(s) disclosed, 2 location(s) retired in the decision logs.
+246 decision(s) disclosed, 2 location(s) retired in the decision logs.
