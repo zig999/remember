@@ -45,6 +45,11 @@ only names a control and keeps it doing the same thing, it is surface and is not
 This table is the owner's to approve before the pilot's analysis. Until approved it stays a
 proposal.
 
+P1 divergence found in the pilot: a judge reads any text the code emits that no node holds as
+`unstated`, including a control label the table above calls surface. Decision pending with the
+owner: either such labels stay surface and the `unstated` is accepted as a residue, or they get
+a home.
+
 **P2 — reuse of held nodes.** Facts the frontend restates from the backend (confidence bands,
 curation states, error codes, the `{ok,result,error}` envelope) bind to the nodes that already
 hold them under `specification/`. The analysis never creates a node that duplicates one. Hand
@@ -58,7 +63,9 @@ the `spec.py --digest` output to every surveyor and to the analysis as a file pa
 - Surveyor prompts: give the names a caller reads (keys, paths, verbs); `read_outside_area`
   items must parse as YAML strings, so no unquoted `": "`.
 - Judge prompts: "only the keys the contract defines at every depth"; every multi-line value as a
-  `|-` block with every line indented at least as deep as the first.
+  `|-` block with every line indented at least as deep as the first; "no code fence around the
+  return" (in the pilot three of four judges fenced it anyway: strip only the outer fence by
+  script after `--save-return`, before `--fold`, and record it).
 - Ledger: land each rule on every line that states its fact; a rule gets a judge only on the
   files whose fact lines the ledger landed on it.
 
