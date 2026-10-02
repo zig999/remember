@@ -10,6 +10,7 @@ import {
   PROMPT_VERSION as V4_VERSION,
   RECEIVED_AT_ANCHOR_DIRECTIVE,
   system as systemV4,
+  type DocumentMetadata,
   user as userV4,
 } from "../../../modules/ingestion/prompts/extraction.v4.js";
 import {
@@ -46,6 +47,35 @@ const DOCUMENT_DATE_FIRST_THEN_RECEPTION =
 
 const RECEIVED_BASIS_NAMED =
   /["'`]received["'`]|\bbasis\s+(?:of\s+)?["'`]?received\b(?!_at)/i;
+
+const RELATIVE_DATE_AGAINST_DOCUMENT_DATE_THEN_RECEPTION =
+  /relative date in the chunk(?:(?!`received_at`)[^])*?`document_date`[^]*?(?:otherwise|unknown|absent|missing|not present|fall back|fallback)[^]*?date portion of `received_at`/i;
+
+const RECEIVED_AT = "2026-06-26T12:00:00Z";
+const REAL_DOCUMENT_DATE = "2026-05-10";
+
+function registryV4Delta(): string {
+  const s = snap();
+  const v3Text = selectPromptModule("v3").system(s);
+
+  return selectPromptModule("v4").system(s).replace(v3Text, "").replace(/\s+/g, " ");
+}
+
+function metadataBlockText(version: string, documentDate: string | null): string {
+  const metadata: DocumentMetadata = {
+    source_type: "ata",
+    received_at: RECEIVED_AT,
+    document_date: documentDate,
+    title: "Ata de reunião",
+  };
+  const blocks = selectPromptModule(version).user({
+    metadata,
+    chunkText: "hoje cobrei o Caio.",
+    prevTail: "",
+  });
+
+  return blocks[0]?.text ?? "";
+}
 
 describe("extraction v4 prompt", () => {
   it("declares PROMPT_VERSION 'v4'", () => {
@@ -159,5 +189,43 @@ describe("prompt registry — v4", () => {
     expect(selectPromptModule("v1").version).toBe("v1");
     expect(selectPromptModule("v2").version).toBe("v2");
     expect(selectPromptModule("v3").version).toBe("v3");
+  });
+});
+
+describe("prompt registry — the v4 module an extraction is given", () => {
+  it("shows the reception time and a real document date in the user message, and (unknown) when the source has none", () => {
+    const withDate = metadataBlockText("v4", REAL_DOCUMENT_DATE);
+    const withoutDate = metadataBlockText("v4", null);
+
+    expect(withDate).toContain(`- received_at: ${RECEIVED_AT}`);
+    expect(withDate).toContain(`- document_date: ${REAL_DOCUMENT_DATE}`);
+    expect(withDate).not.toContain("- document_date: (unknown)");
+    expect(withoutDate).toContain("- document_date: (unknown)");
+  });
+
+  it.each(["v1", "v2", "v3"])(
+    "%s user message shows the reception time and a real document date, and (unknown) when the source has none",
+    (version) => {
+      const withDate = metadataBlockText(version, REAL_DOCUMENT_DATE);
+      const withoutDate = metadataBlockText(version, null);
+
+      expect(withDate).toContain(`- received_at: ${RECEIVED_AT}`);
+      expect(withDate).toContain(`- document_date: ${REAL_DOCUMENT_DATE}`);
+      expect(withDate).not.toContain("- document_date: (unknown)");
+      expect(withoutDate).toContain("- document_date: (unknown)");
+    }
+  );
+
+  it("asks, in the system prompt it hands out, to resolve a relative date in the chunk against the document date when present and otherwise against the date portion of received_at", () => {
+    const directive = registryV4Delta();
+
+    expect(directive).toMatch(RELATIVE_DATE_AGAINST_DOCUMENT_DATE_THEN_RECEPTION);
+  });
+
+  it("does not ask, in the system prompt it hands out, to state the basis received for a date taken from the reception fallback", () => {
+    const directive = registryV4Delta();
+
+    expect(directive.length).toBeGreaterThan(0);
+    expect(directive).not.toMatch(RECEIVED_BASIS_NAMED);
   });
 });
