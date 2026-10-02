@@ -1,0 +1,98 @@
+findings:
+  - file: src/mcp-stdio.ts
+    where: >-
+      the file-header comment, lines 8 to 13 ("Spec carve-outs"), first bullet
+    evidence: >-
+      //   - NO auth gate (no NeonAuth, no JWT) — the operating model is "one local
+      //     client per process", spawned by the desktop binary on the owner's box.
+    cost: >-
+      The trust model of the local process transport is written a second time in
+      a comment that cites back-spec versions (knowledge-graph.back.md v1.4.0
+      BR-01/BR-23) as its source. The next reader can take that comment for the
+      place the decision lives, and it does not change when the node does. The
+      code conforms: the file builds the transport and connects it with no
+      authentication call. Only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the "NO auth gate" and "NO Fastify, NO HTTP transport" lines from
+      the header comment by the comment route, then run /reconcile over this
+      file. The fact stays in the node and in the code that builds the
+      transport without a gate.
+    node: constraints/local-process-transport-needs-no-authentication
+
+  - file: src/mcp-stdio.ts
+    where: >-
+      the REDACT_PATHS constant and the docstring above it, lines 70 to 94, and
+      its use in buildStderrLogger at line 113
+    evidence: >-
+      * PII redaction paths — kept in sync with `backend/src/config/logger.ts`
+      * REDACT_PATHS. We intentionally do NOT call `buildLogger()` here ...
+      * Duplicating the small list of
+      * paths is preferred over leaking a `destination` parameter through the
+      * shared logger factory just for this entry point.
+      const REDACT_PATHS: readonly string[] = [
+        "content",
+        "text",
+        "value",
+        "*.content",
+        ...
+        "req.headers.authorization",
+        "*.req.headers.authorization",
+        "headers.authorization",
+      ];
+    cost: >-
+      The rule of which log fields show as [REDACTED] is implemented here a
+      second time. The file's own docstring says the list is duplicated and
+      relies on someone remembering to keep it in sync with config/logger.ts.
+      When the node moves, or logger.ts changes, nothing reads this copy. The
+      stdio process can then log a field in the clear that the HTTP process
+      redacts, and nobody can tell which list was decided.
+    kind: contradicts
+    correction: >-
+      The redaction rule should have one declaration that both log builders
+      read, so this entry point does not carry its own copy. That is a code
+      change owed to the pair, and it is not a change to the node.
+    node: constraints/logs-redact-text-fields
+
+  - file: src/mcp-stdio.ts
+    where: >-
+      Step 6, the toolCoordinates array, lines 226 to 232, with the Step 5
+      comment "no curation toolset is registered"
+    evidence: >-
+      const toolCoordinates: readonly ToolCoordinate[] = [
+        ...QUERY_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
+        ...QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
+        ...INGEST_TOOL_NAMES.map((name) => ({ toolset: "ingest" as const, name })),
+        { toolset: "ingest" as const, name: "ingest_document" },
+        { toolset: "ingest" as const, name: "ingest_directed" },
+      ];
+    cost: >-
+      Which operations are open over the local process transport is decided
+      only here: the query and ingest toolsets, and no curation toolset. The
+      only place the specification touches this is a decision-log line, "the
+      local process transport serves the query and ingest toolsets", and no
+      node states it. A reader looking in the specification for what a desktop
+      client can reach over stdio finds nothing. Someone adding a curation tool
+      here would change the owner's surface with no node to disagree with. The
+      header comment also says 18 tools while this array and the Step 6 comment
+      say 19. That comment drift is prose and not a separate finding.
+    kind: unstated
+    correction: >-
+      The analysis should give the set of toolsets served over the local
+      process transport a node, probably a constraint beside
+      constraints/local-process-transport-needs-no-authentication.
+    node: constraints/local-process-transport-needs-no-authentication
+
+read:
+  - node: constraints/local-process-transport-needs-no-authentication
+    held_at: >-
+      Step 8, lines 250 to 253. The stdio transport is constructed and
+      connected to the tool server with no authentication step anywhere in
+      main().
+    evidence: >-
+      const transport = new StdioServerTransport();
+      try {
+        await server.connect(transport);
+
+candidates_opened:
+  - constraints/logs-redact-text-fields

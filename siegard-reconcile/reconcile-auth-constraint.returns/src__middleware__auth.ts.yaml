@@ -1,0 +1,48 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      the header comment, lines 3-7 (the paragraph beginning "Implements BR-01 of knowledge-graph.back.md")
+    evidence: >-
+      every request that reaches a protected route must carry
+      `Authorization: Bearer <jwt>`. We verify the signature against Neon Auth's
+      JWKS, cache the JWKS in process for the configured TTL (default 10 min, per
+      knowledge-graph.back.md §1), and refuse to dispatch the route on any failure.
+    cost: >-
+      The comment states the node's rule, a signed bearer token required before the route runs, a second
+      time and cites a back-spec section as its authority. If the node moves, the comment keeps
+      claiming the old rule and `--check` never reaches it. A reader looking for where the rule
+      lives can stop at the prose instead of at the code in `preHandler`.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in `preHandler` holds the fact (`extractBearer`, `jwtVerify(token, jwks)`,
+      the `sub` check), and the node binds to this file. This is the comment route, followed by `/reconcile` over the file.
+    node: constraints/every-operation-requires-owner-authentication
+  - file: src/middleware/auth.ts
+    where: >-
+      the `createRemoteJWKSet` options in `buildNeonAuth`, line 102
+    evidence: >-
+      cooldownDuration: 30_000,
+    cost: >-
+      The code fixes the pause (30 seconds) between key-set refetches after a failed key lookup, and no
+      node states it. Only the comment at lines 87-88, which no node backs ("30 s cooldown, which matches
+      the spec exactly"), claims a spec basis. The next reader who looks for this timing in the specification
+      will not find it, and a change to it is a decision made only in code.
+    kind: unstated
+    correction: >-
+      Analysis would need to give the key-set refetch cooldown a node, or decide that it is not a
+      domain fact. The node that should have held it is the one for owner authentication.
+    node: constraints/every-operation-requires-owner-authentication
+read:
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      `preHandler` in `buildNeonAuth` (lines 113-152), with `extractBearer` (lines 161-166)
+    evidence: >-
+      `const token = extractBearer(header); if (token === null) { throw new AuthError("AUTH_UNAUTHORIZED", ...)`;
+      `const verified = await jwtVerify(token, jwks);` against `createRemoteJWKSet(buildJwksUrl(env.NEON_AUTH_URL), ...)`;
+      `if (typeof sub !== "string" || sub.length === 0) { throw new AuthError("AUTH_TOKEN_INVALID", "JWT missing required `sub` claim.")`;
+      `request.user = user;`
+looked_past: >-
+  Other judgments own these: the local operator token branch (`constantTimeEqual(token, localOperatorToken)`) is held by constraints/local-operator-token-development-only, which sits in tension with the "signed token" wording of the node under review (spec-internal, not a source finding); the `AuthError` codes and messages are held by contracts/knowledge-base/access; the comment "default 10 min, per knowledge-graph.back.md §1" and the other docstrings state facts only in prose, with no node holding them.
+candidates_opened:
+  - constraints/local-process-transport-needs-no-authentication
+  - constraints/local-operator-token-development-only
