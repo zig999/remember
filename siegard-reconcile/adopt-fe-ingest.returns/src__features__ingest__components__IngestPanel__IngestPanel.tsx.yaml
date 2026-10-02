@@ -1,0 +1,99 @@
+findings:
+  - file: src/features/ingest/components/IngestPanel/IngestPanel.tsx
+    where: |-
+      the file's header docstring, line 19 (the Accessibility list)
+    evidence: |-
+      * - All form controls disabled while the run is in flight
+    cost: |-
+      The docstring states, a second time and in different words, which phases lock the fields. The node says the fields are editable only in idle, ready and error, and isInputDisabled holds that in code. If the node moves, this sentence stays behind and reads as a rule that is still decided. "While the run is in flight" does not say whether complete and noop are locked, and the node and the code do.
+    kind: restates
+    correction: |-
+      Remove the line from the docstring. The fact is held by the node and by isInputDisabled in this same file. Prose is removed, never refreshed, and /reconcile runs over the file afterwards.
+    node: rules/ingest-workspace/fields-are-editable-outside-a-run
+  - file: src/features/ingest/components/IngestPanel/IngestPanel.tsx
+    where: |-
+      the doc comment above RETRYABLE_ERROR_CODES, line 47
+    evidence: |-
+      /** Codes that map to "retryable" errors — show the "Tentar novamente" CTA. */
+    cost: |-
+      The comment restates the rule that a retry is offered only for retryable codes, next to the Set that holds it in code. When the node's code list changes, the comment still claims to say which codes are retryable.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the node and by RETRYABLE_ERROR_CODES and isRetryable in this file.
+    node: rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+read:
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      Held in part here, across several constructs: SOURCE_TYPE_OPTIONS (choose-source-type), progressCopy (show-progress), the showSummary block (show-outcome title, needs-review notice and ingest-another action) and showError / isRetryable (retry offer for show-failure). The counts' labels, the load-file refusal, the validation messages, the known-content texts and the failure wording sit in other files (IngestSummary, IngestDropzone, IngestNoopNotice, IngestErrorBand, and the workspace that supplies validationMessage). Nothing here contradicts the contract.
+    evidence: |-
+      { value: "ata", label: "Ata" }, { value: "transcricao", label: "Transcrição" }, { value: "outro", label: "Outro" }
+      return "Enviando documento…"; / return "Extraindo conhecimento… (pode levar alguns minutos)"; / return "Verificando extração…"; / return "Compondo o grafo…";
+      summary !== undefined && (phase === "complete" || phase === "revealing")
+      <p className="text-xs font-medium text-foreground">Extração concluída</p>
+      Alguns nós aguardam revisão. Acesse Curadoria para detalhes.
+      Ingerir outro documento
+  - node: domain/knowledge-base/source-type
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file imports the type (`import type { IngestSourceType } from "../../api";`) and only lists the choices in SOURCE_TYPE_OPTIONS (`{ value: "pdf", label: "PDF" }`, `{ value: "ata", label: "Ata" }`, ...). The enumeration's shape is declared in the api module, not in this file.
+  - node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file classifies no extraction failure. It receives `errorCode` and `errorMessage` as props and has no status or envelope handling.
+  - node: rules/ingest-workspace/fields-are-editable-outside-a-run
+    held_at: |-
+      isInputDisabled, lines 59-71, with its result passed as `disabled` to the Textarea and the Select
+    evidence: |-
+      case "sending": case "extracting": case "polling": case "revealing": case "complete": case "noop": return true; default: return false;
+  - node: rules/ingest-workspace/file-area-shows-only-in-idle-and-ready
+    held_at: |-
+      the showDropzone constant, line 119, and its conditional render, lines 149-154
+    evidence: |-
+      const showDropzone = phase === "idle" || isReadyPhase;
+  - node: rules/ingest-workspace/file-read-replaces-the-content
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only forwards the callback to the dropzone (`<IngestDropzone onContent={onContentChange} disabled={disabled} />`). It reads no file and clears no rejection message. That behaviour is in IngestDropzone and the workspace.
+  - node: rules/ingest-workspace/form-is-ready-with-content-and-source-type
+    held_at: |-
+      the canSubmit constant, line 111. Its content and source-type conjuncts are this rule, and the phase conjunct belongs to the submit rule. The condition has no trim, so whitespace-only content counts as content.
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+  - node: rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+    held_at: |-
+      the RETRYABLE_ERROR_CODES Set, lines 48-57, and isRetryable, line 113. The six codes match the node's list exactly.
+    evidence: |-
+      new Set(["SYSTEM_LLM_PROVIDER_UNAVAILABLE", "SYSTEM_INTERNAL_ERROR", "SYSTEM_UPSTREAM", "SYSTEM_TIMEOUT", "SYSTEM_NETWORK", "RUN_FAILED"]);
+      const isRetryable = errorCode !== undefined && RETRYABLE_ERROR_CODES.has(errorCode);
+  - node: rules/ingest-workspace/retry-without-a-run-submits-again
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only passes `onRetry` to IngestErrorBand. It holds no run identity and makes no choice between resuming and submitting again.
+  - node: rules/ingest-workspace/review-count-points-to-curation
+    held_at: |-
+      the needs-review notice inside the outcome block, lines 252-259
+    evidence: |-
+      {summary.needsReview > 0 ? ( <p data-testid="ingest-needs-review-notice" ...> Alguns nós aguardam revisão. Acesse Curadoria para detalhes. </p> ) : null}
+  - node: rules/ingest-workspace/submit-control-shows-in-idle-ready-and-sending
+    held_at: |-
+      the showSubmit constant, line 112, and the Button's disabled prop, line 202
+    evidence: |-
+      const showSubmit = phase === "idle" || isReadyPhase || isSendingPhase;
+      disabled={!canSubmit || isSendingPhase}
+  - node: rules/ingest-workspace/submit-needs-the-ready-phase
+    held_at: |-
+      the canSubmit constant, line 111, and the guard in the form's onSubmit handler, line 145
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+      if (canSubmit) onSubmit();
+  - node: scenarios/ingest-workspace/whitespace-only-content-is-ready
+    held_at: |-
+      the canSubmit constant, line 111. The length check is not trimmed, so a content of only spaces satisfies it.
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+looked_past: |-
+  I saw and did not report four things that belong to other judgments. The comment at lines 54-55 says the polling loop's failed status is surfaced by the caller as the synthetic RUN_FAILED. That fact is only prose here, and the code that holds it is in the workspace, outside this file set. The docstring's phase list (idle, sending, extracting, polling, complete, error, noop) and its note that the state machine lives in IngestWorkspace are prose too. The aria-busy choice of which phases count as busy (isProgressBusy), and the visible labels (headings, placeholder, "Ingerir", "Enviando…"), are surface and accessibility rather than a domain fact.

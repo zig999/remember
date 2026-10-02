@@ -1,0 +1,93 @@
+findings:
+  - file: src/features/ingest/components/IngestDropzone/IngestDropzone.tsx
+    where: |-
+      the file header comment, lines 11-14 ("Out of scope")
+    evidence: |-
+      * - Binary / PDF parsing — only `.txt` files are accepted (text/* MIME also
+      *    accepted as a fallback).
+    cost: |-
+      The accepted-types rule is written a second time as prose beside the code that holds it. The next reader can take the comment for the rule. When the rule changes, the comment keeps saying the old one and nothing flags it.
+    kind: restates
+    correction: |-
+      Remove the prose. The rule is held by code in this file, in isTxtFile (line 38), and by the node's own bind. The comment owes nothing to the code.
+    node: rules/ingest-workspace/only-text-files-are-accepted
+  - file: src/features/ingest/components/IngestDropzone/IngestDropzone.tsx
+    where: |-
+      the constants ZONE_LABEL and HELPER_TEXT (lines 27-28) and the paragraph rendered at line 170
+    evidence: |-
+      const ZONE_LABEL = "Área para arrastar ou carregar arquivo .txt";
+      const HELPER_TEXT = "Arraste um .txt ou cole o texto abaixo.";
+      <p className="text-xs text-foreground">
+        Arraste um arquivo .txt ou clique para selecionar
+      </p>
+    cost: |-
+      These three strings are what the file area tells the owner: the accessible label, the helper line and the visible prompt. No node holds them. The specification covers only the rejection message under load-file, so the wording lives only in this component. Whoever looks in the specification for what the area says will not find it.
+    kind: unstated
+    correction: |-
+      Analysis should give the wording of the file area (its accessible label, helper line and visible prompt) a node. The load-file operation of the ingest-screen contract is the natural home.
+    node: contracts/ingest-workspace/ingest-screen
+  - file: src/features/ingest/components/IngestDropzone/IngestDropzone.tsx
+    where: |-
+      the docstring above isTxtFile, lines 33-37
+    evidence: |-
+      * Validate that a file is a text file by extension or MIME type. We do not
+      * trust the OS-reported MIME alone (Windows sometimes reports
+      * `application/octet-stream` for `.txt`) — extension wins as a fallback.
+    cost: |-
+      The docstring states the acceptance rule (text type or .txt name) in prose. The function below it holds the same rule in code. The rule therefore has a second home that no check reads, and it can diverge from the code unnoticed.
+    kind: restates
+    correction: |-
+      Remove the docstring. isTxtFile holds the rule, and the node's bind claims it.
+    node: rules/ingest-workspace/only-text-files-are-accepted
+read:
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      REJECT_MESSAGE (line 30) set by handleFiles (line 70) and rendered in the role="alert" paragraph (lines 180-189). The accepted path is the reader.onload callback (lines 74-80). The rest of the contract's operations are not in this file.
+    evidence: |-
+      const REJECT_MESSAGE =
+        "Formato não suportado: envie um arquivo .txt (ou cole o texto abaixo).";
+      if (!isTxtFile(file)) { setError(REJECT_MESSAGE); return; }
+      setError(null);
+      onContent(result);
+  - node: rules/ingest-workspace/disabled-file-area-ignores-input
+    held_at: |-
+      the early returns in openPicker (line 58, reached by onClick), onZoneKeyDown (line 97) and onDrop (line 128)
+    evidence: |-
+      const openPicker = useCallback(() => { if (disabled) return; inputRef.current?.click(); }
+      if (disabled) return;
+      if (e.key === "Enter" || e.key === " ") {
+      if (disabled) return;
+      e.preventDefault(); ... handleFiles(e.dataTransfer.files);
+  - node: rules/ingest-workspace/file-read-replaces-the-content
+    held_at: |-
+      the reader.onload callback in handleFiles, lines 74-80
+    evidence: |-
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") return;
+        setError(null);
+        onContent(result);
+  - node: rules/ingest-workspace/only-text-files-are-accepted
+    held_at: |-
+      isTxtFile, lines 38-42, used by the guard at line 67
+    evidence: |-
+      if (file.type === "text/plain") return true;
+      if (file.type.startsWith("text/")) return true;
+      return file.name.toLowerCase().endsWith(".txt");
+  - node: rules/ingest-workspace/only-the-first-file-is-used
+    held_at: |-
+      handleFiles, lines 64-66
+    evidence: |-
+      const file = files[0];
+      if (!file) return;
+  - node: rules/ingest-workspace/rejection-stays-until-a-file-is-read
+    held_at: |-
+      the single place that clears the error, setError(null) inside reader.onload (line 77). The rejection branch sets it (line 70). No other handler clears it.
+    evidence: |-
+      setError(REJECT_MESSAGE);
+      return;
+      ...
+      setError(null);
+      onContent(result);
+looked_past: |-
+  The comment at lines 68-69 ("Surface the rejection instead of failing silently") and the "Reset value so picking the same file twice still fires onChange" comment carry rationale rather than a node's fact, and the remaining comments are a code-review and comment-route matter, not a conformance finding.

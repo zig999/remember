@@ -1,0 +1,79 @@
+findings:
+  - file: src/features/ingest/api/useIngestRunStatus.ts
+    where: |-
+      the module docstring (lines 14-20, "refetchInterval: 5000" and "Stop polling automatically"), and the comment above INGEST_RUN_POLL_MS (lines 56-57)
+    evidence: |-
+      * - **`refetchInterval: 5000`** while `enabled` is true; the spec calls
+      *    for 5s polling cadence (§4).
+      *  - **Stop polling automatically** when `status === "completed" |
+      *    "failed"`
+      /** Polling cadence — spec §4 TTL table. Exported so tests can pin the
+    cost: |-
+      The five-second cadence and the stop on completed or failed are written a second time in prose, citing a spec section that is not the node. When the node moves, this prose is not bound to follow it and goes stale. The running code (INGEST_RUN_POLL_MS and terminalAwareRefetchInterval) holds the fact in this same file.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact stays held by `INGEST_RUN_POLL_MS = 5_000` and `terminalAwareRefetchInterval` in this file.
+    node: rules/ingest-workspace/run-is-polled-every-five-seconds
+  - file: src/features/ingest/api/useIngestRunStatus.ts
+    where: |-
+      the docstring's `enabled` bullet (lines 24-28) and the `llmRunId` and `enabled` property comments (lines 41-44, 46-52)
+    evidence: |-
+      * The hook also auto-disables when null/empty
+      *    `llmRunId` is passed.
+      * Target run identifier (UUID). `null` / `undefined` / `""` disables
+      * the hook (no fetch fires).
+    cost: |-
+      The rule that a run is read only with a non-empty identity and an enabled reading is stated again in prose. The prose also states a default for `enabled` ("Default is `false`") that the code does not apply. A reader who trusts the comment learns something other than what the code does. The code holds the rule in this file (`hasRunId && (params.enabled ?? true)`).
+    kind: restates
+    correction: |-
+      Remove the prose. The fact stays held by `hasRunId` and the `enabled` expression in useIngestRunStatus.
+    node: rules/ingest-workspace/run-is-read-only-with-an-identity-and-the-gate
+  - file: src/features/ingest/api/useIngestRunStatus.ts
+    where: |-
+      `retry: 2` in the useQuery options (line 95), with its comment on lines 93-94
+    evidence: |-
+      // Polling is resilient — one extra retry helps small blips not kill
+      // the loop. The global default is 1; we bump to 2 to be defensive.
+      retry: 2,
+    cost: |-
+      The code makes a failed run read be attempted again twice before the failure surfaces. That decides how long the owner waits before a failure shows and how often the BFF is hit. No node holds it. I searched projections/full-text.md for retry, poll, stale and focus and found no rule that fixes the retry count of a run read. The value lives only here, so the next reader looks in the specification and does not find it. The rule on the five-second read says nothing about retries.
+    kind: unstated
+    correction: |-
+      An analysis would have to give the retry behaviour of the run read a node. Candidates are the polling rule, or the read-llm-run operation of the bff-ingestion contract.
+    node: rules/ingest-workspace/run-is-polled-every-five-seconds
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      the queryFn of useIngestRunStatus (lines 79-85) holds only the read-llm-run request. Everything else in the contract is held in other files.
+    evidence: |-
+      const wire = await httpIngest<LlmRunWire>(
+        `/api/v1/ingest/llm-runs/${encodeURIComponent(params.llmRunId as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toLlmRun(wire);
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      the `headers: authHeader()` argument of the request in the queryFn (line 82). The file only delegates to authHeader and httpIngest, imported from ./_request, so the bearer logic itself is not in this file.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: nowhere
+    evidence: |-
+      The file passes no timeout. It only calls `httpIngest<LlmRunWire>(url, { method: "GET", headers: authHeader() })`, so the thirty-second limit is not stated in this file.
+  - node: rules/ingest-workspace/run-is-polled-every-five-seconds
+    held_at: |-
+      INGEST_RUN_POLL_MS and terminalAwareRefetchInterval (lines 58-68), wired in as `refetchInterval` (line 92)
+    evidence: |-
+      export const INGEST_RUN_POLL_MS = 5_000;
+      const status = query.state.data?.status;
+      if (status === "completed" || status === "failed") return false;
+      return INGEST_RUN_POLL_MS;
+  - node: rules/ingest-workspace/run-is-read-only-with-an-identity-and-the-gate
+    held_at: |-
+      the `hasRunId` and `enabled` constants of useIngestRunStatus (lines 73-75), passed as `enabled` to useQuery (line 86)
+    evidence: |-
+      const hasRunId =
+        typeof params.llmRunId === "string" && params.llmRunId.length > 0;
+      const enabled = hasRunId && (params.enabled ?? true);
+looked_past: |-
+  Two things are not a conformance judgment: the docstring says `enabled` defaults to false while the code defaults it to true (`params.enabled ?? true`), and staleTime 0 with refetchOnWindowFocus false are cache settings that no node states and that do not contradict one.

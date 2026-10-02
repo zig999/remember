@@ -1,0 +1,127 @@
+findings:
+  - file: src/features/ingest/components/IngestWorkspace/_utils.ts
+    where: |-
+      the second branch of classifyError(), lines 23-25
+    evidence: |-
+      if (err instanceof Error) {
+          return { code: "SYSTEM_UNKNOWN", message: err.message };
+        }
+    cost: |-
+      The contract gives the fallback "Erro desconhecido." for a failure that has no message of its own. Here the fallback applies only to a thrown value that is not an Error. An Error with an empty message goes through with message "", so the owner sees "Erro na ingestão" with a blank body. The fallback text the specification names is not shown in that case.
+    kind: contradicts
+    correction: |-
+      The fallback to "Erro desconhecido." would have to apply whenever the failure has no message, including an Error whose message is empty. The contract wording is "reading the failure's own message, or \"Erro desconhecido.\" when it has none".
+    node: contracts/ingest-workspace/ingest-screen
+  - file: src/features/ingest/components/IngestWorkspace/_utils.ts
+    where: |-
+      the docstring of isConnectionDropError(), lines 29-32
+    evidence: |-
+      Per the TC contract: anything other than 409/422 is treated as a
+       *  drop.
+    cost: |-
+      The docstring states in prose the rule that the code at lines 36-46 already implements. If the node moves, nothing binds this prose to follow it, so a reader could take the comment as the decision.
+    kind: restates
+    correction: |-
+      Remove the docstring. The code in this file holds the rule, and the node binds it.
+    node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+  - file: src/features/ingest/components/IngestWorkspace/_utils.ts
+    where: |-
+      the inline comments inside the EnvelopeError branch of isConnectionDropError(), lines 35-45
+    evidence: |-
+      // Definite server-side rejections — surface as error.
+          if (err.httpStatus === 409 || err.httpStatus === 422) return false;
+          // Network/timeout — definitely a drop.
+          // 5xx with an LLM_PROVIDER_UNAVAILABLE is a real error band per spec §6.
+          // Any other code → treat as drop (graceful degradation per spec §4).
+    cost: |-
+      These comments restate the node's exclusions and cite "spec §6" and "spec §4" of the old specification document as their authority. The code holds the facts, and the comment about "5xx" says more than the code checks. A reader may take the prose as the home of the rule.
+    kind: restates
+    correction: |-
+      Remove the inline comments. The branches that return false or true hold the fact, and the node binds them.
+    node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+  - file: src/features/ingest/components/IngestWorkspace/_utils.ts
+    where: |-
+      the comment before the final return of isConnectionDropError(), lines 48-50
+    evidence: |-
+      // Non-Envelope errors are unknown ground — be conservative and surface
+        // as error so they don't hide silently behind a polling spinner.
+        return false;
+    cost: |-
+      The comment gives a rationale and restates in prose that a failure outside an envelope is no connection drop. The `return false` already holds that fact, so the prose is a second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The `return false` holds the fact, and the node binds it.
+    node: rules/ingest-workspace/failure-outside-an-envelope-is-no-connection-drop
+read:
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      Only the failure-message fallback sits here, in classifyError(), lines 23-26. The source types, loading, submit, progress, outcome and known-content operations are nowhere in this file.
+    evidence: |-
+      return { code: "SYSTEM_UNKNOWN", message: err.message };
+        }
+        return { code: "SYSTEM_UNKNOWN", message: "Erro desconhecido." };
+  - node: domain/ingest-workspace/ingest-failure
+    held_at: |-
+      the inline return type of classifyError(), lines 16-19
+    evidence: |-
+      {
+        readonly code: string;
+        readonly message: string;
+      }
+  - node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+    held_at: |-
+      the EnvelopeError branch of isConnectionDropError(), lines 33-47
+    evidence: |-
+      if (err.httpStatus === 409 || err.httpStatus === 422) return false;
+          if (err.code === "SYSTEM_LLM_PROVIDER_UNAVAILABLE") return false;
+          if (err.code === "AUTH_SESSION_EXPIRED") return false; // handled globally
+          if (err.code === "SYSTEM_ABORTED") return false; // user-driven, no UI
+          // Any other code → treat as drop (graceful degradation per spec §4).
+          return true;
+  - node: rules/ingest-workspace/connection-drop-polls-the-run
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only classifies an error as a drop or not, through `export function isConnectionDropError(err: unknown): boolean`. Nothing in it starts polling or moves a phase.
+  - node: rules/ingest-workspace/failure-envelope-shows-its-own-code-and-message
+    held_at: |-
+      the EnvelopeError branch of classifyError(), lines 20-22
+    evidence: |-
+      if (err instanceof EnvelopeError) {
+          return { code: err.code, message: err.message };
+        }
+  - node: rules/ingest-workspace/failure-outside-an-envelope-is-no-connection-drop
+    held_at: |-
+      the final return of isConnectionDropError(), line 50
+    evidence: |-
+      return false;
+  - node: rules/ingest-workspace/failure-outside-an-envelope-shows-the-unknown-code
+    held_at: |-
+      the two non-envelope returns of classifyError(), lines 23-26
+    evidence: |-
+      return { code: "SYSTEM_UNKNOWN", message: err.message };
+        }
+        return { code: "SYSTEM_UNKNOWN", message: "Erro desconhecido." };
+  - node: rules/ingest-workspace/polled-failed-run-ends-in-run-failed
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file has no polling and no run status. The code RUN_FAILED does not appear in it. Its only two exports are classifyError and isConnectionDropError.
+  - node: rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file never decides whether a retry is offered. No retryable-code list appears in it, and `classifyError` returns only `{ code, message }`.
+  - node: scenarios/ingest-workspace/conflicting-extraction-shows-the-failure
+    held_at: |-
+      the 409 and 422 guard in isConnectionDropError(), line 36, together with the envelope return of classifyError(), lines 20-22
+    evidence: |-
+      if (err.httpStatus === 409 || err.httpStatus === 422) return false;
+  - node: scenarios/ingest-workspace/internal-error-during-extraction-polls-the-run
+    held_at: |-
+      the fall-through return true of isConnectionDropError(), line 46, reached by SYSTEM_INTERNAL_ERROR at status 500
+    evidence: |-
+      // Any other code → treat as drop (graceful degradation per spec §4).
+        return true;
+looked_past: |-
+  The docstring at the top of the file explains a size-driven extraction and cites a standards rule ("u-fe-standards"). I saw it and did not report it, because it states no node's fact and the comment route handles it.

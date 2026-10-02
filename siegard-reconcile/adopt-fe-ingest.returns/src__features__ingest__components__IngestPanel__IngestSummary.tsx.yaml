@@ -1,0 +1,44 @@
+findings:
+  - file: src/features/ingest/components/IngestPanel/IngestSummary.tsx
+    where: |-
+      the header doc comment, lines 1-12, which restates the seven counts and the two hidden ones
+    evidence: |-
+      * Spec: `ingest.feature.spec.md §2 UI-07` — display
+      * `accepted/consolidated/needs_review/uncertain/disputed/rejected/error`
+      * (the spec intentionally hides `superseded_previous` and
+      * `orphaned_fragments` from v1).
+    cost: |-
+      The set of counts and their order are written a second time in prose, next to the ROWS array that holds them. The comment cites a spec file, not the node. If the node moves, `--check` does not reach this comment, and a reader can take it for the place the decision is recorded. The comment also gives a reason for the hiding ("intentionally ... from v1"). The node states no such reason.
+    kind: restates
+    correction: |-
+      Remove the comment. The ROWS array already holds the fact, and the node binds the file. Removing it changes no behavior.
+    node: rules/ingest-workspace/outcome-shows-the-seven-counts-in-order
+read:
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      the ROWS constant, lines 27-35, for the labels of the show-outcome counts. The rendering of the labels and values is the dl map, lines 39-55.
+    evidence: |-
+      { key: "accepted", label: "Aceitos" },
+      { key: "consolidated", label: "Consolidados" },
+      { key: "needsReview", label: "Aguardando revisão" },
+      { key: "uncertain", label: "Incertos" },
+      { key: "disputed", label: "Em conflito" },
+      { key: "rejected", label: "Rejeitados" },
+      { key: "error", label: "Erros" },
+  - node: domain/knowledge-base/run-summary
+    held_at: |-
+      nowhere. The shape is declared in another file, and this file only reads fields from it through `LlmRunSummary`.
+    evidence: |-
+      import type { LlmRunSummary } from "../../api"; and `{summary[key]}`
+  - node: rules/ingest-workspace/outcome-shows-the-seven-counts-in-order
+    held_at: |-
+      the ROWS array, lines 27-35, rendered in array order by `ROWS.map` at line 43. It has exactly seven rows and omits superseded_previous and orphaned_fragments.
+    evidence: |-
+      const ROWS: ReadonlyArray<Row> = [
+        { key: "accepted", label: "Aceitos" },
+      ...
+        { key: "error", label: "Erros" },
+      ];
+      {ROWS.map(({ key, label }) => (
+looked_past: |-
+  The comment about not importing `StateBadge` is prose carrying no node's fact, and the inline styling tokens and test ids are surface matters, so neither is reported.

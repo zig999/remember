@@ -1,0 +1,26 @@
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      the mutationFn of useRetryLlmRun, lines 51-65: the body choice (`reason` given or `{}`), the POST to the retry path, and the read through toLlmRun. The extraction is not started in this file.
+    evidence: |-
+      const body: RetryLlmRunRequestWire =
+        reason !== undefined ? { reason } : {};
+      const wire = await httpIngest<LlmRunWire>(
+        `/api/v1/ingest/llm-runs/${encodeURIComponent(llm_run_id)}/retry`,
+        {
+          method: "POST",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      return toLlmRun(wire);
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: nowhere
+    evidence: |-
+      this file only forwards `headers: { ...authHeader(), "Content-Type": "application/json" }`. The bearer-or-nothing rule sits in `authHeader`, which is declared in ./_request and is outside the file set.
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: nowhere
+    evidence: |-
+      this file passes no timeout or signal to `httpIngest<LlmRunWire>(..., { method: "POST", headers: ..., body: ... })`. Any thirty-second limit would sit in ./_request, which is outside the file set.
+looked_past: |-
+  Prose in the docstring and a comment states facts no code here carries and the contract does not hold: a reason limit ("max 500 chars per openapi"; the contract says "no bound on the reason"), the code BUSINESS_RUN_NOT_RETRYABLE with HTTP 409, and the status transition "failed → running". This is the comment route's, not a finding.

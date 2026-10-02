@@ -1,0 +1,55 @@
+findings:
+  - file: src/features/ingest/api/useRunLlmExtraction.ts
+    where: >-
+      the file's leading docstring (lines 1-26), the "Design" bullets on the no-cutoff rule and the empty body
+    evidence: |-
+      **`ingest: true`** on `httpIngest` → skips the 30s client-side
+       *    cutoff.
+      ...
+       *  - Empty body sent as `{}` (openapi declares `additionalProperties: false`).
+    cost: >-
+      The docstring states the no-cutoff rule and the `{}` body a second time in prose. The code holds both: this file passes `ingest: true` and `body: JSON.stringify({})`, and `_request.ts` branches on `ingestMode === true` to skip the 30-second cutoff. When the node moves, nothing reads the prose, so it keeps stating a rule nobody decided. The prose also cites `docs/specs/...` and `CLAUDE.md` as its authority instead of the nodes.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact stays in the contract and the rule nodes, and the code that holds it stays where it is.
+    node: rules/ingest-workspace/extraction-has-no-client-cutoff
+  - file: src/features/ingest/api/useRunLlmExtraction.ts
+    where: >-
+      the inline comment above `ingest: true` in the `httpIngest` options (lines 51-53)
+    evidence: |-
+      // LLM-bound — no client-side cutoff. Server stays connected for
+      // the duration of extraction (minutes). If the network drops,
+      // the caller switches to polling via `useIngestRunStatus`.
+    cost: >-
+      The comment restates the no-cutoff rule beside the code that holds it (`ingest: true`, honoured in `_request.ts`). The next reader can take it for the place the rule was decided and edit it there. It is prose no running system emits, so removing it changes no behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/ingest-workspace/extraction-has-no-client-cutoff
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: >-
+      the run-extraction operation in mutationFn, lines 45-57. It issues POST to the llm-runs run path and reads the answer through toLlmRun.
+    evidence: |-
+      await httpIngest<LlmRunWire>(
+        `/api/v1/ingest/llm-runs/${encodeURIComponent(llm_run_id)}/run`,
+        { method: "POST", ... body: JSON.stringify({}), ingest: true }
+      );
+      return toLlmRun(wire);
+  - node: rules/ingest-workspace/extraction-has-no-client-cutoff
+    held_at: >-
+      the `ingest: true` option passed to httpIngest, line 54. The code that skips the cutoff in response sits in _request.ts, outside this file set.
+    evidence: |-
+      ingest: true,
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: >-
+      the `authHeader()` spread in the request headers, line 49. authHeader itself is declared in _request.ts, outside this file set.
+    evidence: |-
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: >-
+      nowhere. This file only opts out of the cutoff with `ingest: true`. The thirty-second timeout is declared in _request.ts as DEFAULT_TIMEOUT_MS.
+    evidence: |-
+      ingest: true,
+looked_past: >-
+  The docstring says the caller (TC-06 IngestPanel) flips to `useIngestRunStatus` polling on SYSTEM_NETWORK, and describes the UI handling of BUSINESS_RUN_NOT_RUNNABLE; no code in this file holds either fact, so it is prose only and belongs to the comment route.

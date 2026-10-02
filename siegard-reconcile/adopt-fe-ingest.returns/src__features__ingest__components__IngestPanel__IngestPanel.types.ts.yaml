@@ -1,0 +1,26 @@
+findings:
+  - file: src/features/ingest/components/IngestPanel/IngestPanel.types.ts
+    where: |-
+      the doc comment on the errorCode prop of IngestPanelProps (lines 42-43)
+    evidence: |-
+      /** Optional error code — used by the panel to gate the "Tentar novamente"
+       *  CTA (only for retryable codes). */
+      readonly errorCode?: string;
+    cost: |-
+      The comment states that retry is offered only for retryable codes, a fact the candidate rule holds. The code that enforces it lives in another file, where RETRYABLE_ERROR_CODES is declared in IngestPanel.tsx. A reader of this contract sees a second statement of the rule that nothing reads. If the rule's code list moves, the comment stays behind with no signal that it is stale. This file's own `held_at` for the rule is nowhere, because it declares only `errorCode?: string`.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. The rule is held by the candidate node and enforced by the code in IngestPanel.tsx, so nothing about this file's behavior changes.
+    node: rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+read:
+  - node: domain/ingest-workspace/ingest-phase
+    held_at: |-
+      the exported union type IngestPhase, lines 18-27
+    evidence: |-
+      export type IngestPhase =
+        | "idle" | "ready" | "sending" | "noop" | "extracting" | "polling" | "revealing" | "complete" | "error";
+      (each member sits on its own line in the source)
+looked_past: |-
+  The per-value and per-prop comments (UI-01..UI-09 ids, button labels, "Empty string = unselected") are prose that no node of my set holds and that no running system emits, so they belong to the comment route, not to this pass.
+candidates_opened:
+  - rules/ingest-workspace/retry-is-offered-only-for-retryable-codes

@@ -1,0 +1,184 @@
+findings:
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the SYSTEM_TIMEOUT / SYSTEM_ABORTED / SYSTEM_NETWORK EnvelopeError (lines 184-197) and the SYSTEM_INVALID_RESPONSE EnvelopeError (lines 232-237)
+    evidence: |-
+      httpStatus: 0,
+      message: isTimeout
+      ...
+      details: { cause: String(err) }
+      ...
+      code: "SYSTEM_INVALID_RESPONSE",
+      httpStatus: response.status,
+      message: "Resposta do servidor não é JSON válido.",
+      details: { cause: String(err) },
+    cost: |-
+      The node gives these failures a code and a message only. The code also decides that a request that never got an answer carries status 0, and that these failures carry a details object holding the stringified cause. A reader looking for what a failure carries finds it only here.
+    kind: unstated
+    correction: |-
+      The node that states these failures would have to say what a failure with no HTTP answer carries as its status and details, or the code would have to stop supplying them.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the header docstring, lines 27-31 and 32-34; the "ingest" option docstring, lines 52-56; the comment on DEFAULT_TIMEOUT_MS, line 63; the comment on the timeout branch, line 157
+    evidence: |-
+      * - On HTTP 401: same DC silent-refresh story as `lib/http.ts` —
+      mint a new JWT once via `fetchAccessToken()` and retry the
+      ...
+      /** Non-ingest cutoff. Mirrors `lib/http.ts` DEFAULT_TIMEOUT_MS. */
+    cost: |-
+      The thirty-second cutoff is described again in prose, in several places. The code holds it in DEFAULT_TIMEOUT_MS and the setTimeout branch of httpIngest. When the node moves, these comments do not follow, and they are a second home for the rule that nothing reads.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the setTimeout(..., DEFAULT_TIMEOUT_MS) branch of httpIngest, which is the file under judgment.
+    node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the header docstring, lines 32-34; the "ingest" option docstring, lines 52-56; the JSDoc of httpIngest, line 147; the comment on line 157
+    evidence: |-
+      * - The `ingest` option, when true, **skips the client-side 30s cutoff**
+      *    — required for `runLlmExtraction` per CLAUDE.md "ingest_document
+      *    client timeout ≠ failure". The caller's `signal` is forwarded as-is.
+    cost: |-
+      The rule that running extraction has no client cutoff is stated in prose that cites CLAUDE.md as its authority. The code holds it in the ingestMode === true branch, where signal = userSignal. A reader is sent to CLAUDE.md instead of to the node.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the ingestMode === true branch of httpIngest.
+    node: rules/ingest-workspace/extraction-has-no-client-cutoff
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the header docstring, lines 27-31; the JSDoc of httpIngest, lines 143-146; the comment on line 201
+    evidence: |-
+      *  - HTTP 401 → attempts DC silent refresh once via `fetchAccessToken()`;
+      *    on success, retries the original request once with the new JWT.
+    cost: |-
+      The refresh-once-and-resend rule is restated in three prose passages. The code holds it in the response.status === 401 branch, which calls trySilentRefresh and recurses. Prose and node can drift apart without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the 401 branch of httpIngest and by trySilentRefresh.
+    node: rules/ingest-workspace/first-unauthorized-answer-refreshes-the-token-once
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the header docstring, lines 30-31; the comment on __retried, lines 58-59
+    evidence: |-
+      /** INTERNAL — set by the 401 retry path so the second attempt cannot
+       *  re-enter the silent-refresh branch. Callers MUST NOT set this. */
+    cost: |-
+      The rule that a resent request never refreshes again is restated in comments. The code holds it in the `__retried !== true` guard and in the `__retried: true` passed on the recursive call.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the `__retried` guard on the 401 branch.
+    node: rules/ingest-workspace/resent-request-never-refreshes-again
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the JSDoc of httpIngest, lines 145-146
+    evidence: |-
+      *    On failure, clears the auth store + redirects to
+      *    `/sign-in?reason=session_expired` and throws `AUTH_SESSION_EXPIRED`.
+    cost: |-
+      The sign-in redirect address and the clearing of the token are restated in a docstring. The code holds both in the catch of trySilentRefresh, in useAuthStore.getState().clear() and redirectImpl("/sign-in?reason=session_expired").
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by trySilentRefresh.
+    node: rules/ingest-workspace/unrefreshable-session-ends-at-sign-in
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the comment on authHeader, line 42
+    evidence: |-
+      /** Build the `Authorization: Bearer <jwt>` header when a token is present. */
+    cost: |-
+      The bearer-when-held rule is restated in a comment above the code that implements it in authHeader(). The comment is a second statement of the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by authHeader().
+    node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+  - file: src/features/ingest/api/_request.ts
+    where: |-
+      the header docstring, lines 7-16 and 22-26; the JSDoc of httpIngest, lines 138-142; the comments on lines 226 and 241
+    evidence: |-
+      every 2xx response sends
+      the response schema as a **bare body** (no `{ ok, result }` wrapper);
+      every 4xx/5xx sends the standard envelope `{ error: { code, message,
+      details? } }`.
+    cost: |-
+      How an answer is read, namely a bare 2xx body and an error object on failures, is described again in prose. The code holds it in the 2xx branch and in the errObj extraction. The prose also asserts what the back end sends, which is the upstream's fact and not this screen's.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the 2xx and 4xx/5xx branches of httpIngest.
+    node: contracts/ingest-workspace/bff-ingestion
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      httpIngest, the whole function (lines 149-275), for the send-ingestion-request operation. The other operations (ingest-raw-information, run-extraction, retry-llm-run, read-llm-run) are not stated in this file.
+    evidence: |-
+      throw new EnvelopeError({
+        code:
+          typeof errObj?.code === "string"
+            ? errObj.code
+            : response.status >= 500
+              ? "SYSTEM_UPSTREAM"
+              : "SYSTEM_UNKNOWN",
+      ...
+      if (response.status === 204) return undefined as unknown as T;
+      return (await response.json()) as T;
+  - node: rules/ingest-workspace/extraction-has-no-client-cutoff
+    held_at: |-
+      the ingestMode === true branch of httpIngest, lines 160-162
+    evidence: |-
+      if (ingestMode === true) {
+        signal = userSignal;
+      } else {
+  - node: rules/ingest-workspace/first-unauthorized-answer-refreshes-the-token-once
+    held_at: |-
+      the 401 branch of httpIngest, lines 202-218, and trySilentRefresh, lines 122-133
+    evidence: |-
+      if (response.status === 401 && __retried !== true) {
+        const refreshed = await trySilentRefresh();
+      ...
+      const newJwt = await fetchAccessToken();
+      useAuthStore.getState().setToken(newJwt);
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      authHeader(), lines 43-46, and the Authorization header set on the resend, lines 209-212
+    evidence: |-
+      return token !== null ? { Authorization: `Bearer ${token}` } : {};
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: |-
+      the else branch of the signal composition in httpIngest, lines 163-170, with DEFAULT_TIMEOUT_MS at line 64
+    evidence: |-
+      const DEFAULT_TIMEOUT_MS = 30_000;
+      ...
+      const timer = setTimeout(() => {
+        timeoutController.abort(
+          new DOMException("Request timed out after 30s", "TimeoutError"),
+        );
+      }, DEFAULT_TIMEOUT_MS);
+  - node: rules/ingest-workspace/resent-request-never-refreshes-again
+    held_at: |-
+      the `__retried !== true` guard at line 202, and `__retried: true` on the recursive call at line 216
+    evidence: |-
+      if (response.status === 401 && __retried !== true) {
+      ...
+      return httpIngest<T>(path, {
+        ...opts,
+        headers: Object.fromEntries(nextHeaders.entries()),
+        __retried: true,
+      });
+  - node: rules/ingest-workspace/unrefreshable-session-ends-at-sign-in
+    held_at: |-
+      the catch of trySilentRefresh, lines 127-132
+    evidence: |-
+      useAuthStore.getState().clear();
+      redirectImpl("/sign-in?reason=session_expired");
+      return false;
+  - node: scenarios/ingest-workspace/expired-token-is-refreshed-once-and-resent
+    held_at: |-
+      the 401 branch of httpIngest, lines 202-218, which stores the new token and recurses once
+    evidence: |-
+      useAuthStore.getState().setToken(newJwt);
+      ...
+      nextHeaders.set("Authorization", `Bearer ${fresh}`);
+      ...
+      __retried: true,
+looked_past: |-
+  I saw the test-only redirect seam __setIngestRedirectForTests, the joinUrl and composeSignals plumbing, and the helper's near-duplicate in features/curation/api/_request.ts, and left them unreported because they are code-review matters and no node's domain fact.

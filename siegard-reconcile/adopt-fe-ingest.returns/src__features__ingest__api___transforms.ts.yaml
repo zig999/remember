@@ -1,0 +1,108 @@
+findings:
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      the header comment, lines 16-17 ("Design" bullet on date parsing)
+    evidence: |-
+      Dates are parsed with `new Date(iso)` and validated via `getTime()`
+      NaN check to fail loudly on malformed wire data.
+    cost: |-
+      The date-refusal rule is stated in the node, in the code of parseIso (line 178) and again in this comment. When the node moves, the comment is outside what the bind covers and nothing reads it, so a reader can take it as the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact stays held by parseIso, which throws `Invalid ISO date string: ${value}`, and by the node.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      the header comment, lines 18-22, and the field comments at lines 67-70, 85, 112-113, 143 and 170
+    evidence: |-
+      The spec's `affected_nodes?` field is NOT in the current
+       *    `IngestRawInformationResponse` openapi schema; treated as optional
+       *    forward-compat (`undefined` if absent).
+    cost: |-
+      The comments say the optional affected-nodes list is a forward-compat guess the back end may not emit. The nodes hold it as part of the answers: ingest-raw-information is read with "an optional list of affected nodes", and read-llm-run carries them when the run is completed. A reader who trusts the comment will think the fact is unsettled and will look for a decision in the spec divergences, not in the nodes. The code already holds it as optional `affected_nodes` in IngestRawInformationResponseWire and LlmRunWire.
+    kind: restates
+    correction: |-
+      Remove the comments that claim the field is outside the schema or forward-declared. The optional fields and their mapping in toIngestRawInformationResult and toLlmRun remain.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      the SourceTypeWire declaration, lines 29-36 (also aliased as IngestSourceType, line 40)
+    evidence: |-
+      export type SourceTypeWire =
+        | "pdf"
+        | "email"
+        | "ata"
+        | "chat"
+        | "artigo"
+        | "transcricao"
+        | "outro";
+      The node's enumeration reads:
+      values:
+      - pdf
+      - email
+      - meeting-minutes
+      - chat
+      - article
+      - transcript
+      - other
+    cost: |-
+      The file declares the source-type vocabulary with four values spelled differently from the node that governs it (ata, artigo, transcricao and outro against meeting-minutes, article, transcript and other). The node's own description says ata, artigo, transcricao and outro are "the material's own words" for those values, so it does not make them wire values. The candidate node contracts/ingest-workspace/ingest-screen does hold "the source types pdf, email, ata, chat, artigo, transcricao and outro". The two nodes disagree, and this file follows the second. When the node changes, nobody can tell which spelling was decided.
+    kind: contradicts
+    correction: |-
+      The two nodes need to be reconciled in the specification on one spelling of the source-type values. Then this declaration, or source-type, has to be made to agree with that decision. The code cannot settle it.
+    node: domain/knowledge-base/source-type
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      IngestRawInformationRequestWire, line 54
+    evidence: |-
+      readonly storage_ref?: string | null;
+    cost: |-
+      The request shape lets the caller send a storage reference. The consumed contract names the ingest-raw-information body as "source_type, content, model, prompt_version and an optional metadata", with no storage reference. The published ingestion contract states no request fields, so no node says that the screen may send one. The field exists only in the code, and the next reader of the specification will not find it.
+    kind: unstated
+    correction: |-
+      Either contracts/ingest-workspace/bff-ingestion states storage_ref as an optional field of the ingest-raw-information body, or the analysis decides the screen never sends it.
+    node: contracts/ingest-workspace/bff-ingestion
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      parseIso and parseIsoOrNull (lines 178-189), toIngestRawInformationResult (lines 203-222), toLlmRun (lines 238-254), and the request and response wire types (lines 51-62, 77-87, 101-115, 117-123)
+    evidence: |-
+      throw new Error(`Invalid ISO date string: ${value}`);
+      startedAt: parseIso(wire.started_at),
+      finishedAt: parseIsoOrNull(wire.finished_at),
+      readonly reason?: string;
+      export type RunLlmExtractionRequestWire = Record<string, never>;
+  - node: contracts/knowledge-base/ingestion
+    held_at: |-
+      the wire types IngestRawInformationResponseWire, ChunkRefWire, LlmRunWire and AffectedNodeWire (lines 44-49, 71-87, 101-115)
+    evidence: |-
+      readonly outcome: "created" | "noop_existing";
+      readonly chunks: ReadonlyArray<ChunkRefWire>;
+      readonly idempotency_key: string;
+      readonly affected_nodes?: ReadonlyArray<AffectedNodeWire>;
+  - node: domain/knowledge-base/run-status
+    held_at: |-
+      LlmRunStatusWire, line 42
+    evidence: |-
+      export type LlmRunStatusWire = "running" | "completed" | "failed";
+  - node: domain/knowledge-base/run-summary
+    held_at: |-
+      LlmRunSummaryWire, lines 89-99, with toLlmRunSummary and the LlmRunSummary type mirroring it
+    evidence: |-
+      readonly accepted: number;
+      readonly consolidated: number;
+      readonly superseded_previous: number;
+      readonly needs_review: number;
+      readonly uncertain: number;
+      readonly disputed: number;
+      readonly rejected: number;
+      readonly error: number;
+      readonly orphaned_fragments: number;
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: |-
+      SourceTypeWire declares "pdf" | "email" | "ata" | "chat" | "artigo" | "transcricao" | "outro". The node's values are pdf, email, meeting-minutes, chat, article, transcript and other, so the file does not carry the enumeration the node holds.
+looked_past: |-
+  The header comment's citations of docs/specs/... paths and of delivery.md, and the "Empty in v1.0.0" comment, are prose and state no fact of any node.
+candidates_opened:
+  - contracts/ingest-workspace/ingest-screen

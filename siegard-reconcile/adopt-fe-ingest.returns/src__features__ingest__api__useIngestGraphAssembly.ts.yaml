@@ -1,0 +1,188 @@
+findings:
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the header docstring, lines 11-16 ("Why `replaceNodes` (not `addNodes`)")
+    evidence: |-
+      * Why `replaceNodes` (not `addNodes`):
+       *  - Each ingest is its own "session" — the spec explicitly says (UI-07 +
+       *    UI-08) the graph reflects ONLY this ingest's affected nodes. The
+       *    non-cumulative replace is the right primitive
+    cost: >-
+      A second statement of the replace-not-add rule sits in prose next to the code that holds it. It cites UI-07 and UI-08 by an older numbering, so a reader who follows the citation lands somewhere other than the node. If the node moves, nothing reaches this prose.
+    kind: restates
+    correction: >-
+      Remove the docstring passage. The rule is held by the code at `useGraphStore.getState().replaceNodes(delta)` followed by `setStatus("revealing")`, and the node's trace link records the file-to-node bind.
+    node: rules/ingest-workspace/assembly-replaces-the-graph-only-when-every-traversal-succeeds
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the header docstring, lines 18-20 ("Link deduplication")
+    evidence: |-
+      * The same `KnowledgeLink` row may appear in multiple traversals (when
+       *    both endpoints are in `affectedNodes`). We dedupe by `id` while merging
+       *    — last-write-wins is fine because every traverse returns the same row.
+    cost: >-
+      The identity-keyed, later-copy-wins rule is restated in prose, together with a justification ("every traverse returns the same row"). A reader may take that justification for part of the rule, but the node does not hold it.
+    kind: restates
+    correction: >-
+      Remove the docstring passage. The rule is held by `linkMap.set(wl.id, mapTraverseLink(wl));`.
+    node: rules/ingest-workspace/assembled-link-is-kept-once-by-identity
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the header docstring, lines 22-27 ("Wire → surface mapping")
+    evidence: |-
+      * `affectedNodes` already carry id/canonical_name/node_type → mapped to
+       *    `GraphNodeData` directly (status defaults to `active` since there is no
+       *    confidence state in the affected_nodes payload).
+       *  - Traverse `nodes` add depth-1 neighbours; their wire status is mapped via
+       *    `deriveNodeState`.
+    cost: >-
+      The prose says an affected node's status "defaults to `active`", but the code seeds affected nodes with no `state` at all: `nodeMap.set(n.id, { id: n.id, type: mapNodeType(n.nodeType), label: n.canonicalName })`. The node holds the code's version, "an affected node MUST carry none". A reader who trusts the comment learns a default the system does not apply.
+    kind: restates
+    correction: >-
+      Remove the docstring passage. The neighbour rule is held by `mapTraverseNode`, which sets `state` only when `wire.status` is given, and the affected-node half by the seeding loop that sets no state.
+    node: rules/ingest-workspace/assembled-neighbour-state-comes-from-its-status
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the comment at lines 229-230 inside the traverse-node merge loop
+    evidence: |-
+      // Don't overwrite the affected-node entry with a thinner traverse
+              // node (the affected list is the source of truth for the label).
+    cost: >-
+      The first-entry-wins rule is restated in prose and gains a rationale ("the source of truth for the label") that the node does not state.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by `if (!nodeMap.has(wn.id)) { nodeMap.set(wn.id, mapTraverseNode(wn)); }` after the affected-node seeding loop.
+    node: rules/ingest-workspace/assembled-node-keeps-the-entry-it-got-first
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the comment at lines 186-187 in the `totalCount === 0` branch of the effect
+    evidence: |-
+      // Nothing to traverse — emit an empty delta so the graph clears and
+            // we can move out of "loading" cleanly.
+    cost: >-
+      The empty-and-ready rule is restated in prose. The "loading" it mentions is not a phase the node names.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by `useGraphStore.getState().replaceNodes(delta); useGraphStore.getState().setStatus("ready");` with `nodes: []` and `links: []`.
+    node: rules/ingest-workspace/assembly-of-no-nodes-is-an-empty-ready-graph
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the `lastAppliedRef` guard in the effect, lines 182-206 (both the "empty" key and the sorted-id key)
+    evidence: |-
+      const key = ids.slice().sort().join("|");
+          if (lastAppliedRef.current === key) return;
+          lastAppliedRef.current = key;
+    cost: >-
+      The code skips replacing the graph when the same set of affected node ids is assembled again, and it also skips the empty case after a first empty assembly. The comment names the case: "if the caller re-runs the assembly with the same affected nodes (e.g. user clicks "Ver grafo existente" twice) we don't redundantly replace". No node holds this skip, and the node that governs replacement says the graph is replaced once every traversal has succeeded, with no exception for a repeat. The behaviour lives only in this ref, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether a repeat assembly over the same affected nodes replaces the graph, and give that decision a node. The assembly-replaces rule is the likely home.
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      line 49 (`TRAVERSE_STALE_MS`) and its use in the `useQueries` options, with `refetchOnWindowFocus: false`
+    evidence: |-
+      const TRAVERSE_STALE_MS = 5 * 60_000;
+      ...
+            staleTime: TRAVERSE_STALE_MS,
+            refetchOnWindowFocus: false,
+    cost: >-
+      A traversal answer is reused without a new request for five minutes and is never refetched on window focus. No node holds either figure; the only node that mentions five minutes is the extraction-call cutoff, which is a different fact. The freshness the ingest screen shows after a repeated ingestion therefore depends on a number found only in the code.
+    kind: unstated
+    correction: >-
+      The traversal contract (contracts/ingest-workspace/bff-traversal) or an ingest-workspace rule would have to state how long a traversal answer is reused, if that is the business's decision.
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: >-
+      the `sourceTool: "ingest_assembly"` literal on both `GraphDelta` values (lines 192 and 241)
+    evidence: |-
+      sourceTool: "ingest_assembly",
+    cost: >-
+      The code stamps every assembled delta with this name. No node in the set or in the specification names it, so the vocabulary of delta origins has no home a reader could consult.
+    kind: unstated
+    correction: >-
+      Give the delta-origin value a node, or confirm that the `GraphDelta` shape declared in `@/features/graph` is where it is held.
+read:
+  - node: contracts/ingest-workspace/bff-traversal
+    held_at: >-
+      the `queryFn` request in `useIngestGraphAssembly` (lines 157-161), and the `TraverseNodeMinWire`, `TraverseLinkMinWire` and `TraverseResultMinWire` interfaces (lines 56-79)
+    evidence: |-
+      `/api/v1/nodes/${encodeURIComponent(id)}/traverse?depth=1&direction=both`, { method: "GET", headers: authHeader() }
+      interface TraverseResultMinWire { readonly starting_node_id?: string; readonly nodes?: ...; readonly links?: ... }
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      the `flags` field of `TraverseLinkMinWire`, line 72
+    evidence: |-
+      readonly flags?: ReadonlyArray<"uncertain" | "disputed" | "low_confidence">;
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      the `status` field of `TraverseNodeMinWire`, line 60
+    evidence: |-
+      readonly status?: "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/ingest-workspace/assembled-link-carries-only-what-the-bff-states
+    held_at: >-
+      `mapTraverseLink`, lines 93-118
+    evidence: |-
+      isTemporal: wire.is_temporal === true,
+      const state = wire.status !== undefined ? deriveLinkState(wire.status, wire.flags) : undefined;
+      if (wire.is_in_effect !== undefined && state !== undefined) { return { ...base, inEffect: wire.is_in_effect, state }; }
+  - node: rules/ingest-workspace/assembled-link-is-kept-once-by-identity
+    held_at: >-
+      the link merge in the effect, line 236
+    evidence: |-
+      linkMap.set(wl.id, mapTraverseLink(wl));
+  - node: rules/ingest-workspace/assembled-neighbour-state-comes-from-its-status
+    held_at: >-
+      `mapTraverseNode`, lines 87-90, and the affected-node seeding loop, lines 213-219
+    evidence: |-
+      if (wire.status === undefined) return base;
+        const state = deriveNodeState(wire.status);
+      ...
+      nodeMap.set(n.id, { id: n.id, type: mapNodeType(n.nodeType), label: n.canonicalName, });
+  - node: rules/ingest-workspace/assembled-node-is-labelled-by-its-canonical-name
+    held_at: >-
+      `mapTraverseNode` (lines 82-86) and the seeding loop (lines 214-218)
+    evidence: |-
+      type: mapNodeType(wire.node_type),
+          label: wire.canonical_name,
+  - node: rules/ingest-workspace/assembled-node-keeps-the-entry-it-got-first
+    held_at: >-
+      the seeding loop before the merge and the guard at lines 231-233
+    evidence: |-
+      if (!nodeMap.has(wn.id)) {
+          nodeMap.set(wn.id, mapTraverseNode(wn));
+        }
+  - node: rules/ingest-workspace/assembly-of-no-nodes-is-an-empty-ready-graph
+    held_at: >-
+      the `totalCount === 0` branch of the effect, lines 185-199
+    evidence: |-
+      const delta: GraphDelta = { sourceTool: "ingest_assembly", nodes: [], links: [], };
+      useGraphStore.getState().replaceNodes(delta);
+      useGraphStore.getState().setStatus("ready");
+  - node: rules/ingest-workspace/assembly-replaces-the-graph-only-when-every-traversal-succeeds
+    held_at: >-
+      the completion gate and the end of the effect, lines 200 and 245-246
+    evidence: |-
+      if (successCount !== totalCount) return; // wait for all to settle
+      ...
+      useGraphStore.getState().replaceNodes(delta);
+      useGraphStore.getState().setStatus("revealing");
+  - node: rules/ingest-workspace/assembly-traverses-each-affected-node
+    held_at: >-
+      the `useQueries` call, lines 154-167
+    evidence: |-
+      queries: ids.map((id) => ({ queryKey: ingestKeys.traverse(id), queryFn: async () => { return http<TraverseResultMinWire>(`/api/v1/nodes/${encodeURIComponent(id)}/traverse?depth=1&direction=both`, ...
+            enabled,
+  - node: rules/ingest-workspace/failed-traversal-leaves-the-graph-as-it-was
+    held_at: >-
+      the `hasError` computation (line 176), returned at line 249, and the early return that skips replacement unless every traversal has succeeded (line 200)
+    evidence: |-
+      const hasError = results.some((r) => r.status === "error");
+      ...
+      if (successCount !== totalCount) return; // wait for all to settle
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: >-
+      nowhere. This file only passes `authHeader()` from `./_request`. The bearer-or-nothing branch is not declared here.
+    evidence: |-
+      { method: "GET", headers: authHeader() }
+looked_past: >-
+  The flag and status spellings on the wire (`low_confidence`, `needs_review`) use underscores where the nodes use hyphens (`low-confidence`, `needs-review`). I treated this as the BFF's wire convention, not a domain fact, and did not report it. The returned counters (`isAssembling`, `settledCount`) and the `useMemo` and `useRef` structure are implementation shape, not domain facts.
+candidates_opened: []

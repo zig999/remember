@@ -1,0 +1,44 @@
+findings:
+  - file: src/features/ingest/api/useIngestRawInformation.ts
+    where: |-
+      the header docstring, lines 14-16 ("Calls the ingest-feature carve-out `httpIngest<T>()` because ingest REST returns bare body on 2xx (no envelope unwrap ...)") and lines 8-10 (the POST path and its 201/200 outcomes)
+    evidence: |-
+      Calls the ingest-feature carve-out `httpIngest<T>()` because ingest
+       *    REST returns bare body on 2xx (no envelope unwrap — see `_request.ts`
+       *    header).
+    cost: |-
+      The docstring states how the answer is read, which the contract holds as "the 2xx JSON body of the answer is the answer itself and is never unwrapped from { ok, result }". The behavior is carried by `httpIngest`, imported from "./_request" and not read in this pass, and by the `POST /api/v1/ingest/raw-information` call in this file. When the contract moves, nothing reaches this prose, so a reader may take it as a second statement of the rule.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route. The behavior stays in `httpIngest` and in the `mutationFn`.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/api/useIngestRawInformation.ts
+    where: |-
+      the header docstring, lines 17-20 (the "No `ingest: true`" bullet)
+    evidence: |-
+      **No `ingest: true`** on this call: `ingestRawInformation` is fast
+       *    (chunking + insert, no LLM call). The 30s cutoff is appropriate; the
+       *    LLM-bound exception applies to `runLlmExtraction` (the next step).
+    cost: |-
+      The docstring restates the thirty-second cutoff and its extraction exception, which the rule "ingestion-request-times-out-after-thirty-seconds" holds. The cutoff itself is applied by `httpIngest`, imported from "./_request" and not read in this pass. The thirty seconds and the exception therefore sit in prose beside this call as well as in the node, and a change to the node will not reach this comment.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route. The call to `httpIngest` without an `ingest` option already carries the behavior.
+    node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      the `mutationFn` of `useIngestRawInformation` and the `UseIngestRawInformationVariables` interface. The answer is read in `toIngestRawInformationResult`, which is another file's.
+    evidence: |-
+      "/api/v1/ingest/raw-information", { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify(vars) } with readonly source_type: SourceTypeWire; content: string; model: string; prompt_version: string; metadata?: Record<string, unknown>
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      the headers of the request in `mutationFn`. The file applies `authHeader()` to the request; whether it yields a bearer or no header is decided where `authHeader` is defined, in "./_request", which was not read.
+    evidence: |-
+      headers: { ...authHeader(), "Content-Type": "application/json" }
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: nowhere
+    evidence: |-
+      this file passes no timeout and no `ingest: true`, only `httpIngest<IngestRawInformationResponseWire>("/api/v1/ingest/raw-information", { method: "POST", ... })`. The thirty-second value is not stated here, and the only place this file mentions it is the docstring ("The 30s cutoff is appropriate").
+looked_past: |-
+  The docstring also states the outcome values "created" and "noop_existing" and the caller's chaining rule (created runs extraction, noop_existing skips to graph assembly), but only in prose and in no code of this file, so it is a comment-route matter and not a finding of this pass.

@@ -1,0 +1,86 @@
+findings:
+  - file: src/features/ingest/components/IngestWorkspace/IngestWorkspace.tsx
+    where: >-
+      the header doc comment, lines 15-21, the state machine paragraph (`ingest.feature.spec.md §3`)
+    evidence: |-
+      * State machine (`ingest.feature.spec.md §3`):
+       *
+       *   idle → ready → sending → { extracting | polling | noop | error } →
+       *   { complete | revealing → complete | error }
+    cost: >-
+      The nine phases and the order the screen moves through them are written out a second time in prose
+      inside a component that does not drive them. When the phase set or its transitions change, this
+      comment still reads as the machine, and a reader of the layout file is sent to it instead of to
+      the specification.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The phase names are held as code in the enumeration the node is bound to,
+      src/features/ingest/components/IngestPanel/IngestPanel.types.ts, and the transitions are held in
+      useIngestOrchestration.ts. This file only forwards `phase`. The node is a candidate here and is not
+      in this file's set; the bind that claims the enumeration is the one that closes this.
+    node: domain/ingest-workspace/ingest-phase
+  - file: src/features/ingest/components/IngestWorkspace/IngestWorkspace.tsx
+    where: >-
+      the header doc comment, lines 19-21, the `node_selected` side-mode sentence
+    evidence: |-
+      *   plus the side-mode `node_selected` (right column swap; left column
+       *   unaffected, hence the panel phase is unchanged).
+    cost: >-
+      The rule that the node detail replaces the graph and leaves the phase alone is stated a second time
+      in prose. The code holds it (the `selectedNode !== null ? <NodeDetailPanel .../> : <GraphSpace .../>`
+      branch, with `phase` never touched by `setSelectedNode`), so the comment is a second home that can
+      drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the sentence. The node is held by the conditional render in this file.
+    node: rules/ingest-workspace/selected-node-detail-replaces-the-graph
+read:
+  - node: domain/ingest-workspace/ingest-session
+    held_at: >-
+      Only in part. The form-state `useState` declarations for `content` and `sourceType` (lines 46-47),
+      and the destructuring of `phase`, `summary`, `errorCode`, `errorMessage` and `validationMessage`
+      from `useIngestOrchestration` (lines 59-69). The session's shape is not declared in this file, and
+      the run identity and the affected nodes do not appear here at all. Both live in
+      useIngestOrchestration.ts, which is outside this file set.
+    evidence: |-
+      const [content, setContent] = useState<string>("");
+      const [sourceType, setSourceType] = useState<IngestSourceType | "">("");
+      ...
+      const {
+        phase,
+        summary,
+        errorCode,
+        errorMessage,
+        validationMessage,
+  - node: rules/ingest-workspace/another-document-clears-the-session
+    held_at: >-
+      Only in part. `resetForm` (lines 52-56) clears three of the node's items: the content, the source
+      type and the selected node. The run identity, the affected nodes, the summary, the failure, the
+      validation message and the return to idle are not in this file. They sit behind `handleReset`,
+      which comes from useIngestOrchestration.ts and is outside this file set.
+    evidence: |-
+      const resetForm = useCallback(() => {
+        setContent("");
+        setSourceType("");
+        setSelectedNode(null);
+      }, []);
+  - node: rules/ingest-workspace/selected-node-detail-replaces-the-graph
+    held_at: >-
+      The conditional render in the right column, lines 121-140. `handleNodeSelect` and `handleDetailClose`
+      (lines 80-89) set and clear only `selectedNode`, so `phase` is never changed by them.
+    evidence: |-
+      {selectedNode !== null ? (
+        <NodeDetailPanel
+          nodeId={selectedNode.id}
+          ...
+          onClose={handleDetailClose}
+        />
+      ) : (
+        <GraphSpace
+looked_past: >-
+  The literal `revealStaggerMs={90}`, the 2/5 and 3/5 column widths, and the architecture comment on import
+  boundaries are presentation timing, layout and code-structure matters and not a domain fact of the ingest
+  nodes, so I left them to another judgment.
+candidates_opened:
+  - domain/ingest-workspace/ingest-phase
+  - contracts/ingest-workspace/ingest-screen

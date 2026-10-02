@@ -1,0 +1,36 @@
+findings:
+  - file: src/features/ingest/components/IngestPanel/_IngestErrorBand.tsx
+    where: |-
+      the JSDoc on the `errorMessage` prop, lines 16-17
+    evidence: |-
+      /** Error message — displayed under the heading. Falls back to a generic
+         *  copy when `undefined`. */
+    cost: |-
+      The fallback rule ("Algo deu errado. Tente novamente." when the failure has no message) is held by the node and by the `??` expression in this file. The comment says it a third time, so a reader may take it as a place where the rule lives. If the node changes, the comment goes stale without anything flagging it.
+    kind: restates
+    correction: |-
+      Remove the comment. The code at line 45 already holds the fact, and the node `contracts/ingest-workspace/ingest-screen` holds it as well.
+    node: contracts/ingest-workspace/ingest-screen
+  - file: src/features/ingest/components/IngestPanel/_IngestErrorBand.tsx
+    where: |-
+      the JSDoc on the `isRetryable` prop, lines 19-20
+    evidence: |-
+      /** Whether the "Tentar novamente" CTA is shown. Computed by IngestPanel
+         *  from the error code. */
+    cost: |-
+      The rule that "Tentar novamente" shows only for a retryable code is held by the node and by the `isRetryable ? (...) : null` branch in this file. The comment also says which component derives retryability from the code, but the derivation is not in this file. A reader may treat the comment as where the rule is decided, and it will go stale if that derivation moves.
+    kind: restates
+    correction: |-
+      Remove the comment. The conditional rendering at lines 48-57 already holds the fact, and the node holds it as well.
+    node: contracts/ingest-workspace/ingest-screen
+read:
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      Only the show-failure operation is rendered here, in the JSX of `IngestErrorBand`, lines 43-66. The refusals RUN_FAILED and SYSTEM_UNKNOWN, the other six operations, and the retryable-code decision are not in this file.
+    evidence: |-
+      <p className="text-xs font-medium text-foreground">Erro na ingestão</p>
+      {errorMessage ?? "Algo deu errado. Tente novamente."}
+      {isRetryable ? ( <Button ... data-testid="ingest-retry" onClick={onRetry}>Tentar novamente</Button> ) : null}
+      <Button ... data-testid="ingest-reset" onClick={onReset}>Ingerir outro documento</Button>
+looked_past: |-
+  The header comment about extracting the file to keep IngestPanel.tsx under 300 lines, and the citations of a skill and of ingest.feature.spec.md, concern code-quality and documentation rather than a domain fact, so I did not report them.

@@ -1,0 +1,237 @@
+findings:
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the file header docstring, lines 1-17
+    evidence: |-
+      * - the phase machine (idle → ready → sending → … → complete | error)
+       *   - the mutation orchestration (ingest → run → assembly)
+       *   - the polling fallback when the LLM connection drops
+       *   - the retry path
+       *   - the noop "Ver grafo existente" CTA wiring
+       *
+       * The hook is intentionally not generic — it mirrors `ingest.feature.spec.md
+       * §3` one-to-one.
+    cost: |-
+      The docstring restates, as prose, the phase machine and the retry and polling behavior that the ingest-session node holds. The code in this same file holds them too. A second home outside behavior means a reader may take the docstring's list of phases and paths as the decision. It also cites a feature spec section as the source of truth instead of the node.
+    kind: restates
+    correction: |-
+      Remove the docstring. The behavior is held by the code in this file, so nothing is lost by removing it.
+    node: domain/ingest-workspace/ingest-session
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the INGEST_MODEL constant, line 35, sent as `model` in handleSubmit (line 149)
+    evidence: |-
+      const INGEST_MODEL = "claude-opus-4-8";
+    cost: |-
+      The model that every ingestion started from the screen runs under, and that is recorded on the LLM run, is chosen only here. No node of the ingest screen states it. The bff-ingestion contract says only that `model` is sent as given. The one extraction-model default the specification holds, rules/knowledge-base/default-extraction-model, names claude-sonnet-4-6 and governs a document ingestion that names no model, whereas this screen always names one. A reader looking for which model the owner's ingestions use will not find it in the specification, and a change of model is a code edit nobody decided.
+    kind: unstated
+    correction: |-
+      Analysis would have to give the model the screen sends a node. The contracts/ingest-workspace/bff-ingestion node, or a rule constraining domain/ingest-workspace/ingest-session, is the natural home.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the INGEST_PROMPT_VERSION constant, line 36, sent as `prompt_version` in handleSubmit (line 150)
+    evidence: |-
+      const INGEST_PROMPT_VERSION = "v3";
+    cost: |-
+      The prompt version every screen ingestion runs under is chosen only here, and it decides which extraction instructions apply. The specification states instructions per prompt version (v2, v3, v4), and a document ingestion that names no prompt version runs under v4. This screen pins v3 with no node stating it. A reader checking the screen against the specification will see v4 as the default and will not learn that the screen differs.
+    kind: unstated
+    correction: |-
+      Analysis would have to give the prompt version the screen sends a node. The contracts/ingest-workspace/bff-ingestion node, or a rule constraining domain/ingest-workspace/ingest-session, is the natural home.
+    node: contracts/ingest-workspace/bff-ingestion
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the comment at line 163, inside handleSubmit's onSuccess
+    evidence: |-
+      // outcome === "created" — fire extraction immediately.
+    cost: |-
+      The comment restates, as prose, the rule that a newly created source starts its extraction at once. The code below it (`setPhase("extracting"); runMutation.mutate(`) holds the same rule. A second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The rule is held by the code that follows it.
+    node: rules/ingest-workspace/new-source-starts-extraction-at-once
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the comment at line 181, inside the runMutation onError of handleSubmit
+    evidence: |-
+      // Silent fallback to polling — copy changes; no error band.
+    cost: |-
+      The comment restates, as prose, the rule that an extraction failure counting as a connection drop starts polling instead of showing a failure. The `setIsPolling(true); setPhase("polling");` that follows holds it. A second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The rule is held by the branch below it.
+    node: rules/ingest-workspace/connection-drop-polls-the-run
+  - file: src/features/ingest/components/IngestWorkspace/useIngestOrchestration.ts
+    where: |-
+      the comment at line 228, in handleRetry
+    evidence: |-
+      // Re-submit from the form — same content+source still in state.
+    cost: |-
+      The comment restates, as prose, the rule that a retry with no run identity held submits the form again. The `handleSubmit();` call beside it holds it. A second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The rule is held by the call below it.
+    node: rules/ingest-workspace/retry-without-a-run-submits-again
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file only calls the hooks `ingestMutation.mutate({ content, source_type: sourceType, model: INGEST_MODEL, prompt_version: INGEST_PROMPT_VERSION })`, `runMutation.mutate({ llm_run_id: ... })` and `retryMutation.mutate({ llm_run_id: llmRunId })`. The paths, timeouts, envelope reading and answer shapes sit in the api hooks, not here.
+  - node: contracts/ingest-workspace/bff-traversal
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only enables the assembly: `useIngestGraphAssembly({ affectedNodes: assemblyEnabled ? affectedNodes : null, enabled: assemblyEnabled })`. The traversal request itself is not here.
+  - node: contracts/ingest-workspace/ingest-screen
+    held_at: |-
+      the two validation messages in handleSubmit (lines 130-139) and the RUN_FAILED message in the polling effect (lines 118-123)
+    evidence: |-
+      setValidationMessage("Cole ou arraste o conteúdo do documento antes de ingerir."); setValidationMessage("Selecione o tipo de fonte antes de ingerir."); setErrorCode("RUN_FAILED"); setErrorMessage("A extração falhou. Reabra a execução para tentar novamente.")
+  - node: contracts/knowledge-base/ingestion
+    held_at: |-
+      nowhere
+    evidence: |-
+      The node is the upstream the screen consumes. The file reads `data.outcome === "noop_existing"` and `data.llmRunId` from an answer and holds none of the upstream's operations or refusals.
+  - node: domain/ingest-workspace/ingest-session
+    held_at: |-
+      the useState declarations (lines 61-72) and the UseIngestOrchestrationResult interface (lines 44-54)
+    evidence: |-
+      const [phase, setPhase] = useState<IngestPhase>("idle"); const [llmRunId, setLlmRunId] = useState<string | null>(null); const [affectedNodes, setAffectedNodes] = ...; const [summary, setSummary] = ...; const [errorCode, setErrorCode] ...; const [validationMessage, setValidationMessage] ...
+  - node: domain/knowledge-base/run-status
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only compares values of a shape declared elsewhere: `if (run.status === "completed") {` and `else if (run.status === "failed") {`.
+  - node: rules/ingest-workspace/another-document-clears-the-session
+    held_at: |-
+      handleReset, lines 205-217
+    evidence: |-
+      resetForm(); setLlmRunId(null); setAffectedNodes(null); setIsPolling(false); setAssemblyEnabled(false); setSummary(null); setErrorCode(null); setErrorMessage(null); setValidationMessage(null); setPhase("idle"); useGraphStore.getState().clear();
+  - node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only calls `isConnectionDropError(err)`, imported from "./_utils". The classification itself is not in this file.
+  - node: rules/ingest-workspace/connection-drop-polls-the-run
+    held_at: |-
+      the runMutation onError branches in handleSubmit (lines 179-185) and handleRetry (lines 253-258)
+    evidence: |-
+      if (isConnectionDropError(err)) { setIsPolling(true); setPhase("polling"); return; }
+  - node: rules/ingest-workspace/content-is-checked-before-source-type
+    held_at: |-
+      the order of the two guards in handleSubmit, lines 130-139
+    evidence: |-
+      if (content.length < 1) { setValidationMessage("Cole ou arraste o conteúdo do documento antes de ingerir."); return; } if (sourceType === "") {
+  - node: rules/ingest-workspace/editing-changes-the-phase-only-in-idle-and-ready
+    held_at: |-
+      the form-to-phase effect, lines 90-96
+    evidence: |-
+      if (current !== "idle" && current !== "ready") return current;
+  - node: rules/ingest-workspace/existing-graph-is-assembled-on-request
+    held_at: |-
+      handleAssembleExisting, lines 220-223
+    evidence: |-
+      setAssemblyEnabled(true); setPhase("revealing");
+  - node: rules/ingest-workspace/extraction-answer-moves-to-revealing
+    held_at: |-
+      the runMutation onSuccess in handleSubmit (lines 168-178) and in handleRetry (lines 242-252)
+    evidence: |-
+      setSummary(run.summary); if (run.affectedNodes !== undefined && run.affectedNodes.length > 0) { setAffectedNodes(run.affectedNodes); } setAssemblyEnabled(true); setPhase("revealing");
+  - node: rules/ingest-workspace/failure-outside-an-envelope-shows-the-unknown-code
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only calls `const { code, message } = classifyError(err);`, imported from "./_utils". The SYSTEM_UNKNOWN fallback is not in this file.
+  - node: rules/ingest-workspace/fields-are-editable-outside-a-run
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file takes `content` and `sourceType` as arguments and exposes no control or editability flag. It returns only `phase`, `summary`, `errorCode`, `errorMessage`, `validationMessage` and four handlers.
+  - node: rules/ingest-workspace/form-is-ready-with-content-and-source-type
+    held_at: |-
+      the form-to-phase effect, lines 90-96
+    evidence: |-
+      const isReady = content.length >= 1 && sourceType !== ""; return isReady ? "ready" : "idle";
+  - node: rules/ingest-workspace/ingest-requires-content
+    held_at: |-
+      the first guard of handleSubmit, lines 130-135
+    evidence: |-
+      if (content.length < 1) { setValidationMessage("Cole ou arraste o conteúdo do documento antes de ingerir."); return; }
+  - node: rules/ingest-workspace/ingest-requires-source-type
+    held_at: |-
+      the second guard of handleSubmit, lines 136-139
+    evidence: |-
+      if (sourceType === "") { setValidationMessage("Selecione o tipo de fonte antes de ingerir."); return; }
+  - node: rules/ingest-workspace/known-content-waits-for-the-owner
+    held_at: |-
+      the noop branch of handleSubmit's onSuccess, lines 157-161
+    evidence: |-
+      if (data.outcome === "noop_existing") { setAffectedNodes(data.affectedNodes ?? []); setPhase("noop"); return; }
+  - node: rules/ingest-workspace/new-source-starts-extraction-at-once
+    held_at: |-
+      handleSubmit's onSuccess after the noop return, lines 164-166
+    evidence: |-
+      setPhase("extracting"); runMutation.mutate( { llm_run_id: data.llmRunId },
+  - node: rules/ingest-workspace/noop-keeps-the-affected-nodes
+    held_at: |-
+      line 158
+    evidence: |-
+      setAffectedNodes(data.affectedNodes ?? []);
+  - node: rules/ingest-workspace/only-extraction-failures-count-as-connection-drops
+    held_at: |-
+      the onError handlers of ingestMutation (lines 194-199) and retryMutation (lines 267-272), neither of which calls isConnectionDropError
+    evidence: |-
+      onError: (err) => { const { code, message } = classifyError(err); setErrorCode(code); setErrorMessage(message); setPhase("error"); },
+  - node: rules/ingest-workspace/polled-completed-run-moves-to-revealing
+    held_at: |-
+      the polling effect, completed branch, lines 110-117
+    evidence: |-
+      if (run.status === "completed") { setIsPolling(false); setSummary(run.summary); if (run.affectedNodes !== undefined && run.affectedNodes.length > 0) { setAffectedNodes(run.affectedNodes); } setAssemblyEnabled(true); setPhase("revealing");
+  - node: rules/ingest-workspace/polled-failed-run-ends-in-run-failed
+    held_at: |-
+      the polling effect, failed branch, lines 118-125
+    evidence: |-
+      } else if (run.status === "failed") { setIsPolling(false); setErrorCode("RUN_FAILED"); setErrorMessage( "A extração falhou. Reabra a execução para tentar novamente.", ); setPhase("error");
+  - node: rules/ingest-workspace/polled-running-run-keeps-the-screen-waiting
+    held_at: |-
+      the polling effect, which has no branch for a run that is neither completed nor failed, so the phase stays polling and polling continues, lines 106-126
+    evidence: |-
+      if (run.status === "completed") { ... } else if (run.status === "failed") { ... }
+  - node: rules/ingest-workspace/recorded-source-keeps-the-run-identity
+    held_at: |-
+      handleSubmit's onSuccess, before the outcome branch, line 154
+    evidence: |-
+      setLlmRunId(data.llmRunId);
+  - node: rules/ingest-workspace/retry-with-a-run-retries-then-extracts
+    held_at: |-
+      handleRetry, lines 232-274
+    evidence: |-
+      setErrorCode(null); setErrorMessage(null); setPhase("extracting"); retryMutation.mutate( { llm_run_id: llmRunId }, { onSuccess: () => { runMutation.mutate( { llm_run_id: llmRunId },
+  - node: rules/ingest-workspace/retry-without-a-run-submits-again
+    held_at: |-
+      handleRetry, lines 227-231
+    evidence: |-
+      if (llmRunId === null) { ... handleSubmit(); return; }
+  - node: rules/ingest-workspace/revealing-completes-when-the-graph-is-ready
+    held_at: |-
+      the revealing-to-complete effect, lines 99-103
+    evidence: |-
+      if (phase === "revealing" && graphStatus === "ready") { setPhase("complete"); }
+  - node: rules/ingest-workspace/submission-clears-earlier-messages
+    held_at: |-
+      handleSubmit, lines 140-143, after both guards and before the phase moves to sending
+    evidence: |-
+      setValidationMessage(null); setErrorCode(null); setErrorMessage(null); setPhase("sending");
+  - node: rules/ingest-workspace/submit-control-shows-in-idle-ready-and-sending
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file renders no control. It only returns `phase` and `handleSubmit`.
+  - node: scenarios/ingest-workspace/whitespace-only-content-is-ready
+    held_at: |-
+      the form-to-phase effect, lines 90-96, which tests length only and does not trim
+    evidence: |-
+      const isReady = content.length >= 1 && sourceType !== "";
+looked_past: |-
+  I left the code's coordination with the graph store, namely `useGraphStore.getState().setStatus("loading")` on a recorded source and the comment saying assembly calls `replaceNodes` and `setStatus('revealing')`, for another judgment, since no node of this set holds the graph store's own states.
