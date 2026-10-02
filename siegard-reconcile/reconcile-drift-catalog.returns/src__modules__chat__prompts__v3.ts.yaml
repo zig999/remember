@@ -1,0 +1,88 @@
+findings:
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      the header comment, lines 25-27, and the renderOntologyBlock docstring, lines 133-136
+    evidence: >-
+      "The dynamic ontology block iterates the catalog Maps in INSERTION ORDER
+      (which `loadCatalog` populates from the SQL row order" and "The
+      iteration order is the catalog Map insertion order (set by `loadCatalog`'s
+      SQL row order"
+    cost: >-
+      Prose states a second time the catalog-order rule that
+      rules/chat/chat-prompt-presents-catalog holds. The renderer's `for ... of
+      catalog.nodeTypeByName.values()` loops hold the fact in code. When the node
+      moves, the comment stays behind as a competing statement of what was
+      decided.
+    kind: restates
+    correction: >-
+      Remove the comment text. The code in renderOntologyBlock in this file holds
+      the fact, and the node binds it.
+    node: rules/chat/chat-prompt-presents-catalog
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 3, lines 110-112; this is text the
+      system sends to the model
+    evidence: >-
+      "3. Cite a fonte: o campo `raw_information_id` retornado por",
+      "   `get_ingestion_status` identifica o documento ingerido — mencione-o",
+      "   ao dono."
+    cost: >-
+      The v3 prompt instructs the assistant to name the ingested document's raw
+      information identity to the owner. The only node on this behavior is
+      rules/chat/chat-prompt-v4-cites-ingested-document, which is scoped to v4
+      and to directed ingestion. A reader who looks in the specification for what
+      v3 tells the assistant does not find the rule.
+    kind: unstated
+    correction: >-
+      An analysis should give the v3 citation instruction a node, or widen the v4
+      node's scope to cover it.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 1, lines 93-95; this is text the
+      system sends to the model
+    evidence: >-
+      "1. Chame `get_ingestion_status` UMA UNICA VEZ para confirmar que a",
+      "   ingestao alcancou `status: \"completed\"`. Se ainda estiver em",
+      "   `running`, informe e PARE — nao tente descrever o que foi ingerido."
+    cost: >-
+      The prompt tells the assistant to check the status exactly once when the
+      owner asks for the result, and to stop and report when the run is still
+      running. The status-once node (chat-prompt-v2-no-status-polling) is scoped
+      to v2 and to the turn that started the ingestion. No node holds the v3
+      rule, so it lives only in this prompt.
+    kind: unstated
+    correction: >-
+      An analysis should give the v3 once-only status check and the stop-while-
+      running instruction a node.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 4, lines 113-116; this is text the
+      system sends to the model
+    evidence: >-
+      "Em caso de duvida,", "   recuse a resposta e replaneje pelos passos 2.a / 2.b."
+    cost: >-
+      The prompt tells the assistant to refuse its answer and replan by steps
+      2.a and 2.b when in doubt. The nodes found for the prompt's unfiltered-
+      listing and fallback rules state the prohibition and the fallback, but not
+      this refusal-and-replan instruction. It lives only in the prompt.
+    kind: unstated
+    correction: >-
+      An analysis should decide whether the refuse-and-replan instruction is a
+      business fact and, if so, give it a node.
+read:
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      renderOntologyBlock, lines 141-187: the NodeTypes loop over
+      catalog.nodeTypeByName.values(), the LinkTypes loop with rule pairs, and the
+      AttributeKeys loop with sorted closed values
+    evidence: >-
+      "for (const nodeType of catalog.nodeTypeByName.values()) {" ;
+      "const pairSuffix = pairs.length > 0 ? ` [${pairs.join(\"; \")}]` : \"\";" ;
+      "for (const attr of catalog.attributeKeyById.values()) {" ;
+      "` [dominio fechado: ${[...domain].sort().join(\" | \")}]`"
+looked_past: >-
+  The file's other header and docstring comments (cache-control invariant, BR and
+  chat.back.md citations) and the unexamined exact-string constraints on blocks
+  4B and 4C are prose or code-review matters rather than domain facts, and the
+  search-discipline text (blocks 4B 1-3 and the 4C affected-nodes steps) agrees
+  with nodes held elsewhere in rules/chat.

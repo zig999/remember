@@ -1,0 +1,28 @@
+findings:
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 12-14 (the cache-control invariant paragraph)
+    evidence: >-
+      //   - Block 4A iterates the catalog Maps in INSERTION ORDER — same contract
+      //     as v3 (delegates to v3's `renderOntologyBlock`).
+    cost: >-
+      The catalog-order fact is stated in prose here although this file iterates nothing. The iteration is in v3.ts, `for (const nodeType of catalog.nodeTypeByName.values())`, and the ascending sort of closed values is there too, `[...domain].sort().join(" | ")`. A reader of v4.ts gets a second statement of the ordering rule that no running system emits. If v3.ts changes the order, nothing reminds this comment, and it goes stale.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and by the code in v3.ts, which this file delegates to.
+    node: rules/chat/chat-prompt-presents-catalog
+read:
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      the `system()` function, lines 172-183. The delegating call `renderOntologyBlock(catalog)` puts the catalog block into the v4 prompt, and the block is returned in the join. The node's ordering and closed-value details are carried out in v3.ts's `renderOntologyBlock`, not in this file.
+    evidence: >-
+      const block4A = renderOntologyBlock(catalog);
+      return [
+        v1Body,
+        block4A,
+        BLOCK_4B_SEARCH_DISCIPLINE,
+        BLOCK_4C_DIRECTED_INGESTION,
+      ].join("\n");
+looked_past: >-
+  BLOCK_4C_DIRECTED_INGESTION and BLOCK_4B_SEARCH_DISCIPLINE are emitted prompt text stating facts such as the owner-request gate, trigger phrases, one ingestion per command, closed values and the report outcomes. The specification holds these in other chat-prompt-v4-* and chat-prompt-search-* nodes outside this pack's set, so they are another judgment's to bind and are not unstated.
+candidates_opened: []
