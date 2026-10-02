@@ -1,0 +1,182 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the dedup block (lines 138-155) and the fragment item built in the
+      `fragmentHits` loop (lines 159-193)
+    evidence: >-
+      `for (const link of dedupLinks) { if (!chunksById.has(link.raw_chunk_id)) continue; dedupCollapsedCount += 1; }`
+      and the fragment item takes `summary: f.text` and `provenance` from `listProvenanceForFragments`; nothing ever reads a matched chunk's text or excerpt into the fragment item.
+    cost: >-
+      The chunk-to-fragment link is looked up and only counted for the `dedup_collapsed_count` log field. The rule says the chunk match is shown as the fragment's excerpt, but no code in this file does it. A reader who trusts the node will assume the matched passage reaches the fragment's search item. In this file it does not.
+    kind: contradicts
+    correction: >-
+      Where a chunk hit supports a matched fragment, carry that chunk's matched excerpt into the fragment item's provenance excerpt. Alternatively, if the repository's provenance excerpt is meant to be that match, the node's binding to this file should be reconsidered.
+    node: rules/knowledge-base/chunk-match-cites-its-fragment
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      `toExpandedLinkItem`, the returned object (lines 387-399)
+    evidence: >-
+      `kind: "link",
+      layer: "node",`
+    cost: >-
+      The search-item node types `layer` as a search-layer and never says which layer an expanded link item carries. The code decides `node`, and the next reader will look in the specification for it and not find it.
+    kind: unstated
+    correction: >-
+      Analysis should state which layer, or none, an expanded link search item carries, on domain/knowledge-base/search-item.
+    node: domain/knowledge-base/search-item
+read:
+  - node: constraints/retrieval-is-lexical-only
+    held_at: >-
+      the layer calls (lines 116-136) and the `parseTsQuery` call (line 104), which use only the lexical repository functions
+    evidence: >-
+      `fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT);` with no embedding or similarity call anywhere in the file
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file reads `f.text`, `f.confidence` and `f.created_at` from `FragmentHitRow`. It declares no shape for the fragment.
+  - node: domain/knowledge-base/item-kind
+    held_at: >-
+      the `kind` field of `IntermediateItem` (line 59)
+    evidence: >-
+      `readonly kind: "node" | "link" | "fragment";`
+  - node: domain/knowledge-base/page
+    held_at: >-
+      `limit` and `offset` of `SearchServiceInput` (lines 53-54)
+    evidence: >-
+      `readonly limit: number;
+      readonly offset: number;`
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The file only imports `ALLOWED_LAYERS, type SearchLayer` from "../dto/search.dto.js", where `export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;` is declared.
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      `SearchServiceInput` (lines 44-55)
+    evidence: >-
+      `readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[];`
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only counts the chunk-fragment links, `dedupCollapsedCount += 1;`. The fragment item's excerpt comes only from `toProvenanceEntry`'s `excerpt: row.excerpt` over the fragment's own provenance rows.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: >-
+      the `items` assembly (lines 157-228)
+    evidence: >-
+      `chunkHits` is fetched but only `fragmentHits` and `nodeHits` are pushed into `items`. The only `items.push` calls build `key: \`fragment:${f.id}\``, `key: \`node:${n.node_id}\`` and expanded link items.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: >-
+      `toExpandedLinkItem` (lines 368-381)
+    evidence: >-
+      `if (provenance.length === 0) { context.logger.warn(... "query_retrieval_search_empty_link_provenance"); return undefined; }`
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      the `traverseNodes` call in `collectExpandedLinks` (lines 313-324), which forwards the as-of date. The validity comparison itself is in the knowledge-graph traversal, not this file.
+    evidence: >-
+      `asOf: context.input.asOf,`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      `collectExpandedLinks` (lines 325-331)
+    evidence: >-
+      `score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,`
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: >-
+      the `traverseNodes` call (line 315)
+    evidence: >-
+      `direction: "both",`
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      the `traverseNodes` call in `collectExpandedLinks` (lines 313-324), which forwards the switch. The in-effect comparison is in the knowledge-graph traversal, not this file.
+    evidence: >-
+      `inEffectOnly: context.input.inEffectOnly,`
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      `resolveLinkTypeIds` (lines 418-432) and the `linkTypeIds` passed to `traverseNodes` (line 318)
+    evidence: >-
+      `linkTypeIds: context.linkTypeIds,` where `linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined`
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: >-
+      the expansion branch (lines 230-239) and `collectExpandedLinks` (lines 312-313)
+    evidence: >-
+      `if (input.expand && nodeHits.length > 0) {` and `for (const [startId, startScore] of matchedNodeScores) {` with `startingNodeIds: [startId],`
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: >-
+      the fragment item (line 186)
+    evidence: >-
+      `summary: f.text,`
+  - node: rules/knowledge-base/item-flags
+    held_at: >-
+      `computeFlags` (lines 460-476) and `LOW_CONFIDENCE_THRESHOLD` (line 42)
+    evidence: >-
+      `if (args.status === "uncertain") flags.push("uncertain"); if (args.status === "disputed") flags.push("disputed"); if (args.kind === "fragment" && args.status === "accepted" && args.confidence < LOW_CONFIDENCE_THRESHOLD)` with `const LOW_CONFIDENCE_THRESHOLD = 0.4;`
+  - node: rules/knowledge-base/link-item-summary
+    held_at: >-
+      `toExpandedLinkItem` (line 395)
+    evidence: >-
+      `summary: \`${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}\`,`
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: >-
+      the `linkTypeIds` computation (lines 100-102)
+    evidence: >-
+      `const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined;`
+  - node: rules/knowledge-base/node-item-summary
+    held_at: >-
+      the node item (line 222)
+    evidence: >-
+      `summary: n.canonical_name,`
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: >-
+      the provenance guard in the `nodeHits` loop (line 207). The accepted-fragment condition itself sits in the repository query (`JOIN information_fragment f ON f.status = 'accepted'`), not this file.
+    evidence: >-
+      `if (provenance.length === 0) continue;`
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      the expansion guard (line 231)
+    evidence: >-
+      `if (input.expand && nodeHits.length > 0) {`
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      `PER_LAYER_FETCH_LIMIT` (line 40) and `total` (line 252)
+    evidence: >-
+      `const PER_LAYER_FETCH_LIMIT = 200;` and `const total = filtered.length;`
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      the `resolveLayers` branch for an absent layer list (lines 405-407). The expand, depth, uncertain and in-effect-only defaults are declared in search.dto.ts, not this file.
+    evidence: >-
+      `if (layers === undefined || layers.length === 0) { return new Set(ALLOWED_LAYERS); }`
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      the sort comparator (lines 245-250) and the node item's `recordedAtTs: 0`
+    evidence: >-
+      `if (b.score !== a.score) return b.score - a.score; if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs; return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;`
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      lines 252-253
+    evidence: >-
+      `const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: >-
+      `asOf` and `inEffectOnly` are used only in the `traverseNodes` call (lines 320-321). The fragment and node hits are fetched without them.
+    evidence: >-
+      `fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT);` takes no date argument.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: >-
+      lines 241-243, and the same guard for expanded links at lines 383-385
+    evidence: >-
+      `const filtered = input.includeUncertain ? items : items.filter((it) => it.status !== "uncertain");`
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      `resolveLinkTypeIds` (lines 425-428), reached only when `input.expand` is true
+    evidence: >-
+      `if (row === undefined) { throw new UnknownLinkTypeError(name); }`
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: >-
+      the parse guard (lines 104-110)
+    evidence: >-
+      `const parsed = await parseTsQuery(client, input.query); if (parsed === "") { throw new InvalidSearchQueryError("empty_after_parse", {`
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: >-
+      the lexical layer calls (lines 116-136) with an empty result flowing to `total = filtered.length`
+    evidence: >-
+      `const total = filtered.length;` over items built only from `fragmentHits`, `nodeHits` and graph expansion from matched nodes
+looked_past: >-
+  Seen and not judged: the duplicated vocabularies (`SearchKind`, `SearchLayer` and `AssertionFlag` in response.dto.ts alongside the inline unions here), the unused `layers_requested` and metrics log fields, and the repeated `fragment_text` copy in `toProvenanceEntry` are code-structure matters, not domain facts.

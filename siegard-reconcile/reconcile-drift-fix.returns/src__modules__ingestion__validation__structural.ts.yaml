@@ -1,0 +1,39 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, the number branch's finiteness check (lines 51-57) and the bool branch (lines 60-68)
+    evidence: >-
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value is not a finite number.", { value: v }); and throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value does not parse as a bool (expected 'true' or 'false').", { value: v }). The date and number-shape refusals carry { value: v, value_type: args.value_type }.
+    cost: >-
+      The ingestion contract says a value that fails to parse is refused "naming the value and its value type". Two of the four parse refusals name only the value. A caller that reads the refusal details for the value type finds it for date and for a malformed number, and does not find it for a bool or a non-finite number. The same rule is answered in two shapes.
+    kind: contradicts
+    correction: >-
+      Carry value_type in the details of the bool refusal and of the non-finite number refusal, as the other two parse refusals already do.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain, lines 73-86
+    evidence: >-
+      if (domain.has(value)) { return; } ... throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "attribute value not in closed domain", { value, allowed_values }) with allowed_values = [...domain].sort(). Membership is an exact string match, and the refusal names the value and the allowed values in sorted order, as the ingestion contract answers.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      parseAttributeValue, lines 16-71, with DATE_SHAPE and namesExistingDay
+    evidence: >-
+      DATE_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/ followed by namesExistingDay(...); number is /^-?\d+(?:\.\d+)?$/ followed by Number.isFinite(n); bool is v !== "true" && v !== "false"; the text case is `case "text": return;`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      assertKnownType, lines 102-120, the node_type branch
+    evidence: >-
+      if (!args.found) { const code = args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : ... } throw new ValidationFailure(code, `${args.kind} '${args.name}' is not in the seeded catalog.`, { kind: args.kind, name: args.name }). The refusal names the node type with the code the contract gives. The catalog lookup that sets found is done by the caller.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      parseAttributeValue date branch and namesExistingDay, lines 6-14 and 24-41
+    evidence: >-
+      candidate.setUTCFullYear(year, month - MONTH_INDEX_OFFSET, day); return (candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - MONTH_INDEX_OFFSET && candidate.getUTCDate() === day); 2024-02-30 rolls over to March 1, so the check fails and a ValidationFailure is thrown before any attribute is recorded.
+looked_past: >-
+  assertKnownType also applies the link_type and attribute_key catalog refusals (rules/knowledge-base/link-type-in-catalog and rules/knowledge-base/attribute-key-for-node-type, which this file is not bound to) and assertFound states RESOURCE_NOT_FOUND, and I judged the codes and the named subjects consistent with the ingestion contract and left the unbound nodes to their own reconciliation.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/link-type-in-catalog
+  - rules/knowledge-base/attribute-key-for-node-type
