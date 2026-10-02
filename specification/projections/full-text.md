@@ -4503,7 +4503,7 @@ None.
 === rules/chat/chat-prompt-presents-catalog
 ---
 type: invariant
-statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows, in ascending order.
+statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows, each list in the order the catalog holds it and the closed values of a key in ascending order.
 constrains:
 - domain/chat/chat-prompt-version
 ---
@@ -4519,6 +4519,10 @@ entries:
   unstated: The node did not say the closed values come in ascending order.
   decided: The statement adds ascending order.
   why: The ontology block sorts the values.
+- field: statement
+  unstated: In what order the catalog lists are presented
+  decided: Catalog load order for each list, ascending for the closed values of a key
+  why: The ontology renderer iterates the catalog in load order and sorts only the closed values.
 ---
 
 === rules/chat/chat-prompt-respects-temporal-axes
@@ -6484,7 +6488,7 @@ None.
 === rules/knowledge-base/ambiguous-candidates-need-review
 ---
 type: policy
-statement: A node proposal resolved by neither an exact alias nor a single strong candidate, with at least one active knowledge node of its node type at a similarity of 0.55 or more, creates a knowledge node in status needs-review and records an entity match review pairing it with each such node and its similarity.
+statement: A node proposal resolved by neither an exact alias nor a single strong candidate, with at least one active knowledge node of its node type at a similarity of 0.55 or more, creates a knowledge node in status needs-review and records an entity match review pairing it with each of the ten such nodes most similar to it and its similarity.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-node
@@ -6505,6 +6509,10 @@ entries:
   unstated: The material does not say how this rule holds across the separate records it changes.
   decided: eventual
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- field: statement
+  unstated: How many candidates a review pairs with the new node
+  decided: The ten most similar nodes at or above the floor
+  why: The resolver fetches ten candidates by similarity before filtering by the floor, so no more are ever paired.
 ---
 
 === rules/knowledge-base/assertion-review-check-order
@@ -6875,6 +6883,19 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/caller-never-states-received.log
+---
+entries:
+- field: statement
+  unstated: Whether an extraction may state the basis received
+  decided: An extraction under prompt version v4 may, for a relative date resolved against reception
+  why: The v4 prompt tells the model to state received for that case and the owner holds that the prompt is the truth.
+- field: statement
+  unstated: Whether an extraction may state the basis received
+  decided: No proposal may, extraction included; the earlier exception is withdrawn
+  why: The proposal schema refuses received, so the v4 prompt asking for it is a text defect and the rule stands.
+---
 
 === rules/knowledge-base/candidate-similarity
 ---
@@ -8022,7 +8043,7 @@ None.
 === rules/knowledge-base/directed-defaults
 ---
 type: invariant
-statement: A directed attribute or link is proposed with change hint none and, when it states no basis, with basis stated.
+statement: A directed attribute or link is proposed with the change hint its item states, none when it states none, and, when it states no basis, with basis stated.
 constrains:
 - domain/knowledge-base/directed-ingestion
 - domain/knowledge-base/proposal
@@ -8041,6 +8062,10 @@ entries:
   unstated: The material's directed service accepts a change hint and a validity end for attributes and links, while the directed tool's own schema declares neither, so they never arrive.
   decided: A directed attribute or link is proposed with change hint none.
   why: The directed tool is the only way a directed ingestion is made, and it carries no change hint.
+- field: statement
+  unstated: Whether a caller may state the change hint of a directed item
+  decided: The item's own change hint applies, none when it states none
+  why: The directed service accepts and proposes a stated hint; the owner holds that the code is the truth.
 ---
 
 === rules/knowledge-base/directed-dependency-failed
@@ -8126,7 +8151,7 @@ None.
 === rules/knowledge-base/directed-later-reference-wins
 ---
 type: invariant
-statement: When two directed items of one kind share a reference, the reference names the later one.
+statement: When two directed items of one kind share a reference, the reference names the later one that was accepted, and a later item that is refused leaves it naming the earlier one.
 constrains:
 - domain/knowledge-base/directed-item
 ---
@@ -8134,6 +8159,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/directed-later-reference-wins.log
+---
+entries:
+- field: statement
+  unstated: What a reference names when the later item sharing it is refused
+  decided: It keeps naming the earlier accepted item
+  why: The service updates a reference only on acceptance, so a refused later item never displaces the earlier one.
+---
 
 === rules/knowledge-base/directed-link-report-reference
 ---
@@ -8370,7 +8404,7 @@ None.
 === rules/knowledge-base/dispute-resolution-single-scope
 ---
 type: invariant
-statement: A dispute resolution MUST name items of one dispute scope.
+statement: A dispute resolution MUST name items of one dispute scope, and knowledge links it names MUST also share one target node.
 constrains:
 - domain/knowledge-base/dispute-resolution
 - domain/knowledge-base/dispute-scope
@@ -8379,6 +8413,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/dispute-resolution-single-scope.log
+---
+entries:
+- field: statement
+  unstated: Whether links of a non-multiple type may name different targets in one resolution
+  decided: They must share one target, as the reviewed dispute service enforces
+  why: The service refuses links with different targets even for a functional type, and the owner holds that the code is the truth.
+---
 
 === rules/knowledge-base/dispute-scope
 ---
@@ -8711,6 +8754,31 @@ entries:
   why: The standing node was read from the search's expansion, which names no direction.
 ---
 
+=== rules/knowledge-base/expansion-hop
+---
+type: policy
+statement: A search's expansion reaches a knowledge link at the hop equal to the number of knowledge links on the expansion path from the matched knowledge node up to and including that link, so a link with the matched knowledge node as one endpoint is reached at hop 1.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+This rule sets how a search's expansion counts the hop at which it reaches a knowledge link along one expansion path.
+It does not set the score a link gets at that hop. rules/knowledge-base/expansion-decay sets that.
+It does not choose among several paths that reach the same link. rules/knowledge-base/expansion-link-once covers that.
+It does not count the hops of a traversal.
+
+=== rules/knowledge-base/expansion-hop.log
+---
+entries:
+- field: statement
+  unstated: No node or material says how a search's expansion counts the hop at which it reaches a knowledge link, or whether a link that touches the matched knowledge node is at hop 0 or hop 1.
+  decided: The hop is the number of knowledge links on the expansion path from the matched knowledge node up to and including the link, so a link with the matched knowledge node as one endpoint is reached at hop 1.
+  why: Counting the link itself makes a link next to a match score half of that match's score, so no expanded link ranks level with the matched node.
+---
+
 === rules/knowledge-base/expansion-in-effect-only
 ---
 type: policy
@@ -8723,6 +8791,30 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/expansion-link-once
+---
+type: policy
+statement: A search lists a knowledge link its expansion reaches by more than one path once, scored by the path whose decayed score is highest and at the lowest hop among the paths that give that score.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+This rule covers a knowledge link that a search's expansion reaches more than once, whether at different hops or from different matched knowledge nodes.
+It does not set the decayed score of a single path. rules/knowledge-base/expansion-decay sets that.
+It also does not cover how a traversal lists the links it reaches. rules/knowledge-base/traversal-link-once covers that.
+
+=== rules/knowledge-base/expansion-link-once.log
+---
+entries:
+- field: statement
+  unstated: No node or material says whether a knowledge link reached by several expansion paths is listed once or once per path. None says which hop and which matched knowledge node's score set its score.
+  decided: Listed once. Its score is the highest decayed score among the paths that reach it. Its hop is the lowest hop among the paths that give that score.
+  why: A link's score measures how strongly the search's matches support it, and its strongest path is the best support it has. A weaker path must not lower a link that is close to a strong match. Choosing the lowest hop on a tie keeps the item's hop deterministic.
+---
 
 === rules/knowledge-base/expansion-reaches-merged-node-survivor
 ---
@@ -9025,6 +9117,14 @@ entries:
   unstated: The v4 directive tells the model to give the basis received to a date taken from the reception time, which another rule forbids a proposal to state.
   decided: The rule states the anchor of a relative date and leaves the basis out.
   why: Stating the basis would write the contradiction into this rule, and the owner has not asked for it to be settled.
+- field: statement
+  unstated: Which basis the v4 prompt asks for on the reception fallback
+  decided: The basis received
+  why: The prompt text names received explicitly for the fallback.
+- field: statement
+  unstated: Which basis the v4 prompt asks for on the reception fallback
+  decided: None is stated by the node; the earlier wording naming received is withdrawn
+  why: Naming received here would contradict the rule that no proposal states it.
 ---
 
 === rules/knowledge-base/extraction-relative-date-needs-document-date
@@ -12181,7 +12281,7 @@ None.
 === rules/knowledge-base/unused-resolution-fields-ignored
 ---
 type: invariant
-statement: An entity-match resolution deciding keep-separate ignores its target node, and a dispute resolution ignores a winner or periods its decision does not use.
+statement: An entity-match resolution deciding keep-separate ignores its target node, and a dispute resolution ignores a winner or periods its decision does not use, though a value of either that is malformed is still refused.
 constrains:
 - domain/knowledge-base/entity-match-resolution
 - domain/knowledge-base/dispute-resolution
@@ -12190,6 +12290,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/unused-resolution-fields-ignored.log
+---
+entries:
+- field: statement
+  unstated: Whether an unused winner or periods value is format-checked
+  decided: A malformed value of either is still refused
+  why: The request schema validates both fields whatever the decision, so a malformed unused field is refused, not ignored.
+---
 
 === rules/knowledge-base/validity-start-before-end
 ---
