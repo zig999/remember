@@ -1,0 +1,75 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-node.dto.ts
+    where: >-
+      the header comment, lines 1-6
+    evidence: >-
+      // Entity resolution belongs to a future domain (`entity-resolution`) — this TC
+      // implements the structural layer plus the create-with-advisory-lock path
+      // (BR-20). When that future domain is wired in, the handler delegates to it
+      // from inside this same transaction.
+    cost: >-
+      This prose states that concurrent proposals of one name are serialised by an advisory lock. The node
+      concurrent-proposals-resolve-in-turn already holds that fact, and code holds it too in
+      backend/src/modules/ingestion/service/entity-resolution.service.ts, where the lock is taken
+      (`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`). The comment also calls entity
+      resolution a "future domain", but that service exists. A reader who trusts the comment is misled
+      about where the rule lives and whether it is already wired in.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by entity-resolution.service.ts, and this file
+      holds none of it.
+    node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - file: src/modules/ingestion/dto/propose-node.dto.ts
+    where: >-
+      ProposeNodeInputSchema.node_type, lines 11-16
+    evidence: >-
+      node_type: z
+        .string()
+        .min(1)
+    cost: >-
+      The code refuses an empty node type as a structural failure, which is VALIDATION_INVALID_FORMAT with
+      HTTP 422. The node says only that a proposal "MUST name a node type the catalog holds", and the
+      contract refuses an unknown type with BUSINESS_UNKNOWN_NODE_TYPE. No node states a minimum length for
+      the node type. An empty string is therefore refused under a different code than the specification's
+      unknown-type refusal would give it, and that decision lives only in this schema.
+    kind: unstated
+    correction: >-
+      The analysis would decide whether an empty node type is a malformed proposal or an unknown type. It
+      would then record that in node-type-in-catalog or in the proposal node.
+    node: rules/knowledge-base/node-type-in-catalog
+  - file: src/modules/ingestion/dto/propose-node.dto.ts
+    where: >-
+      ProposeNodeResolution type, line 33
+    evidence: >-
+      export type ProposeNodeResolution = "matched_existing" | "created_new" | "needs_review";
+    cost: >-
+      This file declares a second copy of the node-resolution vocabulary, a closed set of three values.
+      The enumeration node domain/knowledge-base/node-resolution is not bound to this file. If the node's
+      values change, `--check` never reaches this declaration, and nobody can tell which of the two was
+      decided.
+    kind: contradicts
+    correction: >-
+      Bind this file to domain/knowledge-base/node-resolution, so that the declaration here is the place
+      where the enumeration is held. The code cannot read the specification, so the bind is what closes
+      this.
+    node: domain/knowledge-base/node-resolution
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeNodeInputSchema, lines 10-31. It declares, in part, the shape of the node proposal that the
+      node's description covers.
+    evidence: >-
+      export const ProposeNodeInputSchema = z.object({ node_type: z.string().min(1)..., name:
+      z.string().min(1).max(500)..., aliases: z.array(z.string().min(1).max(500)).optional()... });
+      The node's declared attributes (kind, confidence, change_hint, value, valid_from, valid_to,
+      valid_from_basis) do not appear in this file. The 1 to 500 character limit on name and aliases
+      matches rules/knowledge-base/node-name-length, and the tool descriptions agree with the nodes.
+looked_past: >-
+  Nothing was set aside as another judgment's, apart from the tool descriptions in `.describe(...)`. I read
+  them as emitted text that agrees with the nodes: the 500-character limit, the catalog node types, and
+  aliases attached without duplicating.
+candidates_opened:
+  - domain/knowledge-base/node-resolution
+  - rules/knowledge-base/node-name-length
+  - rules/knowledge-base/node-type-in-catalog
+  - rules/knowledge-base/concurrent-proposals-resolve-in-turn

@@ -1,0 +1,65 @@
+findings:
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      the doc comment above toSourceType(), lines 32-37
+    evidence: >-
+      "an out-of-domain value means TS/DB drift — a programmer/migration bug surfaced as a generic 500 (not a 422), never a silent `as` cast."
+    cost: >-
+      The doc comment states the retrieval contract's refusal for a stored source type outside its closed set, which is a second home for that fact. The code holds the same fact in this file at `throw new InvariantError(\`Unexpected source_type from DB: ${s}\`);`. If the contract moves, the comment is not reached and goes stale without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the node and by the throw. Run /reconcile over this file afterwards.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      SearchItem interface, the `id` member, line 56
+    evidence: >-
+      readonly id: string;
+    cost: >-
+      The shape gives every search item an identity. The search-item node lists kind, layer, score, hop, summary, flags and the provenance relationship, and no identity. A reader who goes to the specification for what a search answer carries will not find the field that clients use to follow a hit.
+    kind: unstated
+    correction: >-
+      An analysis should decide into the search-item node whether a search item carries the identity of the node, link or fragment it stands for.
+    node: domain/knowledge-base/search-item
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      SearchResponse interface, the `query` member, line 65
+    evidence: >-
+      readonly query: string;
+    cost: >-
+      The search answer echoes the query back to the caller. The accepted answer of `search` in contracts/knowledge-base/retrieval says only "the page of ranked search items ... and the total before pagination". The echo exists only in this type, so the next reader will not find it in the contract.
+    kind: unstated
+    correction: >-
+      An analysis should decide whether the `search` answer carries the query, and put the decision in contracts/knowledge-base/retrieval.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      the comment on ProvenanceRawInformation.original_input, lines 81-84
+    evidence: >-
+      "`'[REDACTED]'` after compliance_delete (BR-18 of
+        // compliance-audit)."
+    cost: >-
+      The comment restates the redaction of the original input that rules/knowledge-base/compliance-deletion-redacts-content holds. A reader of this DTO takes the comment as the home of the rule. The code that applies it is in another file, and the comment would not follow if the rule changed.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact in backend/src/modules/compliance-audit/repository/compliance-audit.repository.ts, at `original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END`. Run /reconcile over this file afterwards.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      ProvenanceFragment.status, line 102
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The fragment-status enumeration holds five values: proposed, accepted, rejected, superseded and deleted. This type leaves out `superseded`, so a provenance fragment in that state has no valid value in the shape. The contract's accepted answer lists a status for each provenance fragment without restricting it.
+    kind: contradicts
+    correction: >-
+      Align the union with domain/knowledge-base/fragment-status, or decide into the specification that provenance walks never carry a superseded fragment.
+    node: domain/knowledge-base/fragment-status
+read:
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the SearchItem interface, lines 53-62, with its supporting types SearchKind, SearchLayer and AssertionFlag at lines 10-12
+    evidence: >-
+      export interface SearchItem { readonly kind: SearchKind; readonly layer: SearchLayer; readonly id: string; readonly score: number; readonly hop: number; readonly summary: string; readonly flags: readonly AssertionFlag[]; readonly provenance: readonly SearchProvenanceEntry[]; }
+looked_past: >-
+  The header comment about openapi.yaml, TC-04 and Zod, and the SOURCE_TYPES set that repeats the SourceType union inside this file, state no domain fact, so they belong to another judgment.

@@ -1,0 +1,67 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      line 12, ChangeHintSchema
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]);
+    cost: >-
+      The change-hint vocabulary is declared here as well as in its node. The node is not bound to this file, so if the node's values move, `--check` never reaches this enum. Nobody could then say which of the two lists was decided.
+    kind: contradicts
+    correction: >-
+      Bind this file to domain/knowledge-base/change-hint, so that this declaration is the place the node's values are held. The code cannot read the specification, so a bind is the only way to close this.
+    node: domain/knowledge-base/change-hint
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      line 61, the change_hint field of ProposeLinkInputSchema
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none").describe(
+    cost: >-
+      The default of none when a proposal omits change_hint is applied here. The rule that holds it is not bound to this file, so a change to the rule would not reach this default.
+    kind: contradicts
+    correction: >-
+      Bind this file to rules/knowledge-base/omitted-change-hint-is-none.
+    node: rules/knowledge-base/omitted-change-hint-is-none
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      lines 67-80, ProposeLinkOutcome and ProposeLinkResult.reason
+    evidence: >-
+      export type ProposeLinkOutcome =
+        | "accepted"
+        | "consolidated"
+        | "superseded_previous"
+        | "disputed"
+        | "rejected";
+      ...
+        readonly reason?: "BELOW_CONFIDENCE_FLOOR";
+    cost: >-
+      The closed list of propose-link outcomes and the BELOW_CONFIDENCE_FLOOR reason are declared here. The ingestion contract holds them in its propose-link answer, and that node is not bound to this file. A change to the contract's outcomes would not reach this type through `--check`.
+    kind: contradicts
+    correction: >-
+      Bind this file to contracts/knowledge-base/ingestion.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      lines 27-29, the link_type field of ProposeLinkInputSchema
+    evidence: >-
+      link_type: z
+          .string()
+          .min(1)
+    cost: >-
+      An empty link_type is refused here as a shape failure (VALIDATION_INVALID_FORMAT). The ingestion contract's propose-link operation names BUSINESS_UNKNOWN_LINK_TYPE for a link type the catalog does not hold, and lists the failing shapes as "a required field or holds one of the wrong shape". It does not say that an empty link type counts as a wrong shape. The traversal operation does say so for "an empty link-type name". The refusal an empty link type gets is therefore decided only in this schema, where the next reader will not look for it.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether an empty link_type on propose-link is a format refusal or an unknown link type, and give that decision a node. The ingestion contract is the likely home.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeLinkInputSchema (lines 20-64) declares the link proposal's confidence, change_hint, valid_from, valid_to and valid_from_basis, plus the source, target and cited-fragment fields.
+    evidence: >-
+      confidence: z.number().min(0).max(1) ... valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() ... valid_from_basis: ValidFromBasisSchema.optional() ... change_hint: ChangeHintSchema.default("none")
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      ValidFromBasisSchema, line 8. The enum admits only stated and document, so a caller-supplied valid_from_basis of received fails parsing.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+looked_past: >-
+  The schema also enforces the confidence range, the minimum of one cited fragment, and the YYYY-MM-DD date format, which other rule and contract nodes hold but this file is not bound to; I reported only the vocabularies, the default and the empty link type.

@@ -1,0 +1,98 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      LlmRunIdField, lines 28-35 (the `llm_run_id` field every MCP proposal schema is extended with)
+    evidence: >-
+      llm_run_id: z
+          .string()
+          .min(1)
+          .describe(
+            "Active LLMRun id this proposal belongs to. ... The handler aborts with RESOURCE_NOT_FOUND when the id is unknown or BUSINESS_RUN_NOT_RUNNING when the row exists but its status is not `running`."
+    cost: >-
+      The contract's decision log settles that a malformed LLM run identity is refused with VALIDATION_INVALID_FORMAT on both transports, and the log's reason is that a run identity is a UUID everywhere else the specification names one. This schema accepts any non-empty string, and its own description sends an unknown id to RESOURCE_NOT_FOUND. A reader who trusts the contract expects a malformed id to be refused as invalid format. The schema, as declared here, lets it through to the handler. I did not read the handler, which is outside the file set.
+    kind: contradicts
+    correction: >-
+      Declare the run identity here as a well-formed identifier, as `get_ingestion_status` does with `.uuid()` in this same file. Then a malformed id is refused as VALIDATION_INVALID_FORMAT before the handler looks it up.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      StartAsyncIngestionMcpInputSchema and its docstring, lines 81-123
+    evidence: >-
+      `start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for
+       caller symmetry. ... so the
+       `inputSchema` advertised on `tools/list` carries the tool-specific
+       descriptions in `describe(…)`.
+    cost: >-
+      The constraint says the ingest toolset offers no tool that starts an ingestion and returns before it completes. Its log records the tool as retired because ingestion is one-shot. This file still declares the input contract of such a tool, and its docstring says that contract is advertised on `tools/list`. Someone reading the specification would conclude the tool does not exist, while the code carries a tool-specific input shape and descriptions for it. I did not check whether the registrar in another file still lists the tool.
+    kind: contradicts
+    correction: >-
+      Remove the schema and its type from this file, and confirm that no registrar still advertises the tool. Under the framework's routes this is a change to code the node already governs.
+    node: constraints/ingest-toolset-offers-no-async-ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      JSDoc of ListRecentIngestionsMcpInputSchema, line 251
+    evidence: >-
+      /** `list_recent_ingestions` — optional page size (1..50, default 10). */
+    cost: >-
+      The limit's bounds and default are stated in prose a second time, while the code directly below holds them with `.min(1).max(50).default(10)`. If the node's figures move, this line goes stale without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact. The node's own held_at for this file is the schema's `.min(1).max(50).default(10)`.
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      Header comment of the `ingest_directed` section, lines 272-274, and the JSDoc at line 300
+    evidence: >-
+      //   - `ref` strings are local to the call (1..120 chars, must be non-empty).
+    cost: >-
+      The reference length is restated in prose twice while `IngestDirectedRefSchema = z.string().min(1).max(120)` holds it in this file. A change to the node's bounds would leave two comments claiming the old figure.
+    kind: restates
+    correction: >-
+      Remove both comments (the section header bullet and the JSDoc at line 300). The code in this file holds the fact.
+    node: rules/knowledge-base/directed-reference-length
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      Header comment, lines 275-277, and the JSDoc at line 303
+    evidence: >-
+      //   - `valid_from_basis` is restricted to the public `'stated' | 'document'`
+      //     enum (the `'received'` fallback is server-internal, never accepted from
+      //     callers — BR-16).
+    cost: >-
+      The exclusion of the basis `received` is stated in prose while `z.enum(["stated", "document"])` holds it in this file. The comments claim a business decision (BR-16) that a reader may take for a second authority.
+    kind: restates
+    correction: >-
+      Remove the comments. The code in this file holds the fact.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      JSDoc of IngestDirectedIsoDateSchema, line 292
+    evidence: >-
+      /** ISO date `YYYY-MM-DD`. Mirrors the service-side regex (`directed-ingestion.service.ts`). */
+    cost: >-
+      The shape of a validity start is restated in prose and claimed to mirror a second regex in the service. The regex `/^\d{4}-\d{2}-\d{2}$/` already holds it in this file, so the comment adds a second home the node cannot reach.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      `node_id` field of IngestDirectedNodeItemSchema, description string, lines 336-342
+    evidence: >-
+      Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node.
+    cost: >-
+      This description is sent to MCP clients on `tools/list`. The contract reports a pinned node that names no knowledge node as rejected with RESOURCE_NOT_FOUND, and VALIDATION_INVALID_FORMAT only for a node that exists but is not active. The text tells a caller the first case is an invalid-format refusal, so a caller who branches on the advertised code mishandles it.
+    kind: contradicts
+    correction: >-
+      Make the description state the two refusals as the contract holds them. An absent node is RESOURCE_NOT_FOUND. A node that is not active is VALIDATION_INVALID_FORMAT.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      Only the proposal's reference to its LLM run, in LlmRunIdField (lines 28-35) and the four `.extend(LlmRunIdField)` declarations (lines 41-55). The node's other attributes are declared in the dto files.
+    evidence: >-
+      export const ProposeFragmentMcpInputSchema =
+        ProposeFragmentInputSchema.extend(LlmRunIdField);
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+looked_past: >-
+  The file's long comment blocks cite BR-21, BR-24, BR-28, BR-31 to BR-34 and the "Option B" run binding, and state transport behavior no node holds. That is prose, not code or emitted text, so its route is removal and it is not a finding.

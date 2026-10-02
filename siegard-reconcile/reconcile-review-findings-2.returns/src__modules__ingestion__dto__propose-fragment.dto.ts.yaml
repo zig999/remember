@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the header comment, lines 3 to 6, above the import
+    evidence: >-
+      // Layer 1 (structural) of the 5-layer validation. The DB CHECK on
+      // `information_fragment.text` (≤ 1000 chars) is mirrored here so the failure
+      // surfaces as a typed `VALIDATION_INVALID_FORMAT` instead of a SQLSTATE
+    cost: >-
+      The comment states the 1–1000 character limit of a fragment's text a second time, as prose. The node rules/knowledge-base/fragment-text-length holds it and `.min(1).max(1000)` in this file implements it. The pair conforms. The comment is a second home for the limit, and it will go stale if the node changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The `.max(1000)` in this same file is the code that holds the fact.
+    node: rules/knowledge-base/fragment-text-length
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the `.describe(...)` on `text` in ProposeFragmentInputSchema, line 16
+    evidence: >-
+      "The factual claim, quoted verbatim from the chunk. One assertion only; max 1000 characters."
+    cost: >-
+      This text goes to the calling model as the tool's input description. It requires a fragment's text to be a verbatim quote of the chunk and to hold one assertion only. No node states either requirement. Nodes hold the 1–1000 length and the verbatim chunk excerpt, but the fragment's own text is not said to be verbatim or single-assertion. A reader looking in the specification for what a fragment's text must be will not find these two requirements.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether a fragment's text is a verbatim quote and holds a single assertion, and give that a home in domain/knowledge-base/information-fragment or a rule constraining it.
+    node: domain/knowledge-base/information-fragment
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the `.describe(...)` on `confidence` in ProposeFragmentInputSchema, line 23
+    evidence: >-
+      "Confidence 0–1 that this claim is correctly extracted. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped."
+    cost: >-
+      This text goes to the calling model as the description of a fragment proposal's confidence. It says a fragment is stored active at 0.75 or above, uncertain from 0.40 to 0.74, and dropped below 0.40. The node rules/knowledge-base/fragment-recorded-proposed says "A fragment proposal records an information fragment in status proposed, whatever its confidence." The result type in this same file also carries `status: "proposed"` only. The 0.75 and 0.40 thresholds belong to link and attribute proposals (rules/knowledge-base/new-assertion-status-from-confidence and rules/knowledge-base/below-confidence-floor-records-nothing). The model is therefore told the wrong consequence of the confidence it sends for a fragment.
+    kind: contradicts
+    correction: >-
+      The description should state only what the node holds: confidence between 0 and 1, and a fragment recorded as proposed whatever its confidence. The thresholds would stay with link and attribute proposals.
+    node: rules/knowledge-base/fragment-recorded-proposed
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeFragmentInputSchema (lines 10 to 31) declares the fragment proposal's `confidence` and its cited raw chunks as `chunk_ids`. ProposeFragmentResult (lines 34 to 37) declares the recorded result.
+    evidence: >-
+      confidence: z
+        .number()
+        .min(0)
+        .max(1)
+      ...
+      chunk_ids: z
+        .array(z.string().uuid())
+        .min(1)
+looked_past: >-
+  The `chunk_ids` description says "you do not need to send this" while the schema requires `.min(1)`, a code-level inconsistency and not a node fact. The 0–1 range and the 1–1000 length are implemented here while held by rules outside the node set (proposal-confidence-range, fragment-confidence-range and fragment-text-length), so those rules' bindings are the trace's matter.

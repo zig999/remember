@@ -1,0 +1,106 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      `key` field of ProposeAttributeInputSchema, lines 18-23
+    evidence: >-
+      key: z
+          .string()
+          .min(1)
+    cost: >-
+      An empty key is refused at the schema, before the catalog check. The specification gives
+      an unknown key the refusal BUSINESS_UNKNOWN_ATTRIBUTE_KEY and states no empty-key
+      refusal. The error code a caller sees for an empty key is therefore decided only here.
+    kind: unstated
+    correction: >-
+      Analysis would decide whether an empty key is refused at the form layer or falls to the
+      catalog rule, and give that decision a node.
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the block comment above `value`, lines 24-27
+    evidence: >-
+      Canonical-serialized value (string form). The structural layer parses
+         * this against the `attribute_key.value_type` and rejects on mismatch.
+    cost: >-
+      The comment states the rule that a value must read as its key's value type, which a node
+      holds. The code that enforces it is in validation/structural.ts, which switches on
+      `args.value_type`. The comment is a second home for the fact outside behavior. If the
+      node moves, nothing points a reader to it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node, and the code in
+      src/modules/ingestion/validation/structural.ts holds it too.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      `value` field of ProposeAttributeInputSchema, `.min(1)`, lines 28-30
+    evidence: >-
+      value: z
+          .string()
+          .min(1)
+    cost: >-
+      An empty value is refused at the schema for every key, including keys of value type
+      text. The node says text means "any text" and states no empty-value refusal. Whether
+      the empty string is text is decided only here. A reader checking the specification will
+      not find that an empty text value is refused.
+    kind: unstated
+    correction: >-
+      Analysis would decide whether an empty value is refused, and with what error, and give
+      that a node. It could be a clause of attribute-value-parses or a rule of its own. If
+      the empty string is meant to be text, this is instead a contradiction with the node.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      `.describe(...)` of `value`, lines 31-33. This is the tool description sent to the
+      model.
+    evidence: >-
+      The literal value, serialized as a string. Must parse as the key's declared type (date, number, or string).
+    cost: >-
+      The text the model is told names three value types, and the node names four: date,
+      number, bool and text. It leaves out bool and calls text "string". A model following
+      this description has no instruction for bool values, and the system tells it a
+      different vocabulary from the one the node decided.
+    kind: contradicts
+    correction: >-
+      The emitted description should state the value types as the node does: date, number,
+      bool and text.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      `change_hint` field of ProposeAttributeInputSchema, `.default("none")`, line 56
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none")
+    cost: >-
+      An attribute proposal that states no change hint is given the hint none, which then
+      drives re-affirmation and succession. The only node holding a default says "A link
+      proposal that states no change hint carries the change hint none". Its decision log
+      records that the attribute schema was not read when it was decided. The attribute
+      default therefore lives only in this schema, and the next reader looks for it in the
+      specification and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis would extend the default to attribute proposals, by widening
+      omitted-change-hint-is-none or by a sibling node.
+    node: rules/knowledge-base/omitted-change-hint-is-none
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeAttributeInputSchema, lines 11-59. It declares the attribute proposal's shape:
+      value, confidence, change_hint, valid_from, valid_to and valid_from_basis, plus
+      fragment_ids and the node and key it targets.
+    evidence: >-
+      value: z
+          .string()
+          .min(1)
+      ...
+        confidence: z
+          .number()
+          .min(0)
+          .max(1)
+      ...
+        valid_from_basis: ValidFromBasisSchema.optional()
+      ...
+        change_hint: ChangeHintSchema.default("none")
+looked_past: >-
+  The ISO-date regex is declared again here instead of being shared with propose-link.dto.ts, and the leading comment cites "UC-11", which names no fact; both are another judgment's.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
