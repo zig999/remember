@@ -1,18 +1,3 @@
-// searchKnowledge service — composes the three-layer FTS pipeline:
-//
-//   1. parse the tsquery (BR-05) — empty parse short-circuits to
-//      InvalidSearchQueryError.
-//   2. fan out the three layer queries SEQUENTIALLY on one connection
-//      (BR-09, BR-01) inside the route's transaction.
-//   3. dedup chunk hits anchored by fragment hits (BR-10).
-//   4. optional graph expansion via knowledge-graph traverseNodes() (BR-13).
-//   5. assemble provenance for each surviving item (BR-18 building blocks).
-//   6. compute flags (BR-08), apply include_uncertain filter at SQL level
-//      is N/A here — the partial GIN already excludes non-accepted; for
-//      future graph rows the flag is post-SQL.
-//   7. rank with deterministic tie-breakers (BR-15).
-//   8. paginate; return total = pre-pagination length.
-
 import type { PoolClient } from "pg";
 import type { Logger } from "pino";
 
@@ -20,6 +5,7 @@ import {
   TRAVERSAL_DECAY,
   traverseNodes,
   type CatalogSnapshot,
+  type TraverseNodesResult,
 } from "../../knowledge-graph/index.js";
 import { ALLOWED_LAYERS, type SearchLayer } from "../dto/search.dto.js";
 import type {
@@ -41,6 +27,7 @@ import {
   searchNodeAliasLayer,
   type ChunkHitRow,
   type FragmentHitRow,
+  type LinkMetadataRow,
   type NodeAliasHitRow,
   type SearchProvenanceRow,
 } from "../repository/search.repository.js";
@@ -50,9 +37,6 @@ import {
 } from "./errors.js";
 import { UnknownLinkTypeError } from "../../knowledge-graph/service/errors.js";
 
-/** Per-layer fan-out cap. We pull a generous slice from each layer so the
- *  global ranking has enough candidates; the final result is sliced by the
- *  caller's `limit`/`offset` after the in-memory sort. */
 const PER_LAYER_FETCH_LIMIT = 200;
 
 const LOW_CONFIDENCE_THRESHOLD = 0.4;
@@ -71,20 +55,38 @@ export interface SearchServiceInput {
 }
 
 interface IntermediateItem {
-  readonly key: string; // unique id used for dedup (kind:id)
+  readonly key: string;
   readonly kind: "node" | "link" | "fragment";
   readonly layer: SearchLayer;
   readonly id: string;
   score: number;
   readonly hop: number;
-  readonly recordedAtTs: number; // for tie-break (BR-15)
+  readonly recordedAtTs: number;
   summary: string;
   flags: AssertionFlag[];
   provenance: SearchProvenanceEntry[];
-  /** Status of the underlying row (drives flags + include_uncertain). */
   readonly status: string;
-  /** Confidence — only meaningful for fragment kind. */
   readonly confidence?: number;
+}
+
+type TraversedLink = TraverseNodesResult["links"][number];
+
+interface ExpandedLink {
+  readonly link: TraversedLink;
+  readonly hop: number;
+  readonly score: number;
+}
+
+interface ExpansionContext {
+  readonly client: PoolClient;
+  readonly logger: Logger;
+  readonly input: SearchServiceInput;
+  readonly linkTypeIds: readonly string[] | undefined;
+}
+
+interface LinkLookups {
+  readonly metaById: ReadonlyMap<string, LinkMetadataRow>;
+  readonly provByLink: ReadonlyMap<string, SearchProvenanceRow[]>;
 }
 
 export async function searchKnowledgeService(
@@ -93,23 +95,12 @@ export async function searchKnowledgeService(
   input: SearchServiceInput,
   logger: Logger
 ): Promise<SearchResponse> {
-  // ---------------------------------------------------------------
-  // (a) Validate `layers[]` against the closed set (BR-04). Zod accepts
-  //     any string; the service is the authoritative gate.
-  // ---------------------------------------------------------------
   const layers = resolveLayers(input.layers);
 
-  // ---------------------------------------------------------------
-  // (b) Validate `expand_link_types[]` against the catalog (BR-03).
-  //     Ignored when `expand=false`.
-  // ---------------------------------------------------------------
   const linkTypeIds = input.expand
     ? resolveLinkTypeIds(catalog, input.expandLinkTypes)
     : undefined;
 
-  // ---------------------------------------------------------------
-  // (c) Parse the tsquery once (BR-05) — Postgres tells us if it is empty.
-  // ---------------------------------------------------------------
   const parsed = await parseTsQuery(client, input.query);
   if (parsed === "") {
     throw new InvalidSearchQueryError("empty_after_parse", {
@@ -118,9 +109,6 @@ export async function searchKnowledgeService(
     });
   }
 
-  // ---------------------------------------------------------------
-  // (d) Fan out — sequential on one connection (BR-09).
-  // ---------------------------------------------------------------
   let fragmentHits: readonly FragmentHitRow[] = [];
   let nodeHits: readonly NodeAliasHitRow[] = [];
   let chunkHits: readonly ChunkHitRow[] = [];
@@ -147,11 +135,6 @@ export async function searchKnowledgeService(
     );
   }
 
-  // ---------------------------------------------------------------
-  // (e) Dedup: collapse chunks that are anchored by fragments in the
-  //     result set (BR-10). The chunk drops out entirely; the fragment
-  //     surfaces with the chunk's excerpt in its provenance.
-  // ---------------------------------------------------------------
   const fragmentIdSet = new Set(fragmentHits.map((f) => f.id));
   const chunkIdSet = new Set(chunkHits.map((c) => c.id));
   const dedupLinks =
@@ -163,10 +146,6 @@ export async function searchKnowledgeService(
         )
       : [];
 
-  // Count chunk hits that a fragment in the result set anchors (BR-10). The
-  // per-fragment collapse map is not needed: chunks are dropped from the final
-  // list unconditionally (see the BR-10 note below), so only the metric count
-  // is consumed (logged as `dedup_collapsed_count`).
   const chunksById = new Map(chunkHits.map((c) => [c.id, c] as const));
   let dedupCollapsedCount = 0;
 
@@ -175,12 +154,8 @@ export async function searchKnowledgeService(
     dedupCollapsedCount += 1;
   }
 
-  // ---------------------------------------------------------------
-  // (f) Build the intermediate result list.
-  // ---------------------------------------------------------------
   const items: IntermediateItem[] = [];
 
-  // Fragment kind items
   if (fragmentHits.length > 0) {
     const provRows = await listProvenanceForFragments(
       client,
@@ -217,7 +192,6 @@ export async function searchKnowledgeService(
     }
   }
 
-  // Node-alias kind items
   if (nodeHits.length > 0) {
     const provRows = await listProvenanceForNodes(
       client,
@@ -230,9 +204,6 @@ export async function searchKnowledgeService(
         toProvenanceEntry
       );
 
-      // BR-13 of back spec / OpenAPI: `provenance` minItems: 1. A node
-      // hit without ANY accepted-fragment trace is dropped — we never
-      // surface a node without a provenance chain.
       if (provenance.length === 0) continue;
 
       const flags = computeFlags({
@@ -247,7 +218,7 @@ export async function searchKnowledgeService(
         id: n.node_id,
         score: n.score,
         hop: 0,
-        recordedAtTs: 0, // node has no recorded_at axis; tie-break falls through
+        recordedAtTs: 0,
         summary: n.canonical_name,
         flags,
         provenance,
@@ -256,113 +227,17 @@ export async function searchKnowledgeService(
     }
   }
 
-  // ---------------------------------------------------------------
-  // (g) Graph expansion (BR-13). Skip when `expand=false`.
-  // ---------------------------------------------------------------
   let expansionHopCount = 0;
   if (input.expand && nodeHits.length > 0) {
-    const startingIds = nodeHits
-      .filter((n) =>
-        // Only expand from node items that actually surfaced (had provenance)
-        items.some((it) => it.kind === "node" && it.id === n.node_id)
-      )
-      .map((n) => n.node_id);
-
-    if (startingIds.length > 0) {
-      const traversal = await traverseNodes(
-        client,
-        {
-          startingNodeIds: startingIds,
-          direction: "both",
-          linkTypeIds,
-          depth: input.expandDepth,
-          asOf: input.asOf,
-          inEffectOnly: input.inEffectOnly,
-        },
-        logger
-      );
-
-      const nodeScoreById = new Map<string, number>();
-      for (const it of items) {
-        if (it.kind === "node") nodeScoreById.set(it.id, it.score);
-      }
-
-      const newLinks = traversal.links;
-      expansionHopCount = newLinks.length;
-
-      if (newLinks.length > 0) {
-        // Provenance + metadata in one batched lookup each.
-        const linkIds = newLinks.map((l) => l.id);
-        const [linkProvRows, linkMeta] = await Promise.all([
-          listProvenanceForLinks(client, linkIds),
-          findLinksMetadata(client, linkIds),
-        ]);
-        const provByLink = groupProvenanceBy(linkProvRows, (r) => r.anchor_id);
-        const metaById = new Map(linkMeta.map((m) => [m.id, m] as const));
-
-        for (const link of newLinks) {
-          const hop = link.hop;
-          // The hop's source node id is one of the endpoints — pick whichever
-          // is in our scoring map; fall back to the highest source score.
-          const sourceScore =
-            nodeScoreById.get(link.source_node_id) ??
-            nodeScoreById.get(link.target_node_id) ??
-            0;
-          const score = Math.pow(TRAVERSAL_DECAY, hop) * sourceScore;
-
-          const meta = metaById.get(link.id);
-          if (meta === undefined) continue;
-
-          const provenance = (provByLink.get(link.id) ?? []).map(
-            toProvenanceEntry
-          );
-          if (provenance.length === 0) {
-            // BR-13 / OpenAPI: links without provenance are an alarm but
-            // we MUST NOT emit a `provenance: []` row. Log warn and drop.
-            logger.warn(
-              {
-                route: "GET /api/v1/search",
-                anchor_kind: "link",
-                link_id: link.id,
-              },
-              "query_retrieval_search_empty_link_provenance"
-            );
-            continue;
-          }
-
-          const summary = `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`;
-
-          const flags = computeFlags({
-            kind: "link",
-            status: meta.status,
-          });
-
-          // include_uncertain filter on the storage column (BR-08).
-          if (!input.includeUncertain && meta.status === "uncertain") continue;
-
-          items.push({
-            key: `link:${link.id}`,
-            kind: "link",
-            layer: "node",
-            id: link.id,
-            score,
-            hop,
-            recordedAtTs: meta.recorded_at.getTime(),
-            summary,
-            flags,
-            provenance,
-            status: meta.status,
-          });
-        }
-      }
-    }
+    const context: ExpansionContext = { client, logger, input, linkTypeIds };
+    const expanded = await collectExpandedLinks(
+      context,
+      scoreMatchedNodes(items)
+    );
+    expansionHopCount = expanded.size;
+    items.push(...(await buildExpandedLinkItems(context, expanded)));
   }
 
-  // ---------------------------------------------------------------
-  // (h) include_uncertain filter on the in-memory list (node hits).
-  //     Fragment partial GIN already filters status=accepted; uncertain
-  //     applies to graph rows only.
-  // ---------------------------------------------------------------
   const filtered = input.includeUncertain
     ? items
     : items.filter((it) => it.status !== "uncertain");
@@ -377,9 +252,6 @@ export async function searchKnowledgeService(
   const total = filtered.length;
   const sliced = filtered.slice(input.offset, input.offset + input.limit);
 
-  // ---------------------------------------------------------------
-  // (j) Log (no raw query at INFO level — BR-04 constraint).
-  // ---------------------------------------------------------------
   logger.info(
     {
       route: "GET /api/v1/search",
@@ -407,9 +279,125 @@ export async function searchKnowledgeService(
   return response;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+function scoreMatchedNodes(
+  items: readonly IntermediateItem[]
+): ReadonlyMap<string, number> {
+  const scoreById = new Map<string, number>();
+  for (const it of items) {
+    if (it.kind === "node") scoreById.set(it.id, it.score);
+  }
+  return scoreById;
+}
+
+function isBetterPath(candidate: ExpandedLink, current: ExpandedLink): boolean {
+  if (candidate.score !== current.score) return candidate.score > current.score;
+  return candidate.hop < current.hop;
+}
+
+function keepBestPath(
+  reached: Map<string, ExpandedLink>,
+  candidate: ExpandedLink
+): void {
+  const current = reached.get(candidate.link.id);
+  if (current === undefined || isBetterPath(candidate, current)) {
+    reached.set(candidate.link.id, candidate);
+  }
+}
+
+async function collectExpandedLinks(
+  context: ExpansionContext,
+  matchedNodeScores: ReadonlyMap<string, number>
+): Promise<ReadonlyMap<string, ExpandedLink>> {
+  const reached = new Map<string, ExpandedLink>();
+  for (const [startId, startScore] of matchedNodeScores) {
+    const traversal = await traverseNodes(
+      context.client,
+      {
+        startingNodeIds: [startId],
+        direction: "both",
+        linkTypeIds: context.linkTypeIds,
+        depth: context.input.expandDepth,
+        asOf: context.input.asOf,
+        inEffectOnly: context.input.inEffectOnly,
+      },
+      context.logger
+    );
+    for (const link of traversal.links) {
+      keepBestPath(reached, {
+        link,
+        hop: link.hop,
+        score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,
+      });
+    }
+  }
+  return reached;
+}
+
+async function buildExpandedLinkItems(
+  context: ExpansionContext,
+  expanded: ReadonlyMap<string, ExpandedLink>
+): Promise<IntermediateItem[]> {
+  if (expanded.size === 0) return [];
+  const linkIds = [...expanded.keys()];
+  const [linkProvRows, linkMeta] = await Promise.all([
+    listProvenanceForLinks(context.client, linkIds),
+    findLinksMetadata(context.client, linkIds),
+  ]);
+  const lookups: LinkLookups = {
+    metaById: new Map(linkMeta.map((m) => [m.id, m] as const)),
+    provByLink: groupProvenanceBy(linkProvRows, (r) => r.anchor_id),
+  };
+
+  const items: IntermediateItem[] = [];
+  for (const candidate of expanded.values()) {
+    const item = toExpandedLinkItem(context, candidate, lookups);
+    if (item !== undefined) items.push(item);
+  }
+  return items;
+}
+
+function toExpandedLinkItem(
+  context: ExpansionContext,
+  candidate: ExpandedLink,
+  lookups: LinkLookups
+): IntermediateItem | undefined {
+  const { link, hop, score } = candidate;
+  const meta = lookups.metaById.get(link.id);
+  if (meta === undefined) return undefined;
+
+  const provenance = (lookups.provByLink.get(link.id) ?? []).map(
+    toProvenanceEntry
+  );
+  if (provenance.length === 0) {
+    context.logger.warn(
+      {
+        route: "GET /api/v1/search",
+        anchor_kind: "link",
+        link_id: link.id,
+      },
+      "query_retrieval_search_empty_link_provenance"
+    );
+    return undefined;
+  }
+
+  if (!context.input.includeUncertain && meta.status === "uncertain") {
+    return undefined;
+  }
+
+  return {
+    key: `link:${link.id}`,
+    kind: "link",
+    layer: "node",
+    id: link.id,
+    score,
+    hop,
+    recordedAtTs: meta.recorded_at.getTime(),
+    summary: `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`,
+    flags: computeFlags({ kind: "link", status: meta.status }),
+    provenance,
+    status: meta.status,
+  };
+}
 
 function resolveLayers(
   layers: readonly string[] | undefined
