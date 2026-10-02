@@ -129,7 +129,7 @@ None.
 
 === constraints/every-operation-requires-owner-authentication
 ---
-statement: Every operation authenticates the owner before it runs, by a bearer token the auth provider signed, that has not expired and that names the owner.
+statement: Every operation reached over the network authenticates the owner before it runs, by a bearer token the auth provider signed, that has not expired and that names the owner.
 scope: system
 ---
 
@@ -144,6 +144,10 @@ entries:
   unstated: The specification held owner authentication only for retrieval, while the material authenticates the owner the same way before every operation.
   decided: One system constraint for every operation; constraints/retrieval-requires-owner-authentication is removed, as it held no binding and no log entry.
   why: The same gate over every operation is one fact, and two constraints stating it for overlapping scopes would be two homes.
+- field: statement
+  unstated: The constraint said every operation authenticates the owner, while the local process transport serves the query and ingest toolsets with no authentication.
+  decided: The constraint holds for operations reached over the network.
+  why: The local process transport has no network surface and its documented model trusts the owner of the local process, so the gate cannot apply there.
 ---
 
 === constraints/expected-refusals-not-logged-as-errors
@@ -312,6 +316,25 @@ scope: system
 ## Description
 
 None.
+
+=== constraints/local-process-transport-needs-no-authentication
+---
+statement: An operation reached over the local process transport runs without authentication, the owner of the local process being its trust boundary.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/local-process-transport-needs-no-authentication.log
+---
+entries:
+- field: statement
+  unstated: No node said how an operation reached over the local process transport is authenticated.
+  decided: It runs without authentication, the owner of the local process being its trust boundary.
+  why: The transport entry point starts no network listener and its documentation, the owner's deviation recorded as Emenda v7.5, states this trust model.
+---
 
 === constraints/logs-redact-text-fields
 ---

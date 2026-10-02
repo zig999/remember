@@ -58,6 +58,7 @@ None.
 - local-operator-token-development-only (system)
 - local-operator-token-minimum-length (system)
 - local-operator-token-needs-explicit-development (system)
+- local-process-transport-needs-no-authentication (system)
 - logs-redact-text-fields (system)
 - mcp-endpoint-serves-only-its-toolset (system)
 - mcp-failure-is-tool-error (system)
@@ -70,4 +71,4 @@ None.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-239 decision(s) disclosed, 2 location(s) retired in the decision logs.
+241 decision(s) disclosed, 2 location(s) retired in the decision logs.
