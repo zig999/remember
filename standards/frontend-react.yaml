@@ -1,0 +1,241 @@
+contract_version: siegard-standard/1
+standard: frontend-react
+summary: >-
+  How the Remember SPA's own source (React 19, TypeScript strict, Vite, Tailwind v4, TanStack
+  Query) is arranged, as its own tooling configuration and the owner's rules in CLAUDE.md state it.
+
+rules:
+
+  - id: TYP-01
+    statement: >-
+      The source compiles under the strict compiler options the project's `tsconfig.json` turns on
+      (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`,
+      `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`,
+      `noFallthroughCasesInSwitch`).
+    because: >-
+      A departure is an implicit `any`, an unchecked index or an unused binding the compiler would
+      have refused, so the build fails or a defect reaches runtime that the type system was
+      configured to stop.
+    decided_by: tool
+    tool: typecheck
+    applies_to:
+      - { under: src, suffix: .ts, nested: true }
+      - { under: src, suffix: .tsx, nested: true }
+    seen_at: frontend/tsconfig.json
+
+  - id: HKS-01
+    statement: >-
+      Components and hooks obey the React Hooks rules the project's ESLint configuration enables
+      (`eslint-plugin-react-hooks` recommended set).
+    because: >-
+      A hook called conditionally, or an effect with wrong dependencies, renders a stale or
+      inconsistent screen that no type check catches.
+    decided_by: tool
+    tool: lint
+    applies_to:
+      - { under: src, suffix: .ts, nested: true }
+      - { under: src, suffix: .tsx, nested: true }
+    seen_at: frontend/eslint.config.js
+
+  - id: DAT-01
+    statement: >-
+      `axios` is not imported anywhere in the source; server calls go through a TanStack Query hook
+      in `features/<x>/api/`.
+    because: >-
+      A direct HTTP client in a component bypasses the shared query client, its retry policy and
+      its central error handling, so a failure is handled in one place and ignored in another.
+    decided_by: tool
+    tool: lint
+    applies_to:
+      - { under: src, suffix: .ts, nested: true }
+      - { under: src, suffix: .tsx, nested: true }
+    seen_at: frontend/eslint.config.js
+
+  - id: IMP-01
+    statement: >-
+      A file under `src/features/graph`, `src/features/search`, `src/features/ingest`,
+      `src/features/curation` or `src/features/history` imports from no other feature directory.
+    because: >-
+      A feature reaching into a sibling couples two screens that are meant to change separately,
+      so a change in one breaks the other without either owning the break.
+    decided_by: tool
+    tool: lint
+    applies_to:
+      - { under: src/features/graph, suffix: .ts, nested: true }
+      - { under: src/features/graph, suffix: .tsx, nested: true }
+      - { under: src/features/search, suffix: .ts, nested: true }
+      - { under: src/features/search, suffix: .tsx, nested: true }
+      - { under: src/features/ingest, suffix: .ts, nested: true }
+      - { under: src/features/ingest, suffix: .tsx, nested: true }
+      - { under: src/features/curation, suffix: .ts, nested: true }
+      - { under: src/features/curation, suffix: .tsx, nested: true }
+      - { under: src/features/history, suffix: .ts, nested: true }
+      - { under: src/features/history, suffix: .tsx, nested: true }
+    seen_at: frontend/eslint.config.js
+
+  - id: IMP-02
+    statement: >-
+      A file under `src/features/chat` or `src/features/auth` imports from no sibling feature,
+      only from `shared/` or its own feature.
+    because: >-
+      The owner's rule is that a feature never imports from a sibling; for these two features no
+      ESLint zone enforces it, so a coupling to a sibling would go unreported by the linter.
+    decided_by: reading
+    applies_to:
+      - { under: src/features/chat, suffix: .ts, nested: true }
+      - { under: src/features/chat, suffix: .tsx, nested: true }
+      - { under: src/features/auth, suffix: .ts, nested: true }
+      - { under: src/features/auth, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Conventions — "Nunca importar de uma feature irmã")
+
+  - id: DAT-02
+    statement: >-
+      No component calls `fetch` directly and no component uses `useEffect` to fetch data; every
+      server call is a hook in `features/<x>/api/`.
+    because: >-
+      A fetch inside a component escapes the query cache, so the same data is loaded twice, never
+      invalidated after a mutation, and its loading and error states are invented per screen.
+    decided_by: reading
+    applies_to:
+      - { under: src, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Stack — Frontend, Data layer; Anti-patterns/Frontend)
+
+  - id: DAT-03
+    statement: >-
+      Query keys are typed and centralized per entity in a key factory, and a key literal is never
+      duplicated; a mutation invalidates the affected keys.
+    because: >-
+      A key spelled in two places drifts, so a mutation invalidates one and leaves the other
+      serving stale data.
+    decided_by: reading
+    applies_to:
+      - { under: src/features, suffix: .ts, nested: true }
+      - { under: src/features, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Data layer — TanStack Query)
+
+  - id: CMP-01
+    statement: >-
+      A shared UI component takes `ref` as an ordinary prop and does not use `forwardRef`.
+    because: >-
+      The project is on React 19, where `forwardRef` is the older form; mixing both leaves two
+      ways to pass a ref in the same shared layer.
+    decided_by: reading
+    applies_to:
+      - { under: src/components, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Component contract; Anti-patterns/Frontend)
+
+  - id: CMP-02
+    statement: >-
+      A shared UI component accepts `className` and merges it through the project's `cn()`
+      utility; class names are never joined by string concatenation.
+    because: >-
+      Concatenated classes do not resolve Tailwind conflicts, so a consumer's override silently
+      loses or wins by stylesheet order instead of by intent.
+    decided_by: reading
+    applies_to:
+      - { under: src, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Component contract; Anti-patterns/Frontend)
+
+  - id: STY-01
+    statement: >-
+      Styling uses semantic tokens and Tailwind's named breakpoints and container queries; no
+      arbitrary values (such as `w-[347px]`), no raw colour or spacing values, no custom CSS media
+      queries, and no `tailwind.config.ts`.
+    because: >-
+      A raw value or a custom media query bypasses the design tokens, so a theme or breakpoint
+      change reaches every place except the ones that hard-coded it.
+    decided_by: reading
+    applies_to:
+      - { under: src, suffix: .tsx, nested: true }
+      - { under: src, suffix: .css, nested: true }
+    seen_at: CLAUDE.md (Stack — Frontend, Styling — Tailwind v4, Responsive — Tailwind)
+
+  - id: FRM-01
+    statement: >-
+      A form is schema-first with React Hook Form and Zod through `zodResolver`: a Zod schema,
+      its inferred type, then the form.
+    because: >-
+      A form whose validation is written apart from its schema validates one shape on screen and
+      another in the types, and the two drift.
+    decided_by: reading
+    applies_to:
+      - { under: src/features, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Forms — React Hook Form + Zod)
+
+  - id: TBL-01
+    statement: >-
+      A table is built with TanStack Table and keeps its sorting, filtering and pagination in the
+      URL.
+    because: >-
+      A table whose state lives only in memory loses its view on reload and cannot be shared or
+      returned to.
+    decided_by: reading
+    applies_to:
+      - { under: src/features, suffix: .tsx, nested: true }
+    seen_at: CLAUDE.md (Tables — TanStack Table)
+
+presupposes:
+
+  - path: package.json
+    provides: >-
+      The `typecheck` and `lint` scripts the tool-decided rules are run as, the `test` script the
+      suite step runs, and the declaration of the toolchain the rules assume.
+    rules: [TYP-01, HKS-01, DAT-01, IMP-01]
+
+  - path: tsconfig.json
+    provides: >-
+      The strict compiler options TYP-01 holds the source to, and the `vendor` exclusion and the
+      reference to `tsconfig.vendor.json` the `typecheck` script builds against.
+    rules: [TYP-01]
+
+  - path: eslint.config.js
+    provides: >-
+      The `react-hooks` recommended rules, the `axios` import restriction and the cross-feature
+      import zones that HKS-01, DAT-01 and IMP-01 are decided by.
+    rules: [HKS-01, DAT-01, IMP-01]
+
+dependencies:
+
+  - package: eslint
+    why: the `lint` step HKS-01, DAT-01 and IMP-01 are decided by runs it.
+    rules: [HKS-01, DAT-01, IMP-01]
+
+  - package: eslint-plugin-react-hooks
+    why: eslint.config.js loads it, and HKS-01 is its recommended rule set.
+    rules: [HKS-01]
+
+  - package: eslint-plugin-import
+    why: eslint.config.js loads it, and IMP-01 is its `import/no-restricted-paths` rule.
+    rules: [IMP-01]
+
+  - package: typescript
+    why: the `typecheck` step TYP-01 is decided by runs it.
+    rules: [TYP-01]
+
+  - package: vitest
+    why: the `test` script runs it, and the `test` step is the suite that proves a delivery.
+
+commands:
+
+  - step: typecheck
+    command: npm run typecheck
+    timeout_seconds: 300
+
+  - step: lint
+    command: npm run lint
+    timeout_seconds: 180
+
+  - step: test
+    command: npm run test
+    timeout_seconds: 600
+    role: suite
+
+elsewhere:
+
+  - what: The status, refusal or message the interface shows for a given outcome, and the closed vocabularies it labels.
+    lives_in: The specification, as rule and contract nodes.
+    why: It is what the business decided; a rule here restating it would put the standard pass and the conformance pass in contradiction over one line.
+
+  - what: The architecture constraint that the LLM never reaches the database, and that the BFF is the only holder of infrastructure credentials.
+    lives_in: "The specification, as Architecture Constraint nodes with `scope: system` (backend side)."
+    why: It constrains the solution as a whole, so a rule in this standard would leave one decision in two files.
