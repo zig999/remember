@@ -6,13 +6,16 @@ attributes:
   required: true
 - name: layer
   type: search-layer
+  required: true
 - name: score
   type: decimal
   required: true
 - name: hop
   type: integer
+  required: true
 - name: summary
   type: string
+  required: true
 - name: flags
   type: assertion-flag
   many: true

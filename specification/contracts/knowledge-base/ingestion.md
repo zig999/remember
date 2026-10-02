@@ -178,7 +178,7 @@ answers:
   - rule: rules/knowledge-base/attribute-value-parses
     answer: 'error code VALIDATION_INVALID_FORMAT naming the value and its value type, HTTP 200 carrying `{ ok: false, error }` over REST'
   - rule: rules/knowledge-base/attribute-value-in-allowed-values
-    answer: 'error code VALIDATION_INVALID_FORMAT naming the value and the allowed values in sorted order, HTTP 200 carrying `{ ok: false, error }` over REST'
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "attribute value not in closed domain" and details naming the value as value and the allowed values as allowed_values in sorted order, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id007
   - *id008
   - *id009

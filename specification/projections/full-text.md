@@ -1225,7 +1225,7 @@ answers:
   - rule: rules/knowledge-base/attribute-value-parses
     answer: 'error code VALIDATION_INVALID_FORMAT naming the value and its value type, HTTP 200 carrying `{ ok: false, error }` over REST'
   - rule: rules/knowledge-base/attribute-value-in-allowed-values
-    answer: 'error code VALIDATION_INVALID_FORMAT naming the value and the allowed values in sorted order, HTTP 200 carrying `{ ok: false, error }` over REST'
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "attribute value not in closed domain" and details naming the value as value and the allowed values as allowed_values in sorted order, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id007
   - *id008
   - *id009
@@ -1359,6 +1359,10 @@ entries:
   unstated: The contract gave no message for ingest-document validation, no fallback when affected nodes or the run close fail, and no link reference form.
   decided: It adds the ingest-document message, the empty list, the completed report and the reference form.
   why: The code returns the run completed and the list empty on those failures and builds the reference as stated.
+- field: answers
+  unstated: The material did not state the message and the detail names of the propose-attribute refusal for a value outside the allowed values.
+  decided: The message attribute value not in closed domain, with details value and allowed_values.
+  why: The structural layer raises that message and those details, and the contract already states messages verbatim for other refusals.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -4043,13 +4047,16 @@ attributes:
   required: true
 - name: layer
   type: search-layer
+  required: true
 - name: score
   type: decimal
   required: true
 - name: hop
   type: integer
+  required: true
 - name: summary
   type: string
+  required: true
 - name: flags
   type: assertion-flag
   many: true
@@ -4067,6 +4074,23 @@ One ranked answer of a search: a knowledge node, a knowledge link or an informat
 ## Responsibility
 
 It tells the owner what matched, how strongly, and where it came from.
+
+=== domain/knowledge-base/search-item.log
+---
+entries:
+- field: attributes.layer.required
+  unstated: The material does not say whether every search item carries a layer.
+  decided: A search item always carries a layer.
+  why: The search service assigns a layer to every node, link and fragment item it returns.
+- field: attributes.hop.required
+  unstated: The material does not say whether every search item carries a hop.
+  decided: A search item always carries a hop, 0 for an item matched directly.
+  why: The search service gives every item a hop and its tests assert one on node, link and fragment items alike.
+- field: attributes.summary.required
+  unstated: The material does not say whether every search item carries a summary.
+  decided: A search item always carries a summary.
+  why: The search service builds a summary for every node, link and fragment item it returns.
+---
 
 === domain/knowledge-base/search-layer
 ---
@@ -8675,6 +8699,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/expanded-link-layer-is-node
+---
+type: invariant
+statement: A search item for a knowledge link a search's expansion reaches carries the layer node.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/search-layer
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expanded-link-layer-is-node.log
+---
+entries:
+- field: statement
+  unstated: No node said which layer a search item for an expanded link carries.
+  decided: The layer node.
+  why: The search service gives every expanded link item the layer node, though a link is not read from the node layer.
+---
+
 === rules/knowledge-base/expanded-link-requires-provenance
 ---
 type: policy
@@ -9066,6 +9112,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-prompt-names-relative-date-words
+---
+type: invariant
+statement: Under prompt version v4, an extraction's system prompt names "hoje", "ontem" and "amanhã" as relative-date words.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-prompt-names-relative-date-words.log
+---
+entries:
+- field: statement
+  unstated: No node said which relative-date words the v4 extraction system prompt names.
+  decided: hoje, ontem and amanhã.
+  why: The v4 system prompt carries those three words and its test fails when one goes missing.
+---
+
 === rules/knowledge-base/extraction-prompt-values-ascending
 ---
 type: invariant
@@ -9265,6 +9333,28 @@ entries:
   unstated: No node holds what the model is told for a tool outside the four proposals.
   decided: The call is handed back refused, with VALIDATION_INVALID_FORMAT and "Unknown tool '<name>'.".
   why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
+
+=== rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+---
+type: invariant
+statement: An extraction's user message shows the reception time and the document date of the source, and shows the document date as "(unknown)" when the source has none.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-user-prompt-shows-anchor-dates.log
+---
+entries:
+- field: statement
+  unstated: No node said how the user message of an extraction shows the two anchor dates or marks an absent document date.
+  decided: It shows both, with (unknown) for a missing document date.
+  why: The v4 directive tells the model to look for document_date being (unknown), so the marker is part of the contract between the two prompts.
 ---
 
 === rules/knowledge-base/fragment-chunks-exist
@@ -10126,6 +10216,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/matched-item-hop-zero
+---
+type: invariant
+statement: A search item the search matched directly carries hop 0.
+constrains:
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/matched-item-hop-zero.log
+---
+entries:
+- field: statement
+  unstated: No node said what hop an item the search matched directly carries, beside expansion-hop for expanded links.
+  decided: Hop 0.
+  why: The search service sets hop 0 on every matched node and fragment item, and expansion-hop starts its count at 1 for the first link.
+---
+
 === rules/knowledge-base/matched-node-gains-only-aliases
 ---
 type: invariant
@@ -10138,6 +10249,28 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/matched-node-requires-provenance
+---
+type: policy
+statement: A knowledge node a search matches surfaces as a search item only when it holds provenance.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/matched-node-requires-provenance.log
+---
+entries:
+- field: statement
+  unstated: No node said whether a matched knowledge node without provenance surfaces in a search.
+  decided: It does not surface.
+  why: The search service skips a matched node holding no provenance, the same way expanded-link-requires-provenance skips a link.
+---
 
 === rules/knowledge-base/merge-check-order
 ---

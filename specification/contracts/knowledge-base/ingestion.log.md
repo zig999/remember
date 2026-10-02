@@ -64,4 +64,8 @@ entries:
   unstated: The contract gave no message for ingest-document validation, no fallback when affected nodes or the run close fail, and no link reference form.
   decided: It adds the ingest-document message, the empty list, the completed report and the reference form.
   why: The code returns the run completed and the list empty on those failures and builds the reference as stated.
+- field: answers
+  unstated: The material did not state the message and the detail names of the propose-attribute refusal for a value outside the allowed values.
+  decided: The message attribute value not in closed domain, with details value and allowed_values.
+  why: The structural layer raises that message and those details, and the contract already states messages verbatim for other refusals.
 ---
