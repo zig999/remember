@@ -1,0 +1,64 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      searchKnowledgeService, lines 195-239: the node loop skips provenance-less nodes, and the expansion seeds are taken from the surviving node items
+    evidence: >-
+      `if (provenance.length === 0) continue;` ... `if (input.expand && nodeHits.length > 0) {` ... `const expanded = await collectExpandedLinks(context, scoreMatchedNodes(items));` where `scoreMatchedNodes` keeps every `it.kind === "node"` item. The `includeUncertain` filter runs only afterwards, at `const filtered = input.includeUncertain ? items : items.filter((it) => it.status !== "uncertain");`
+    cost: >-
+      Two choices sit only in this code. A matched node without provenance never seeds an expansion. A matched node with status uncertain does seed one when the query excludes uncertain items, so links hang off a node the search itself hides. The specification says only that a search expands "from its matched knowledge nodes". A reader looking there finds neither choice, and a change to which nodes seed the expansion would be made in this function without anyone knowing a decision was involved.
+    kind: unstated
+    correction: >-
+      Analysis would have to state, in expansion-starts-from-matched-nodes or a sibling node, whether a matched node that does not surface (no provenance, or uncertain while uncertain items are excluded) still seeds the expansion.
+    node: rules/knowledge-base/expansion-starts-from-matched-nodes
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      computeFlags, line 473 (the value emitted for the low-confidence flag)
+    evidence: >-
+      `flags.push("low_confidence");`. The governing node domain/knowledge-base/assertion-flag lists `values: - uncertain - disputed - low-confidence`, and rules/knowledge-base/item-flags says "low-confidence when it is an accepted information fragment whose confidence is below 0.4".
+    cost: >-
+      The flag value a search item carries is spelled `low_confidence`, and the enumeration the node holds spells it `low-confidence`. Someone reading the specification to learn what a client receives gets a value the system never emits. Other nodes (curation, ingestion) do spell `low_confidence`, so the specification itself is not consistent about which spelling is the decided one.
+    kind: contradicts
+    correction: >-
+      Either the code emits the node's `low-confidence`, or the assertion-flag node is brought to the spelling the system emits. That choice is for the person who owns the enumeration. The type `AssertionFlag` itself is declared in response.dto.ts, outside this file set.
+    node: domain/knowledge-base/assertion-flag
+read:
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of `SearchServiceInput` and the slice in `searchKnowledgeService`, line 253
+    evidence: >-
+      `readonly limit: number; readonly offset: number;` and `const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      `IntermediateItem` (lines 57-70), `computeFlags` (line 460) and `toSearchItem` (line 478), which map to kind, layer, score, hop, summary, flags and provenance. The `SearchItem` type is declared in response.dto.ts, outside this file. Findings above concern the `low_confidence` spelling and the expansion seeds, not the shape.
+    evidence: >-
+      `return { kind: it.kind, layer: it.layer, id: it.id, score: it.score, hop: it.hop, summary: it.summary, flags: it.flags, provenance: it.provenance, };`
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      `SearchServiceInput`, lines 44-55
+    evidence: >-
+      `readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[];`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      `collectExpandedLinks`, line 329. The constant `TRAVERSAL_DECAY` is declared in knowledge-graph/traversal/config.ts as `0.5`, and this file imports it.
+    evidence: >-
+      `score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,`
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      `searchKnowledgeService`, lines 252-253, where the total is taken before the slice
+    evidence: >-
+      `const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      `resolveLinkTypeIds`, lines 418-432, called only when `input.expand` is set
+    evidence: >-
+      `const row = catalog.linkTypeByName.get(name); if (row === undefined) { throw new UnknownLinkTypeError(name); }`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file is the search service. It builds no extraction prompt, and no `v4` or `document date` text appears in it.
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: nowhere
+    evidence: >-
+      The file is the search service. It builds no extraction user message and has no "(unknown)" document date text.
+looked_past: >-
+  The 200-candidate cap, the ranking order, the item flags, the link-item summary, the expanded-link layer and the best-path rule all conform to nodes outside this set (search-layer-candidate-cap, search-ranking, item-flags, link-item-summary, expanded-link-layer-is-node, expansion-link-once). Treating an empty `layers` list as "every layer" is a small choice I did not weigh, and the log messages the file emits are behavior, not findings.

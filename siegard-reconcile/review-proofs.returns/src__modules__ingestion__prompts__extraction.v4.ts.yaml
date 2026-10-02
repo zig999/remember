@@ -1,0 +1,50 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 22-23, the examples of relative-date words in the prompt text
+    evidence: >-
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+    cost: >-
+      The prompt tells the model that "semana que vem" and "esta semana" are relative dates to resolve, and no node says so. The specification names only "hoje", "ontem" and "amanhã". Someone changing which words count as relative dates would look in the specification, find three words, and miss that the prompt carries two more.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether "semana que vem" and "esta semana" belong to the v4 relative-date vocabulary and give that a node, or the prompt would have to carry only the three words the node holds.
+    node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 24-25 and 29-30, the basis the prompt asks for on a relative date resolved against the document date and on an absolute date
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      ...
+      "- The rule applies ONLY to relative dates. Absolute dates stated in the chunk",
+      "  text remain `\"stated\"`; never invent a date.",
+    cost: >-
+      The prompt tells the model which basis to give a relative date ("document") and an absolute date ("stated"). The node for the anchor fallback leaves the basis out, and its log records that it was withdrawn deliberately. The only node that names basis document is the go-live scenario, and that covers an event_date proposal. This basis rule therefore lives only in the prompt text. A reader checking what the model is asked to state for a relative date will not find it in the specification.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide which basis an extraction asks for on a relative date resolved against the document date, and on an absolute date, and give that a node. The relative-date node as it stands names only the anchor.
+    node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+read:
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 15-31, composed into the v4 system prompt by system() at line 34
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string).",
+      and `return `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`;`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file is a prompt module, with PROMPT_VERSION, RECEIVED_AT_ANCHOR_DIRECTIVE and system(). It holds no link scoring or hop arithmetic.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search-item shape. It holds only `export const PROMPT_VERSION = "v4" as const;` and the directive text.
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: nowhere
+    evidence: >-
+      The user message is only passed along: `export { MAX_TOKENS, user };`, with `user` imported from "./extraction.v1.js". The directive describes the `## Document metadata` block and the `(unknown)` document date in prompt text, but the user message is built in v1.
+looked_past: >-
+  The directive's statement that it supersedes v3's omit-when-undated rule, and its "never invent a date" clause, are behavior or history other nodes and their logs already hold, and I did not file them.

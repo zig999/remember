@@ -1,0 +1,24 @@
+read:
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file tests prompt composition and the user-message metadata block. It has no link scoring and no hop or decay computation. Nearest construct read: `expect(withDate).toContain(`- received_at: ${RECEIVED_AT}`);`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for a search item. It has no kind, layer, score, hop, summary or flags, and no provenance. The only shape it declares is the local fixture `const nodeTypes: NodeTypeRow[] = [ { id: "nt-event-0000-0000-0000-000000000001", name: "Event", description: "an event" } ]`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      The tests "v4 asks the model to resolve a relative date against the document date when present and otherwise against the date portion of received_at" (around line 102) and "asks, in the system prompt it hands out, to resolve a relative date in the chunk ..." (around line 219). They assert the v4 prompt carries the rule, and they restate no rule of their own.
+    evidence: >-
+      `expect(directive).toMatch(DOCUMENT_DATE_FIRST_THEN_RECEPTION);` with `/resolve it against `document_date` if it is present(?:(?!`received_at`).)*?if `document_date` is `\(unknown\)`, fall back to the date portion of `received_at`/i`. The negative tests agree with the node leaving the basis out: `expect(fallback).not.toMatch(/basis/i);` and `expect(directive).not.toMatch(RECEIVED_BASIS_NAMED);`.
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: >-
+      The tests "v4.user() surfaces received_at and an unknown document_date in the metadata block" (around line 141), "shows the reception time and a real document date in the user message, and (unknown) when the source has none" (around line 196), and the `it.each(["v1","v2","v3"])` test that follows it.
+    evidence: >-
+      `expect(withDate).toContain(`- received_at: ${RECEIVED_AT}`);`, `expect(withDate).toContain(`- document_date: ${REAL_DOCUMENT_DATE}`);` and `expect(withoutDate).toContain("- document_date: (unknown)");`
+
+looked_past: >-
+  The tests pin the wording of the v1 to v3 system-prompt section titles ("## Inviolable rules", "### NodeType", "## Events — always date the occurrence"). They also pin the "- received_at:" and "- document_date:" bullet layout of the user message. No node holds those exact strings, and every domain fact this file tests (never invent a date, the relative-date words, the 8000-token ceiling, the default of v4, the data-not-instruction marker) is held by a node. I treated them as prompt-wording assertions, which are not domain facts.

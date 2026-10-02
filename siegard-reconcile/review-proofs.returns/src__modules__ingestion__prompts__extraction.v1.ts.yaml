@@ -1,0 +1,69 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      The header comment, lines 22-24, and the doc comment on the `prevTail` field of `UserPromptArgs`, line 211.
+    evidence: >-
+      "// `prev_tail` carries the last ≤ `PREV_TAIL_CHARS` (200) characters of the" and
+      "/** Last ≤ 200 chars of the previous chunk (continuity); empty on chunk_index = 0. */"
+    cost: >-
+      The 200-character tail is stated in two comments of this file as well as in the rule and in code. If the rule moves, no `--check` reaches this prose, and a reader can take the comment for the place the figure was decided.
+    kind: restates
+    correction: >-
+      Remove both pieces of prose. The code that holds the fact is `PREV_TAIL_CHARS = 200 as const` at line 377 of /home/siegfriedneto/projects/eternal/backend/src/modules/ingestion/service/extraction.service.ts, where the tail is cut with `chunk.text.slice(-PREV_TAIL_CHARS)`. This file does not hold the figure in code.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      The doc comment on the `source_type` field of `DocumentMetadata`, line 45.
+    evidence: >-
+      "/** §3.1 source_type enum value (pdf, email, ata, chat, artigo, transcricao, outro). */"
+    cost: >-
+      The comment lists the enumeration a second time, in the material's old words. The node holds the values as pdf, email, meeting-minutes, chat, article, transcript and other, so a reader of the comment learns a vocabulary that differs from the node's. The field itself is typed `string`.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the enumeration in /home/siegfriedneto/projects/eternal/backend/src/modules/ingestion/dto/source-type.ts, which lists "transcricao" among its values.
+    node: domain/knowledge-base/source-type
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      The doc comment on `system()`, lines 61-64.
+    evidence: >-
+      "The validation layer rejects anything outside this list with the corresponding `BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}` code (BR-14)."
+    cost: >-
+      The refusal codes are stated in prose here as well as in the refusal contracts and in code. A change to a code name leaves this comment unchanged and misleading.
+    kind: restates
+    correction: >-
+      Remove the sentence. Code holds the codes in /home/siegfriedneto/projects/eternal/backend/src/modules/ingestion/validation/structural.ts, lines 110-113, and in /home/siegfriedneto/projects/eternal/backend/src/shared/error-mapping.ts, lines 96-98. This file has no refusal code of its own.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      The catalog section of the SYSTEM prompt built by `system()`: the `nodeTypes` and `linkTypes` maps and sorts, lines 67-77, and the emitted "## Catalog (read-only)" lines, 157-169.
+    evidence: >-
+      ".map((lt) => ({ name: lt.name, temporal: lt.is_temporal, allowsMultipleCurrent: lt.allows_multiple_current, requiresValidFrom: lt.requires_valid_from, })).sort((a, b) => a.name.localeCompare(b.name))" and
+      "` [temporal=${lt.temporal}, multi_current=${lt.allowsMultipleCurrent}, requires_valid_from=${lt.requiresValidFrom}]`" and
+      "`  - ${nt.name}${nt.description ? ` — ${nt.description}` : ""}`"
+    cost: >-
+      What the extraction prompt tells the model about the catalog is a decision no node holds. That covers which attributes of each link type are shown, node types shown with their descriptions, attribute keys shown with value type and a temporal marker, and every list sorted by name. Only the closed-values listing (extraction-prompt-lists-closed-values, extraction-prompt-values-ascending and extraction-prompt-values-verbatim) is held. The chat prompts do have a node for this (rules/chat/chat-prompt-presents-catalog), so a reader who looks in the specification for the extraction counterpart finds nothing and only the code answers.
+    kind: unstated
+    correction: >-
+      Analysis would give the extraction prompt's catalog presentation a node: what is shown for node types, link types and attribute keys, and in what order. Only the closed-values order and spelling have one today.
+read:
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: >-
+      `user()`, the `metaBlock` construction, lines 224-232.
+    evidence: >-
+      "`- received_at: ${meta.received_at}`, meta.document_date !== null ? `- document_date: ${meta.document_date}` : \"- document_date: (unknown)\","
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a prompt module and carries no hop or score computation. The only occurrences of "score" or "hop" are none, and the only numeric constants are `MAX_TOKENS = 8000` and the confidence thresholds in the prompt text.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only `DocumentMetadata` and `UserPromptArgs`. No shape with kind, layer, score, hop, summary or flags exists in it.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is version v1 (`export const PROMPT_VERSION = "v1" as const;`). Its Dates section tells the model only "`document` uses the document date; otherwise omit `valid_from`/basis and the backend records `received`", with no directive to resolve a relative date. The rule's own bind is to /home/siegfriedneto/projects/eternal/backend/src/modules/ingestion/prompts/extraction.v4.ts, per the candidate index.
+looked_past: >-
+  The emitted system prompt otherwise restates facts other nodes hold: the 0.75 and 0.40 confidence thresholds, the 1000-character fragment limit, the stated-basis rule, no invented dates, and the document content delimiters. These agree with those nodes, as does `MAX_TOKENS`, which extraction-turn-token-ceiling holds. I did not weigh the prompt's tone or its worked example, which are another judgment's.

@@ -1,0 +1,58 @@
+certified:
+  - node: domain/knowledge-base/search-item
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: answers a node, a link and a fragment each as an item with kind, layer, score, hop, summary, flags and at least one supporting fragment
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: numbers an expanded link by the links on its path from the matched node, so a link touching the matched node is hop 1 in either direction
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: scores every expanded link at 0.5 raised to its hop times the score of the matched node it was reached from, whichever matched node that is
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: answers a link whose confidence is in the uncertain band with the uncertain flag and no other
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: names, in every entry of a node, a link and a fragment item, only fragments that support that very item
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: answers no item with an empty provenance
+    why: >-
+      Several parts of the item are exercised and would fail if they broke:
+      that kind is one of node, link or fragment, with all three answered; that
+      the required fields are present; that provenance has at least one entry
+      and that each entry names only a fragment that supports that item; that
+      score is a decimal (0.05 and similar values are asserted exactly); and
+      that hop is an integer, but only on link items.
+
+      Three parts go unexercised:
+
+      - layer: it is checked only against the pattern
+        /^(fragment|node|chunk)$/. Nothing ties that pattern to the values the
+        search-layer type enumerates, and the pack does not hold that type to
+        compare against. Nothing asserts which layer a given item carries, so
+        an item answered on the wrong one of those three layers passes.
+      - flags: these are typed as many assertion-flag values. They are checked
+        as "any Array" on every item, and one element value is checked in one
+        case only: ["uncertain"] on an uncertain-band link. No item with any
+        other assertion flag, or with more than one flag, is in the set. A flag
+        value outside the assertion-flag vocabulary on a node or fragment item
+        would pass.
+      - hop: on node and fragment items it is checked only as "any Number", so
+        a non-integer hop on those kinds would pass.
+
+      Summary is checked only as "any String". That matches the node's bare
+      string type, but nothing ties it to what matched.
+
+      The test "answers no item with an empty provenance" also passes when the
+      search answers no items at all. It asserts the 1..* cardinality only
+      against an item that is present.
+    remainder: testable
+    remainder_why: >-
+      These checks would close it:
+
+      - For a world with a matched node, an expanded link and a matched
+        fragment, assert each item's layer equals the search-layer value
+        expected for that item.
+      - For a world with links in the disputed and low-confidence conditions
+        alongside the uncertain one, assert each item's flags equal exactly the
+        assertion-flag values its condition calls for, including an item with
+        more than one flag and an item with none.
+      - Assert that Number.isInteger(hop) holds for the node and fragment items.
