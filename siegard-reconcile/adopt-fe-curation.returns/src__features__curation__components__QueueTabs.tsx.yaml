@@ -1,0 +1,64 @@
+findings:
+  - file: src/features/curation/components/QueueTabs.tsx
+    where: |-
+      the TABS table, lines 40-44, with ALL_SENTINEL at line 32 and the data-tab-key attribute at line 70
+    evidence: |-
+      const ALL_SENTINEL = "all";
+      { id: undefined, label: "Tudo", key: ALL_SENTINEL },
+      { id: "entity_match", label: "Entidades", key: "entity_match" },
+      { id: "disputed", label: "Disputas", key: "disputed" },
+      <TabsTrigger key={tab.key} value={tab.key} data-tab-key={tab.key}>
+    cost: |-
+      The node enumerates the tab values as all, entities and disputes. The file's tab identifiers, which are also what it emits to the DOM as data-tab-key, are all, entity_match and disputed. The queue-kind names stand in for the tab values. A reader who looks in the specification for the tab vocabulary finds names the code never uses. A change to either spelling will not reach the other.
+    kind: contradicts
+    correction: |-
+      Either the enumeration states the tab identifiers the code uses, or the code uses the identifiers the node states. Which spelling was decided is not stated in any node I read. The pt-BR labels Tudo, Entidades and Disputas are held by the curation-screen contract, not by this node.
+    node: domain/curation-workspace/queue-tab
+  - file: src/features/curation/components/QueueTabs.tsx
+    where: |-
+      the file docstring, lines 1-12, and the comment at lines 17-18
+    evidence: |-
+      Three buttons: Tudo · Entidades · Disputas.
+      so future changes do not introduce a fourth tab without a CR.
+    cost: |-
+      The set of three tabs is stated a second time in prose, next to the TABS table that holds it. If the node's values move, this comment still names the old set. Nothing reads it, so nothing flags it.
+    kind: restates
+    correction: |-
+      Remove the prose. TABS in this file already holds the three tabs, so the comment adds no behavior.
+    node: domain/curation-workspace/queue-tab
+  - file: src/features/curation/components/QueueTabs.tsx
+    where: |-
+      the aria-label on TabsList, line 68
+    evidence: |-
+      <TabsList aria-label="Filtrar fila por tipo">
+    cost: |-
+      This is text the running system emits as the accessible name of the tab group. The curation-screen contract holds the tab labels Tudo, Entidades and Disputas, but I found no node in the specification root that holds "Filtrar fila por tipo". The wording lives only in this file, where a reader of the specification will not look for it.
+    kind: unstated
+    correction: |-
+      The analysis would give the group's accessible name a node, most naturally the show-queue answer of the curation-screen contract, or decide that it is not a fact of the business.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: domain/curation-workspace/queue-tab
+    held_at: |-
+      the TABS array, lines 40-44, plus the QueueKindFilter type at line 19. The shape is declared here, but two of its three keys are spelled differently from the node (see the contradicts finding).
+    evidence: |-
+      const ALL_SENTINEL = "all";
+      { id: undefined, label: "Tudo", key: ALL_SENTINEL },
+      { id: "entity_match", label: "Entidades", key: "entity_match" },
+      { id: "disputed", label: "Disputas", key: "disputed" },
+  - node: rules/curation-workspace/active-tab-lives-only-on-the-page
+    held_at: |-
+      nowhere. QueueTabs is a controlled component. The start value and the guarantee that no address is written belong to the parent page, which this file does not contain.
+    evidence: |-
+      export const QueueTabs: FC<QueueTabsProps> = ({ value, onChange }) => {
+      onValueChange={(next) => onChange(keyToFilter(next))}
+  - node: rules/curation-workspace/tabs-choose-the-queue-kind
+    held_at: |-
+      the TABS array and keyToFilter, lines 40-49. The tab maps to a filter that is undefined for all and the kind entity_match or disputed otherwise. The read of the queue from that filter happens in the parent, not here.
+    evidence: |-
+      { id: undefined, label: "Tudo", key: ALL_SENTINEL },
+      { id: "entity_match", label: "Entidades", key: "entity_match" },
+      { id: "disputed", label: "Disputas", key: "disputed" },
+      if (key === ALL_SENTINEL) return undefined;
+looked_past: |-
+  The docstring claims that the parent persists the filter in URL search and that "?queue=" is reserved for a later TC, while the active-tab rule says the tab is written to no address. No code in this file holds that claim. It is prose that I did not file as a finding, and a comment-removal route would answer it. The tablist role, the Radix Tabs wiring and the redundant defaultValue next to value are implementation choices, not domain facts.

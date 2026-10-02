@@ -1,0 +1,92 @@
+findings:
+  - file: src/features/curation/api/_transforms.ts
+    where: |-
+      the header docblock, lines 8-10, "Curation REST is bare-body on 2xx (§6) — no unwrap needed on curation responses."
+    evidence: |-
+      * - Curation REST is bare-body on 2xx (§6) — no unwrap needed on curation
+      *    responses.
+    cost: |-
+      This is prose that no running system emits, and it restates the contract fact that a 2xx curation body is the answer itself and is never unwrapped. The code that holds the fact is in src/features/curation/api/_request.ts, which has `return (await response.json()) as T;` under "// ---- 2xx — bare body". The comment cites a section of a document outside the specification as its authority. If the node moves, this comment goes on stating the old rule and nothing flags it.
+    kind: restates
+    correction: |-
+      Remove the sentence. The fact is already held by the node and by the code in `_request.ts`. This is the comment route, followed by a reconcile over the file.
+    node: contracts/curation-workspace/bff-curation
+  - file: src/features/curation/api/_transforms.ts
+    where: |-
+      the header docblock "Design notes", lines 18-22
+    evidence: |-
+      * - "Date-only" fields (`valid_from` / `valid_to`) are parsed as UTC
+      *    midnight: the BFF stores DATE without a time component, so picking
+      *    local-midnight would shift the displayed day for users west of UTC.
+      *    The SPA renders these via `Intl.DateTimeFormat` with `timeZone: 'UTC'`
+    cost: |-
+      This is prose, and it restates that dates show as calendar dates in UTC. Code holds that fact in other files, for example `d.toLocaleDateString("pt-BR", { timeZone: "UTC" })` in src/features/curation/components/DecisionPanel/DisputeSideCard.tsx and PeriodTimeline.tsx. Nothing in this file parses at UTC midnight explicitly, because that follows from `new Date(value)`. The comment names `Intl.DateTimeFormat`, while the components call `toLocaleDateString`, so it is already out of step with the code it describes.
+    kind: restates
+    correction: |-
+      Remove the paragraph. The display rule is held by the candidate node and by the components that render the dates. This is the comment route.
+    node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+  - file: src/features/curation/api/_transforms.ts
+    where: |-
+      OkEnvelope and unwrapOk, lines 77-90
+    evidence: |-
+      export interface OkEnvelope<T> {
+        readonly ok: true;
+        readonly result: T;
+      }
+
+      export function unwrapOk<T>(env: OkEnvelope<T>): T {
+        return env.result;
+      }
+    cost: |-
+      The `{ ok, result }` envelope that the reads contract says the curation reads go through is parsed in src/lib/http.ts, which has `return body.result as T;`. This file implements the unwrap a second time. The only callers are `__tests__/transforms.spec.ts` (and the comment above it, which claims `lib/http.ts` already does it); nothing in production reads it. If the envelope shape changes, `lib/http.ts` is the file that moves and this copy stays behind. Its tests would go on passing against the old shape.
+    kind: contradicts
+    correction: |-
+      The envelope has to be held in one place only, and the node's own reading is `lib/http.ts`. Either drop `OkEnvelope`/`unwrapOk` from this file and from its test, or have the tests go through the real unwrap. The code cannot read the specification, so a bind is what claims the file that remains.
+    node: contracts/curation-workspace/bff-curation-reads
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      toEntityMatchCandidate, toEntityMatchQueueItem, toDisputedItemSide, toDisputeQueueItem, toReviewQueueItem, toReviewQueueList and toCurationMetrics (lines 115-202). These cover the read side of list-review-queue and read-curation-metrics. The request-sending operations are not in this file.
+    evidence: |-
+      export function toReviewQueueItem(wire: ReviewQueueItemWire): ReviewQueueItem {
+        if (wire.kind === "entity_match") {
+          return toEntityMatchQueueItem(wire);
+        }
+        return toDisputeQueueItem(wire);
+      }
+      ... acceptRate: wire.accept_rate, rejectRateByCode: wire.reject_rate_by_code, ... entityMatchQueueCount: wire.entity_match_queue_count, disputedQueueCount: wire.disputed_queue_count, computedAt: parseIso(wire.computed_at)
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: |-
+      toProvenanceRawInformation, toProvenanceChunk, toProvenanceFragment, toProvenanceResponse, toAcceptedFragmentSourceRef, toAcceptedFragmentItem, toAcceptedFragmentList, toNodeSummary, toNodeAlias, toAttributeDetail, toNodeDetail, toLinkDetail, toLinkHistoryResponse and toAttributeHistoryResponse (lines 208-373)
+    evidence: |-
+      export function toLinkHistoryResponse(
+        wire: LinkHistoryResponseWire,
+      ): LinkHistoryResponse {
+        return { versions: wire.versions.map(toLinkDetail) };
+      }
+      ... documentTitle: wire.document_title ?? null, ... supersedesAttributeId: wire.supersedes_attribute_id ?? null
+  - node: domain/knowledge-base/curation-metrics
+    held_at: |-
+      toCurationMetrics, lines 191-202. The shape of the metrics value is declared in ../types, so this file only maps its fields.
+    evidence: |-
+      acceptRate: wire.accept_rate,
+      rejectRateByCode: wire.reject_rate_by_code,
+      needsReviewCount: wire.needs_review_count,
+      uncertainCount: wire.uncertain_count,
+      disputedCount: wire.disputed_count,
+      entityMatchQueueCount: wire.entity_match_queue_count,
+      disputedQueueCount: wire.disputed_queue_count,
+      computedAt: parseIso(wire.computed_at),
+  - node: rules/curation-workspace/invalid-date-in-an-answer-fails-the-read
+    held_at: |-
+      parseIso and parseIsoOrNull, lines 96-109. Every required timestamp goes through parseIso. Every optional date goes through parseIsoOrNull, which parses it when it is present.
+    evidence: |-
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        throw new Error(`Invalid ISO date string: ${value}`);
+      }
+      return d;
+looked_past: |-
+  Absent optional values are normalised differently from node to node: `locator ?? {}`, `metadata ?? {}` and `flags ?? []` become empty containers, while `document_title ?? null` and `valid_from_source ?? null` become null. I read that as a presentation default rather than a domain fact, and the many comments in the file (the sectioned banners, the NaN guard note) are prose I did not file separately.
+candidates_opened:
+  - rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc

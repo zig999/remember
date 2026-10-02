@@ -1,0 +1,107 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/ReasonField.tsx
+    where: >-
+      The file's header docstring (lines 1-14), the JSDoc on validateOnSubmit (lines 22-23) and the inline comment at line 62.
+    evidence: |-
+      * Spec references:
+       *  - curadoria.feature.spec.md §5 ("Informe um motivo para continuar."),
+       *    §6 BUSINESS_REASON_REQUIRED (highlight + focus move),
+      ...
+        /** Returns true when the value is non-empty (trimmed). When false, sets
+         *  the inline error AND moves focus to the textarea (spec §6). */
+      ...
+          // Move focus to the textarea — §6 BUSINESS_REASON_REQUIRED.
+    cost: >-
+      The trimmed-empty check and the move of focus are stated in prose as well as in code, and the prose cites a spec file and section numbers outside the node tree. A reader can take the comment as the rule's home and look there, and the next change to the node leaves the comment standing. The code that holds the fact is validateOnSubmit, lines 58-66. The prose adds a second place that says it.
+    kind: restates
+    correction: >-
+      Remove the docstring paragraphs, the JSDoc text and the inline comment through the comment route, then run /reconcile over the file. No code change is owed, because validateOnSubmit holds the behavior.
+    node: rules/curation-workspace/blank-reason-blocks-a-destructive-decision
+  - file: src/features/curation/components/DecisionPanel/ReasonField.tsx
+    where: >-
+      The JSDoc on setServerError (line 25) and the docstring's "§6 BUSINESS_REASON_REQUIRED (highlight + focus move)" (lines 5-6).
+    evidence: |-
+      /** Surface a server error inline (BUSINESS_REASON_REQUIRED). */
+        setServerError(message: string | null): void;
+    cost: >-
+      The prose restates that a BUSINESS_REASON_REQUIRED refusal shows under the reason field. The code holds this in setServerError, which sets the error and focuses the textarea, so the prose is a second home for the node's fact. Because it is prose, it is not removed when the node moves.
+    kind: restates
+    correction: >-
+      Remove the JSDoc and the docstring reference through the comment route, then run /reconcile over the file.
+    node: rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+  - file: src/features/curation/components/DecisionPanel/ReasonField.tsx
+    where: >-
+      The `required` prop and its default (lines 38-39, 48), the conditional asterisk (line 89), and the placeholder branch (lines 100-104).
+    evidence: |-
+      /** Marks the field as required in the label rendering. */
+        readonly required?: boolean;
+      ...
+        required = false,
+      ...
+        {required ? <span aria-hidden="true"> *</span> : null}
+      ...
+          required
+            ? "Explique brevemente a decisão (obrigatório)."
+            : "Explique brevemente a decisão (opcional)."
+    cost: >-
+      The node says the reason field is always rendered and always marked as required. This file makes the marking optional, defaults it to off, and has an "(opcional)" placeholder that tells the owner the reason is optional. Any caller that omits `required` shows the owner an unmarked field that is announced as optional. The rule is not held where the field is declared, so a reader of the node cannot see that the code leaves room to break it.
+    kind: contradicts
+    correction: >-
+      The field should always be marked as required, with no prop and no optional branch, or the node should state when the field is optional. The code cannot be made to read the node, so the owner of the node or of the code has to settle which of the two is right.
+    node: rules/curation-workspace/reason-field-always-shows-as-required
+  - file: src/features/curation/components/DecisionPanel/ReasonField.tsx
+    where: >-
+      The label text (line 88) and the placeholder text (lines 100-104), which are rendered to the owner.
+    evidence: |-
+      <Label htmlFor={id}>
+              Motivo
+      ...
+            ? "Explique brevemente a decisão (obrigatório)."
+            : "Explique brevemente a decisão (opcional)."
+    cost: >-
+      The label "Motivo" and the placeholder wording are text the owner reads. No node in the set or in the full-text projection holds either one: the contract names only "Informe um motivo para continuar.". The code is the only place these strings are decided, and a reader looking in the specification will not find them.
+    kind: unstated
+    correction: >-
+      An analysis should give the reason field's label and placeholder a node, most plausibly the curation-screen contract's read-decision-panel operation, or the strings should be dropped.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      The refusal string in validateOnSubmit, line 61. This file holds only the reason-field slice of the contract: "Informe um motivo para continuar." under the reason field.
+    evidence: |-
+      setError("Informe um motivo para continuar.");
+  - node: rules/curation-workspace/blank-reason-blocks-a-destructive-decision
+    held_at: >-
+      validateOnSubmit, lines 58-66: the trimmed-empty check, the error, the focus move and the return of false. Sending nothing is the parent's act on that return value, and it is not in this file.
+    evidence: |-
+      const trimmed = value.trim();
+              if (trimmed.length === 0) {
+                setError("Informe um motivo para continuar.");
+                const el = document.getElementById(id) as HTMLTextAreaElement | null;
+                el?.focus();
+                return false;
+              }
+  - node: rules/curation-workspace/reason-field-always-shows-as-required
+    held_at: nowhere
+    evidence: |-
+      `required = false,` and `{required ? <span aria-hidden="true"> *</span> : null}`. The marking is conditional on a prop that defaults to off, and the placeholder has an "(opcional)" branch, so the field is not always marked as required.
+  - node: rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+    held_at: >-
+      setServerError, lines 70-76, and the error paragraph, lines 107-111. The message is set under the textarea and focus moves to it when the message is not null.
+    evidence: |-
+      setServerError(message) {
+              setError(message);
+              if (message !== null) {
+                const el = document.getElementById(id) as HTMLTextAreaElement | null;
+                el?.focus();
+              }
+            },
+  - node: rules/curation-workspace/typing-clears-the-reason-error
+    held_at: >-
+      The Textarea onChange handler, lines 94-97.
+    evidence: |-
+      onChange={(e) => {
+                onChange(e.currentTarget.value);
+                if (error) setError(null);
+              }}
+candidates_opened: []

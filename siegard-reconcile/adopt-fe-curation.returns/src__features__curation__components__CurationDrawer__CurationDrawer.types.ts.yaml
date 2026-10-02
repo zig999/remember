@@ -1,0 +1,33 @@
+findings:
+  - file: src/features/curation/components/CurationDrawer/CurationDrawer.types.ts
+    where: >-
+      the JSDoc on `onOpenChange`, lines 23-27, with the header JSDoc line 7 ("focus trap, `Esc` closes")
+    evidence: |-
+      Called when the user dismisses the drawer (Esc, X button, click on the
+         backdrop, decision-success). The parent moves focus back to the element
+         that triggered the drawer (per Sub-flow C step 7).
+    cost: >-
+      The four closing triggers (Esc, close button, backdrop click, decision removing the item) are written as prose beside the type, so a second home for the rule sits where the next reader looks first. Code holds the rule in CurationDrawer.tsx, where `<DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>` is wired and `close()` calls `onOpenChange(false)`. The prose can drift from that code without anything noticing. The node binds this file, so the prose owes only its removal.
+    kind: restates
+    correction: >-
+      Remove the doc comment's trigger list. The rule stays held by the `onOpenChange` member, and by CurationDrawer.tsx, which wires it.
+    node: rules/curation-workspace/drawer-closes-on-esc-close-backdrop-or-removal
+
+read:
+  - node: rules/curation-workspace/drawer-closes-on-esc-close-backdrop-or-removal
+    held_at: >-
+      `CurationDrawerProps`, the `open` and `onOpenChange` members, lines 21 and 28
+    evidence: |-
+      readonly open: boolean;
+      readonly onOpenChange: (open: boolean) => void;
+  - node: rules/curation-workspace/drawer-holds-one-queue-item
+    held_at: >-
+      `CurationDrawerProps`, the `kind` and `itemId` members, lines 33 and 39
+    evidence: |-
+      readonly kind: SelectedItemKind;
+      readonly itemId: string;
+
+looked_past: >-
+  The header and member comments carry facts that only prose states here and no code in this file emits: the `role="dialog"` and `aria-label="Curadoria"` attributes, the "drawer does not change the URL" constraint, the FL-CURATION-03 fallback with the "Abrir na fila de curadoria" link, and the dispute id matched by side `itemId` membership. These are prose for the comment route, and the survey and analysis read code for their facts.
+
+candidates_opened: []

@@ -1,0 +1,118 @@
+findings:
+  - file: src/features/curation/components/CurationDecision.tsx
+    where: |-
+      the file docstring, lines 11-14 ("Auto-advance"), and the comment inside getNextItem, lines 56-57
+    evidence: |-
+      * Auto-advance: on a successful destructive commit the dispatch hook calls
+      *    `getNextItem()` and advances the page selection (the drawer hosts a single
+      *    item and has no "next"). We advance via the queue ring (`neighbour`).
+      // Advance through the queue ring on a successful commit. We read the
+      // live selection from the store so the lookup is never stale.
+    cost: |-
+      The rule that the next item is the ring neighbour of the current selection, taken from the queue as last loaded, is stated a second time in prose. Code holds it in `neighbour(queue, useCurationStore.getState().selectedItem, "next")`. When the node moves, nothing reads these comments, so a reader may take them for the rule.
+    kind: restates
+    correction: |-
+      Remove the two comments. The code is where the fact is held, and the node binds it.
+    node: rules/curation-workspace/decision-moves-to-the-ring-neighbour
+  - file: src/features/curation/components/CurationDecision.tsx
+    where: |-
+      the file docstring, lines 15-18 ("onItemRemove/onItemRestore are no-ops"), and the comment at lines 60-61
+    evidence: |-
+      * `onItemRemove`/`onItemRestore` are no-ops: the page does not keep its own
+      *    item list (the queue is server-cached and the mutation's
+      *    `invalidateQueries` refetches it); selection movement is handled by
+      // The page has no local item list — the queue refetch (mutation
+      // invalidateQueries) removes the row; selection moves via `advance`.
+    cost: |-
+      The rule that the page never removes or restores a decided item, because the list changes only when the queue is read again, is restated in prose. Code holds it in `onItemRemove: () => {}` and `onItemRestore: () => {}`. The comments also describe the refetch mechanism, so a later change to that mechanism leaves them stating a fact nobody maintains.
+    kind: restates
+    correction: |-
+      Remove the comments. The two empty handlers hold the fact, and the node binds them.
+    node: rules/curation-workspace/page-does-not-remove-a-decided-item-itself
+  - file: src/features/curation/components/CurationDecision.tsx
+    where: |-
+      the docstring of provenanceContextOf, lines 29-34, and the comment before armedImmediately, lines 66-67
+    evidence: |-
+      * Derive the `(itemKind, itemId)` for the ProvenanceTrail. `entity_match`
+      * items carry no link/attribute id of their own (provenance lives on the
+      * candidate nodes), so they get no trail — the ComparePane summary IS the
+      * evidence and the panel arms immediately.
+      // entity_match has no provenance hook → evidence is the ComparePane summary,
+      // so arm immediately. Otherwise ProvenanceTrail.onEvidenceViewed flips it.
+    cost: |-
+      The rule that an entity-match entry's evidence counts as viewed as soon as it opens is stated in prose. Code holds it in `const armedImmediately = provenance === null;` and `const effectiveEvidenceViewed = armedImmediately || evidenceViewed;`. The comments also give a reason, that provenance lives on the candidate nodes. The specification does not state that reason, so it reads as a decision made here.
+    kind: restates
+    correction: |-
+      Remove the docstring and the comment. If the reason for the rule belongs to the business, it goes to the node or its decision log, not to source.
+    node: rules/curation-workspace/entity-match-evidence-counts-as-viewed-at-once
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: |-
+      The file calls only `dispatch.dispatchDestructive(...)` and `dispatch.dispatchNonDestructive(...)` with typed bodies, for example `dispatch.dispatchNonDestructive({ kind: "confirm_item", body })`. It states no path, method, request shape or answer reading. That contract is held in the hook and API layer, not in this file.
+  - node: rules/curation-workspace/decision-moves-to-the-ring-neighbour
+    held_at: |-
+      the getNextItem callback passed to useDecisionDispatch, lines 58-59
+    evidence: |-
+      getNextItem: () =>
+        neighbour(queue, useCurationStore.getState().selectedItem, "next"),
+  - node: rules/curation-workspace/decision-on-the-wrong-kind-sends-nothing
+    held_at: |-
+      the guards at the top of onResolveEntityMatch (line 80) and onResolveDispute (line 96)
+    evidence: |-
+      if (item.kind !== "entity_match") return;
+      if (item.kind !== "disputed") return;
+  - node: rules/curation-workspace/destructive-decisions-carry-a-caption
+    held_at: |-
+      the third argument of each dispatchDestructive call, lines 85, 102 and 123
+    evidence: |-
+      "Item fundido",
+      "Lado preferido",
+      "Item rejeitado",
+  - node: rules/curation-workspace/destructive-decisions-wait-for-undo
+    held_at: |-
+      the routing to dispatchDestructive for the entity-match merge (lines 81-86), the dispute preference (lines 98-103) and the rejection (lines 119-124). The wait for undo itself is in the dispatch hook, outside this file.
+    evidence: |-
+      dispatch.dispatchDestructive(
+        { kind: "resolve_entity_match_merge", nodeId: item.nodeId, body },
+        item.nodeId,
+        "Item fundido",
+      );
+  - node: rules/curation-workspace/dispute-evidence-counts-as-viewed-when-its-trail-says-so
+    held_at: |-
+      provenanceContextOf (lines 39-41), the armedImmediately and effectiveEvidenceViewed lines (68-69), and the ProvenanceTrail onEvidenceViewed callback (lines 136-138)
+    evidence: |-
+      const first = item.sides[0];
+      if (first === undefined) return null;
+      return { itemKind: item.itemKind, itemId: first.itemId };
+      const effectiveEvidenceViewed = armedImmediately || evidenceViewed;
+      onEvidenceViewed={() => {
+        setEvidenceViewed(true);
+      }}
+  - node: rules/curation-workspace/entity-match-evidence-counts-as-viewed-at-once
+    held_at: |-
+      the entity_match branch of provenanceContextOf, line 38, and the armedImmediately and effectiveEvidenceViewed lines, 68-69
+    evidence: |-
+      if (item.kind === "entity_match") return null;
+      const armedImmediately = provenance === null;
+      const effectiveEvidenceViewed = armedImmediately || evidenceViewed;
+  - node: rules/curation-workspace/immediate-decisions-are-sent-at-once
+    held_at: |-
+      the routing to dispatchNonDestructive for the entity-match keep (lines 88-92), the dispute keep (lines 104-108) and period adjustment (lines 109-113), the confirmation (line 117) and the correction (line 127). The sending itself is in the dispatch hook, outside this file.
+    evidence: |-
+      dispatch.dispatchNonDestructive({ kind: "resolve_dispute_keep", body });
+      dispatch.dispatchNonDestructive({ kind: "confirm_item", body });
+      dispatch.dispatchNonDestructive({ kind: "correct_item", body });
+  - node: rules/curation-workspace/page-does-not-remove-a-decided-item-itself
+    held_at: |-
+      the two empty handlers passed to useDecisionDispatch, lines 62-63
+    evidence: |-
+      onItemRemove: () => {},
+      onItemRestore: () => {},
+  - node: rules/curation-workspace/preference-removes-its-item-by-the-first-id
+    held_at: |-
+      the optimisticId declaration in onResolveDispute, line 97, passed to the prefer_one dispatchDestructive call
+    evidence: |-
+      const optimisticId = body.item_ids[0] ?? item.sides[0]?.itemId ?? "";
+looked_past: |-
+  The Tailwind class "px-md" on the provenance slot wrapper and the cross-references to CurationDrawer and TC-04/05/06 in the comments are surface and code-review matters, not a domain fact.

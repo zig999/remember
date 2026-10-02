@@ -1,0 +1,49 @@
+findings:
+  - file: src/features/curation/components/curation-page-parts.tsx
+    where: |-
+      QueueErrorBanner, the Button inside the Alert's `action` prop (lines 69-77)
+    evidence: |-
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onRetry}
+        data-testid="curation-queue-retry"
+      >
+        Tentar novamente
+      </Button>
+    cost: |-
+      The visible label of the retry control is text the system shows the owner, and it is stated only here. The show-queue node specifies the banner text and "a retry that reads the queue again" but gives the retry no label. A reader who looks in the specification for what the retry says will not find it. The label "Tentar novamente" appears in the specification only in an ingestion contract, as the retry label for a different screen's failure.
+    kind: unstated
+    correction: |-
+      Analysis would have to give the retry label a place in the node that holds the queue-failure banner, or state in that node that the label is free surface. This file cannot close it.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/curation-page-parts.tsx
+    where: |-
+      the docstring above PollingPill (lines 16-25)
+    evidence: |-
+      Polling pill — "N novos" when the queue grows. `role="status"` so AT
+      announces the count. Clicking the pill acknowledges the delta
+      (`updateLastSeen`) so it disappears.
+    cost: |-
+      The docstring restates the fact that the pill reads "N novos" when entries arrive, which curation-screen show-queue holds. It also restates that the click acknowledges the delta, which the new-item-count rule holds as the baseline moving only on a click. The code in this file already holds the pill's text. The acknowledge behavior is carried by the onAck prop, which the caller supplies. If either fact changes, the prose becomes a second statement that nothing reads.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route, then reconcile this file. The pill text is held by the `delta === 1 ? "novo" : "novos"` expression in this file. The click behavior is held by the caller that supplies `onAck`.
+    node: contracts/curation-workspace/curation-screen
+
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      Three fragments of the node's operations sit in this file. The "1 novo"/"N novos" pill is `PollingPill`, lines 26-48. The empty-queue text is `EmptyQueue`, lines 51-58. The queue-failure banner is `QueueErrorBanner`, lines 61-82. The rest of the node's operations (decisions, metrics, evidence, batch bar, drawer, correction form) are not stated in this file.
+    evidence: |-
+      {delta} {delta === 1 ? "novo" : "novos"}
+      title="Nada pendente"
+      description="A fila está limpa."
+      Não foi possível carregar a fila. Tente novamente.
+      onClick={onRetry}
+
+looked_past: |-
+  The docstring on the file's first lines (the "300-line limit" extraction rationale and the "UI-07" and "UI-09" tags) and the Badge variant, Alert variant and icon choices are code-style or surface matters, not a node's fact.
+
+candidates_opened: []

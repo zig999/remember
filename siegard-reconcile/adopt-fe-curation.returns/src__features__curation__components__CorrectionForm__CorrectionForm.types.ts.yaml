@@ -1,0 +1,62 @@
+findings:
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.types.ts
+    where: >-
+      the header block comment, lines 17-22 ("Server errors: the parent supplies `serverError`...")
+    evidence: |-
+      * Server errors: the parent supplies `serverError` whenever the mutation
+      * fails. We map the known codes to inline UI:
+      *  - BUSINESS_CORRECTION_NO_CHANGES   -> form-level message
+      *  - BUSINESS_TEMPORAL_INCOHERENT     -> validFrom/validTo aria-invalid
+      *  - BUSINESS_DATE_UNJUSTIFIED        -> DateJustification radio focus
+      *  - BUSINESS_FRAGMENT_NOT_ACCEPTED   -> fragment picker message
+    cost: >-
+      The code-to-field mapping is written a second time in a types file. A node holds the fact, and the
+      switch in CorrectionForm.tsx (`case "BUSINESS_TEMPORAL_INCOHERENT":`, `case "BUSINESS_DATE_UNJUSTIFIED":`,
+      `case "BUSINESS_FRAGMENT_NOT_ACCEPTED":`, and the `serverError?.code === "BUSINESS_CORRECTION_NO_CHANGES"`
+      test) holds it in code. If the mapping changes there, this prose keeps stating the old one and nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the "Server errors" paragraph of the header comment. The fact stays in the node and in CorrectionForm.tsx.
+    node: rules/curation-workspace/server-refusal-lands-on-its-field
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.types.ts
+    where: >-
+      the doc comment on `fragmentFilter` in CorrectionFormProps, lines 46-52
+    evidence: |-
+      * When both are absent and `valid_from_source=stated`
+      * is chosen, the picker degrades to a plain text input (R2 fallback,
+      * flow spec 3o). When the picker is shown but returns no results, the
+      * same fallback applies.
+    cost: >-
+      The fallback rule is stated a second time in prose beside a prop that does not implement it. A node holds the
+      fact, and DateJustification.tsx holds it in code (it derives the picker's availability from
+      `!!fragmentFilter?.llmRunId || !!fragmentFilter?.rawInformationId`). A reader of the types file takes this
+      comment as the rule, and it can drift from the node and the code.
+    kind: restates
+    correction: >-
+      Remove the fallback sentences from the prop's doc comment. The fact stays in the node and in DateJustification.tsx.
+    node: rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: |-
+      import type { CorrectItemRequest, ItemKind, ValidFromSource } from "../../types";
+      The file only imports the request shape and passes it along (`readonly onSubmit: (body: CorrectItemRequest) => void;`). It declares no endpoint, path or request field of the correct-item operation.
+  - node: rules/curation-workspace/form-hands-the-request-to-its-caller
+    held_at: >-
+      the `onSubmit` and `serverError` members of CorrectionFormProps, lines 57-64
+    evidence: |-
+      readonly onSubmit: (body: CorrectItemRequest) => void;
+      readonly serverError?: { readonly code: string; readonly message: string } | null;
+  - node: rules/curation-workspace/stated-basis-lists-the-accepted-fragments
+    held_at: nowhere
+    evidence: |-
+      readonly fragmentFilter?: {
+        readonly llmRunId?: string;
+        readonly rawInformationId?: string;
+      };
+      The file declares only the filter's shape and forwards it. The listing of accepted fragments in a picker is not here. DateJustification.tsx is where the form acts on the filter.
+looked_past: >-
+  The header comment's citations of old spec sections ("curadoria.feature.spec.md §2 UI-11", "openapi.yaml", "flow spec 3o") and the "Decoupling rule" paragraph are prose with no running-code fact, so they are not findings here and fall to the comment-removal route.
+candidates_opened:
+  - rules/curation-workspace/server-refusal-lands-on-its-field
+  - rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id

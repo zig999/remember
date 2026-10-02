@@ -1,0 +1,198 @@
+findings:
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      line 48, the `itemKind` field of `correctionSchema`; also the literal unions `"link" | "attribute"` in `CorrectionRawDefaults` (line 112) and `buildCorrectItemRequest` (line 146)
+    evidence: |-
+      itemKind: z.enum(["link", "attribute"]),
+    cost: >-
+      The file declares which kinds of item can be corrected, link and attribute, and no node in the set or in the specification root holds that vocabulary as an enumeration. domain/knowledge-base/item-kind holds node, link and fragment, and its decision log excludes attribute as a kind. The next reader who looks in the specification for the kinds a correction accepts finds a different enumeration, and the real one lives only in this schema. The correction contract nodes name `item_kind` only as a body field and give it no values.
+    kind: unstated
+    correction: >-
+      Analysis would give the curation item kind (link or attribute) a node of its own, separate from the search item kind, and bind this file to it.
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      docstring at lines 11-17, listing the pt-BR messages
+    evidence: |-
+      * Single-owner pt-BR messages match §5 exactly:
+       *  - "Informe o valor corrigido." (atributo)
+       *  - "Selecione o nó-alvo da fusão." (link target — uuid validation)
+       *  - "Data inválida. Use o formato AAAA-MM-DD."
+       *  - "O início deve ser anterior ao fim."
+       *  - "Selecione o fragmento que justifica a data."
+       *  - "Informe um motivo para continuar."
+    cost: >-
+      The same texts are held a second time in prose. If the node changes a message, this docstring keeps the old one, and nothing reads it. The code that emits these messages is in this same file, so only the prose needs removing.
+    kind: restates
+    correction: >-
+      Remove the docstring paragraph. The messages are held by the `message:` strings in this file and by the node.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      comment at lines 24-25 above `optionalString`
+    evidence: |-
+      /** Empty string is treated as "not provided" — RHF defaults always render
+       *  a controlled string but the request DTO accepts null. */
+    cost: >-
+      The empty-means-null rule is stated in prose beside the code that implements it, so it has two homes.
+    kind: restates
+    correction: >-
+      Remove the comment. The `transform` in `optionalString` and `dateString` holds the rule.
+    node: rules/curation-workspace/empty-correction-field-is-sent-as-null
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      comment at line 81 above the start-before-end check
+    evidence: |-
+      // Temporal coherence (§5).
+    cost: >-
+      The comment cites a section of a document as the authority for the start-before-end rule. A reader may take that document as the home of the rule and not the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The check `data.validFrom >= data.validTo` holds the rule.
+    node: rules/curation-workspace/correction-start-precedes-the-end
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      comment at line 92 above the stated-basis check
+    evidence: |-
+      // valid_from_source=stated requires the fragment id (BR-15).
+    cost: >-
+      The comment cites BR-15, a rule identifier from an outside document, as the owner of the fragment requirement. It points the reader away from the node that holds it.
+    kind: restates
+    correction: >-
+      Remove the comment. The `validFromSource === "stated" && validFromFragmentId === null` branch holds the rule.
+    node: rules/curation-workspace/stated-basis-needs-a-fragment
+  - file: src/features/curation/components/CorrectionForm/correction-schema.ts
+    where: >-
+      docstring at lines 138-144 above `buildCorrectItemRequest`
+    evidence: |-
+      * Map validated form values to the `CorrectItemRequest` wire body — the
+       * single source of the snake_case shape submitted by CorrectionForm
+       * (openapi.yaml CorrectItemRequest / CorrectedValues). `itemKind` selects
+       * `value` (attribute) vs `target_node_id` (link); the remaining fields are
+       * passed through as the validated (possibly-null) values.
+    cost: >-
+      The docstring claims to be the single source of the request body shape, and it cites openapi.yaml as its authority. That is a second claim of authority over what the node holds, in prose no system reads.
+    kind: restates
+    correction: >-
+      Remove the docstring. The returned object holds the shape.
+    node: rules/curation-workspace/correction-sends-the-item-the-values-and-the-reason
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: >-
+      the object returned by `buildCorrectItemRequest`, lines 150-163
+    evidence: |-
+      item_kind: itemKind,
+          item_id: itemId,
+          corrected: {
+            ...(itemKind === "attribute"
+              ? { value: values.value }
+              : { target_node_id: values.targetNodeId }),
+            valid_from: values.validFrom,
+            valid_to: values.validTo,
+            valid_from_source: values.validFromSource,
+            valid_from_fragment_id: values.validFromFragmentId,
+          },
+          reason: values.reason,
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the `message:` strings of `correctionSchema` and `dateString`, lines 39, 59, 68, 76, 87 and 100
+    evidence: |-
+      message: "Data inválida. Use o formato AAAA-MM-DD." ... message: "Informe o valor corrigido." ... message: "Selecione o nó-alvo da fusão." ... message: "O início deve ser anterior ao fim." ... message: "Selecione o fragmento que justifica a data."
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: |-
+      itemKind: z.enum(["link", "attribute"]) — the file declares a link/attribute vocabulary. The node's values are node, link and fragment, and its log excludes attribute as a kind. The node's enumeration is not declared in this file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      `validFromSourceSchema`, line 44
+    evidence: |-
+      export const validFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: rules/curation-workspace/attribute-correction-needs-a-value
+    held_at: >-
+      the attribute branch of the object-level `superRefine`, lines 63-70
+    evidence: |-
+      if (data.itemKind === "attribute") {
+            if (data.value === null) {
+              ctx.addIssue({ code: "custom", path: ["value"], message: "Informe o valor corrigido." });
+      The `value` field is `optionalString`, with no check against a value type.
+  - node: rules/curation-workspace/client-detects-no-unchanged-correction
+    held_at: >-
+      the whole schema, by absence. No branch compares the values against the current item, and the only comparisons are the date order and the required fields.
+    evidence: |-
+      The `superRefine` at lines 61-103 holds three checks (value or target, start before end, fragment under stated) and no comparison with the item's current values.
+  - node: rules/curation-workspace/correction-checks-run-in-order
+    held_at: >-
+      the object-level `superRefine`, lines 61-103
+    evidence: |-
+      The `superRefine` runs the value or target check first (lines 63-79), then `data.validFrom >= data.validTo` on path ["validTo"] (lines 82-90), then the `stated` fragment check on path ["validFromFragmentId"] (lines 93-102).
+  - node: rules/curation-workspace/correction-dates-have-the-iso-shape
+    held_at: >-
+      `ISO_DATE_RE` and `dateString`, lines 22 and 31-42
+    evidence: |-
+      const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/; ... if (v !== null && !ISO_DATE_RE.test(v)) {
+  - node: rules/curation-workspace/correction-fields-start-from-the-item
+    held_at: >-
+      `buildDefaults`, lines 122-136
+    evidence: |-
+      value: d.value ?? "", ... validFromSource: d.validFromSource ?? "document", validFromFragmentId: d.validFromFragmentId ?? "", reason: "",
+  - node: rules/curation-workspace/correction-reason-is-required-and-trimmed
+    held_at: >-
+      the `reason` field of `correctionSchema`, lines 56-59
+    evidence: |-
+      reason: z
+            .string()
+            .trim()
+            .min(1, { message: "Informe um motivo para continuar." }),
+  - node: rules/curation-workspace/correction-sends-the-item-the-values-and-the-reason
+    held_at: >-
+      the return object of `buildCorrectItemRequest`, lines 150-163
+    evidence: |-
+      item_kind: itemKind,
+          item_id: itemId,
+          corrected: { ... valid_from: values.validFrom, valid_to: values.validTo, valid_from_source: values.validFromSource, valid_from_fragment_id: values.validFromFragmentId },
+          reason: values.reason,
+  - node: rules/curation-workspace/correction-start-precedes-the-end
+    held_at: >-
+      the temporal branch of the object-level `superRefine`, lines 82-90
+    evidence: |-
+      if (data.validFrom !== null && data.validTo !== null) {
+            if (data.validFrom >= data.validTo) {
+              ctx.addIssue({ code: "custom", path: ["validTo"], message: "O início deve ser anterior ao fim." });
+  - node: rules/curation-workspace/date-justification-offers-three-bases
+    held_at: >-
+      the order of `validFromSourceSchema`, line 44, in this file. The labels and hints are not declared here.
+    evidence: |-
+      export const validFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: rules/curation-workspace/empty-correction-field-is-sent-as-null
+    held_at: >-
+      `optionalString` and `dateString`, lines 26-34
+    evidence: |-
+      .transform((v) => (v === undefined || v.length === 0 ? null : v))
+  - node: rules/curation-workspace/fragment-id-is-sent-whatever-the-basis
+    held_at: >-
+      `buildCorrectItemRequest`, line 160
+    evidence: |-
+      valid_from_fragment_id: values.validFromFragmentId,
+  - node: rules/curation-workspace/link-correction-needs-a-target
+    held_at: >-
+      the link branch of the object-level `superRefine`, lines 71-79
+    evidence: |-
+      } else if (data.itemKind === "link") {
+            if (data.targetNodeId === null) {
+              ctx.addIssue({ code: "custom", path: ["targetNodeId"], message: "Selecione o nó-alvo da fusão." });
+      `targetNodeId` is `optionalString`, with no format check.
+  - node: rules/curation-workspace/manual-fragment-id-is-not-checked
+    held_at: >-
+      the `validFromFragmentId` field, line 55
+    evidence: |-
+      validFromFragmentId: optionalString,
+  - node: rules/curation-workspace/stated-basis-needs-a-fragment
+    held_at: >-
+      the last branch of the object-level `superRefine`, lines 93-102
+    evidence: |-
+      if (
+            data.validFromSource === "stated" &&
+            data.validFromFragmentId === null
+          ) {
+            ctx.addIssue({ code: "custom", path: ["validFromFragmentId"], message: "Selecione o fragmento que justifica a data." });
+looked_past: >-
+  The docstring and the line 13 comment claim uuid validation of the link target ("Top-level `z.uuid()`", "link target — uuid validation"), but no code in the file performs it and the node denies any format check. That is prose alone, a claim no running code holds, and its route is the removal of the comment.

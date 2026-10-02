@@ -1,0 +1,279 @@
+findings:
+  - file: src/features/curation/hooks/useDecisionDispatch.tsx
+    where: >-
+      handleError, the vanished-code branch (lines 323-335), the call to advance() at line 333
+    evidence: |-
+      if (VANISHED_CODES.has(code)) {
+              if (optimisticId !== null) {
+                onItemRemove(optimisticId);
+              }
+              toast.warning(vanishedToastMessage(code));
+              setStale(code === "BUSINESS_REVIEW_NOT_PENDING" ||
+                code === "BUSINESS_ITEM_NOT_DISPUTED");
+              advance();
+              return;
+            }
+    cost: >-
+      A decision refused with a code meaning the item is gone moves the selection to the next item and adds one to the session's resolved count (advance() calls setSelectedItem and incrementResolved). For a destructive decision this is a second move on top of the one made when it was dispatched. No node says that a refusal moves on or counts as resolved. The curation-screen contract says only "with the item removed", and destructive-decision-moves-on-twice names two moves, at dispatch and on server acceptance. The resolved count therefore moves by a rule that lives only in this hook, and a reader looking in the specification will not find it.
+    kind: unstated
+    correction: >-
+      The analysis would give this fact a node: whether a gone-item refusal moves on and counts as resolved, for immediate decisions and for destructive ones separately. It could also decide that it does not, in which case the code changes.
+  - file: src/features/curation/hooks/useDecisionDispatch.tsx
+    where: >-
+      header docstring, contract 1 (lines 21-25), and the comment above the commit timer, "ZERO BFF requests in the 5-second window" (line 465)
+    evidence: |-
+      1. **ZERO BFF traffic during the 5-second window.** The hook stores a
+           pending `PendingDestructive` in memory (NOT in Zustand — pending
+           lifecycle does not survive re-mounts
+    cost: >-
+      Prose states the five-second window and that the pending decision lives only in memory, and the facts also sit in the specification. The code holds them: `setTimeout(..., UNDO_WINDOW_MS)` here, the `UNDO_WINDOW_MS` value in components/UndoToast, and `pendingRef = useRef`. If the window changes, this comment keeps saying five seconds, and no tool reaches it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file and in src/features/curation/components/UndoToast holds the facts.
+    node: rules/curation-workspace/undo-window-is-five-seconds
+  - file: src/features/curation/hooks/useDecisionDispatch.tsx
+    where: >-
+      the unmount cleanup comment (lines 500-502) and header docstring contract 4 (lines 42-47)
+    evidence: |-
+      // Spec: pending destructive action is committed immediately on
+              // unmount; brief "Ação comprometida ao sair." toast fires before
+              // unmount.
+    cost: >-
+      Comments restate the leave-sends-at-once rule that the cleanup code (toast.info, then commit) already holds in this file. A reader may take the comment as the home of the rule, and it will drift if the rule changes.
+    kind: restates
+    correction: >-
+      Remove the prose. The useEffect cleanup holds the behavior.
+    node: rules/curation-workspace/leaving-sends-the-pending-decision-at-once
+  - file: src/features/curation/hooks/useDecisionDispatch.tsx
+    where: >-
+      header docstring contract 3 (lines 33-40) and the comments in handleError (lines 321-322, 337-339, 345-348)
+    evidence: |-
+      3. **§6 mapping is exhaustive.** Every error code in the spec table is
+           handled. Codes we project into the DecisionPanel (REASON_REQUIRED,
+           SELF_MERGE_FORBIDDEN, TEMPORAL_INCOHERENT, CORRECTION_NO_CHANGES,
+           INVALID_TARGET_NODE, DATE_UNJUSTIFIED, FRAGMENT_NOT_ACCEPTED) are
+           surfaced via the `serverError` field
+    cost: >-
+      The prose lists field codes and failure handling a second time. The header's list is also shorter than the code's INLINE_FIELD_CODES, which adds BUSINESS_TARGET_NODE_REQUIRED, BUSINESS_DISPUTE_WINNER_REQUIRED and BUSINESS_DISPUTE_PERIODS_REQUIRED. The two homes already disagree, and a reader of the comment gets the wrong code set.
+    kind: restates
+    correction: >-
+      Remove the prose. VANISHED_CODES, INLINE_FIELD_CODES and the branch order in handleError hold the order and the codes.
+    node: rules/curation-workspace/failed-decision-is-read-in-order
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the decide-item side of the contract: handleError (lines 299-362), vanishedToastMessage, the INLINE_FIELD_CODES and VANISHED_CODES sets, and the commit success toast
+    evidence: |-
+      toast.warning(vanishedToastMessage(code));
+      toast.error(
+                  httpStatus === 503
+                    ? "Serviço temporariamente indisponível. Tente novamente em instantes."
+                    : "Algo deu errado. Tente novamente.",
+                );
+      toast.success("Confirmado.", { duration: 2_000 });
+  - node: rules/curation-workspace/decision-removes-its-item-by-its-identifier
+    held_at: >-
+      optimisticIdOf (lines 537-551); for a destructive decision the id comes from the caller's optimisticId argument
+    evidence: |-
+      case "resolve_entity_match_keep":
+            return d.nodeId;
+          case "resolve_dispute_keep":
+          case "resolve_dispute_adjust":
+            return d.body.item_ids[0] ?? null;
+          case "confirm_item":
+            return d.body.item_id;
+          case "correct_item":
+            return d.body.item_id;
+  - node: rules/curation-workspace/decision-shows-as-sending-until-answered
+    held_at: >-
+      commit (lines 364-404), the submitting state
+    evidence: |-
+      setSubmitting(true);
+            try {
+              await runMutation(dispatch);
+      ...
+            } finally {
+              setSubmitting(false);
+            }
+  - node: rules/curation-workspace/destructive-decision-moves-on-twice
+    held_at: >-
+      dispatchDestructive calls advance() when the decision is made (line 442), and commit calls advance() after a successful runMutation (line 380)
+    evidence: |-
+      onItemRemove(optimisticId);
+            advance();
+      ...
+              await runMutation(dispatch);
+              if (!isDestructive) {
+                toast.success("Confirmado.", { duration: 2_000 });
+              }
+              advance();
+  - node: rules/curation-workspace/destructive-decision-opens-the-undo-toast
+    held_at: >-
+      dispatchDestructive, the toast.custom call (lines 448-463) rendering UndoToast with the caption and the deadline
+    evidence: |-
+      <UndoToast
+                  label={label}
+                  deadlineMs={deadlineMs}
+      ...
+            { id: toastIdValue, duration: UNDO_WINDOW_MS },
+  - node: rules/curation-workspace/destructive-decision-removes-the-item-at-once
+    held_at: >-
+      dispatchDestructive, lines 441-442, before the timer is armed
+    evidence: |-
+      onItemRemove(optimisticId);
+            advance();
+  - node: rules/curation-workspace/destructive-decisions-wait-for-undo
+    held_at: >-
+      the DestructiveDispatch union (merge, prefer, reject) and dispatchDestructive, which arms a timer before commit. NonDestructiveDispatch does not list those kinds.
+    evidence: |-
+      | { readonly kind: "resolve_entity_match_merge"; ...
+        | { readonly kind: "resolve_dispute_prefer"; ...
+        | { readonly kind: "reject_item"; ...
+      const timeoutId = setTimeout(() => {
+  - node: rules/curation-workspace/destructive-success-shows-no-notice-and-moves-on
+    held_at: >-
+      commit, the success path (lines 374-380), where the toast is guarded by !isDestructive and advance() runs unconditionally
+    evidence: |-
+      if (!isDestructive) {
+          toast.success("Confirmado.", { duration: 2_000 });
+        }
+        advance();
+  - node: rules/curation-workspace/each-decision-uses-the-action-of-its-kind
+    held_at: >-
+      runMutation, the switch on dispatch.kind (lines 272-294)
+    evidence: |-
+      case "resolve_entity_match_merge":
+      case "resolve_entity_match_keep":
+        await mEntityMatch.mutateAsync({
+      ...
+      case "resolve_dispute_prefer":
+      case "resolve_dispute_keep":
+      case "resolve_dispute_adjust":
+        await mDispute.mutateAsync(dispatch.body);
+  - node: rules/curation-workspace/failed-decision-is-read-in-order
+    held_at: >-
+      handleError, branch order (lines 299-360): non-envelope, auth codes, VANISHED_CODES, INLINE_FIELD_CODES, httpStatus >= 500, fallback
+    evidence: |-
+      if (!isEnvelopeError(err)) {
+      ...
+      if (VANISHED_CODES.has(code)) {
+      ...
+      if (INLINE_FIELD_CODES.has(code)) {
+      ...
+      if (httpStatus >= 500) {
+  - node: rules/curation-workspace/failure-without-an-envelope-leaves-the-item-removed
+    held_at: >-
+      commit's catch block (lines 391-398); the restore is conditioned on isEnvelopeError
+    evidence: |-
+      if (
+                isDestructive &&
+                isEnvelopeError(err) &&
+                !VANISHED_CODES.has(err.code) &&
+                optimisticId !== null
+              ) {
+                onItemRestore(optimisticId);
+  - node: rules/curation-workspace/field-code-wins-over-the-server-status
+    held_at: >-
+      handleError, the INLINE_FIELD_CODES branch (lines 340-343), which comes before the httpStatus >= 500 branch
+    evidence: |-
+      if (INLINE_FIELD_CODES.has(code)) {
+              setServerError({ code, message, httpStatus });
+              return;
+            }
+  - node: rules/curation-workspace/immediate-decisions-are-sent-at-once
+    held_at: >-
+      dispatchNonDestructive (lines 485-492), which calls commit directly, and the NonDestructiveDispatch union
+    evidence: |-
+      const optimisticId = optimisticIdOf(dispatch);
+            void commit(dispatch, optimisticId, false);
+  - node: rules/curation-workspace/immediate-success-confirms-and-moves-on
+    held_at: >-
+      commit, the success path (lines 374-380)
+    evidence: |-
+      toast.success("Confirmado.", { duration: 2_000 });
+      }
+      advance();
+  - node: rules/curation-workspace/leaving-sends-the-pending-decision-at-once
+    held_at: >-
+      the useEffect cleanup (lines 496-518)
+    evidence: |-
+      if (pendingRef.current !== null) {
+              toast.info("Ação comprometida ao sair.");
+              const snapshot = pendingRef.current;
+              clearTimeout(snapshot.timeoutId);
+              toast.dismiss(snapshot.toastId);
+              pendingRef.current = null;
+              void commit(snapshot.dispatch, snapshot.optimisticId, true);
+  - node: rules/curation-workspace/moving-on-selects-the-next-item-and-counts-it
+    held_at: >-
+      advance (lines 261-265)
+    evidence: |-
+      const next = getNextItem();
+          setSelectedItem(next);
+          incrementResolved();
+  - node: rules/curation-workspace/one-destructive-decision-waits-at-a-time
+    held_at: >-
+      dispatchDestructive, lines 436-438, which commits the pending decision; commitPending clears its timer and dismisses its toast
+    evidence: |-
+      if (pendingRef.current !== null) {
+              commitPending();
+            }
+      ...
+          clearTimeout(p.timeoutId);
+          toast.dismiss(p.toastId);
+  - node: rules/curation-workspace/pending-decision-lives-in-memory-only
+    held_at: >-
+      the pendingRef declaration (line 248), a useRef that is not persisted
+    evidence: |-
+      const pendingRef = useRef<PendingDestructive | null>(null);
+  - node: rules/curation-workspace/refused-destructive-decision-restores-its-item
+    held_at: >-
+      commit's catch block (lines 391-398)
+    evidence: |-
+      isDestructive &&
+                isEnvelopeError(err) &&
+                !VANISHED_CODES.has(err.code) &&
+                optimisticId !== null
+              ) {
+                onItemRestore(optimisticId);
+  - node: rules/curation-workspace/sending-a-decision-clears-the-previous-failure
+    held_at: >-
+      commit, lines 370-371, at the start
+    evidence: |-
+      setServerError(null);
+            setStale(false);
+  - node: rules/curation-workspace/undo-keeps-the-selection-and-the-count
+    held_at: >-
+      cancelPending (lines 408-415), which calls neither setSelectedItem nor incrementResolved
+    evidence: |-
+      clearTimeout(p.timeoutId);
+          toast.dismiss(p.toastId);
+          onItemRestore(p.optimisticId);
+          pendingRef.current = null;
+  - node: rules/curation-workspace/undo-restores-the-item-and-sends-nothing
+    held_at: >-
+      cancelPending (lines 408-415), which restores the item and clears the timer without calling commit; it is wired to the Desfazer click
+    evidence: |-
+      clearTimeout(p.timeoutId);
+          toast.dismiss(p.toastId);
+          onItemRestore(p.optimisticId);
+  - node: rules/curation-workspace/undo-window-is-five-seconds
+    held_at: >-
+      the commit timer in dispatchDestructive (lines 466-472) is armed with UNDO_WINDOW_MS, so the send happens only when the window ends. The five-second value itself is declared in components/UndoToast and imported here.
+    evidence: |-
+      const timeoutId = setTimeout(() => {
+              const snapshot = pendingRef.current;
+              if (!snapshot) return;
+              toast.dismiss(snapshot.toastId);
+              pendingRef.current = null;
+              void commit(snapshot.dispatch, snapshot.optimisticId, true);
+            }, UNDO_WINDOW_MS);
+  - node: rules/curation-workspace/vanished-item-is-not-restored
+    held_at: >-
+      commit's catch block, where the restore excludes VANISHED_CODES (line 394), and handleError, which is given a null optimisticId for destructive decisions so nothing is re-removed (line 386)
+    evidence: |-
+      handleError(err, isDestructive ? null : optimisticId);
+      ...
+                !VANISHED_CODES.has(err.code) &&
+looked_past: >-
+  The comment "Auto-advance < 50ms" is a latency figure held by no node and no code, so it is prose only. The default branch of vanishedToastMessage ("Item indisponível.") cannot be reached, because the function is only called for codes in VANISHED_CODES. The stale `commit` closure captured by the empty-deps unmount effect is a code-review matter. I did not report any of these.

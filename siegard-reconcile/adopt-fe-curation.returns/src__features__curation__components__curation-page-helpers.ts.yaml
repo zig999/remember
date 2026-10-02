@@ -1,0 +1,131 @@
+findings:
+  - file: src/features/curation/components/curation-page-helpers.ts
+    where: >-
+      the docstring of findItemInQueue, lines 20-28
+    evidence: |-
+      * - disputed: matches when any `sides[].itemId` equals `target.id`.
+       *   (A dispute item carries multiple sides; the deep-link addresses
+       *   a single side, so any-side match counts.)
+    cost: >-
+      The any-side matching rule is written a second time in prose beside the code that
+      implements it (line 38, `item.sides.some((s) => s.itemId === target.id)`). The next
+      reader may take the comment, not the node, as the place the rule lives.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule stays held by the `sides.some` test in findItemInQueue and
+      indexOfSelected, and the node binds that code.
+    node: rules/curation-workspace/selection-matches-a-dispute-by-any-side
+  - file: src/features/curation/components/curation-page-helpers.ts
+    where: >-
+      toSelectedItem and deriveInitialSelection, lines 53-60 and 146-151
+    evidence: |-
+      const firstSide = item.sides[0];
+        if (firstSide === undefined) return null;
+        return { kind: "disputed", id: firstSide.itemId };
+    cost: >-
+      The candidate rule identifies a dispute by its first side's item id, or by a key built from
+      assertion kind, source node and link type or attribute key when it has no sides. Here a
+      dispute with no sides gets no selection identity at all (`return null`), and the
+      first-side rule is coded twice in this file. For a side-less dispute, next, previous,
+      select-by-number and the initial selection yield null where the specification gives an
+      identity. The "no sides" behavior is stated by the code and by no node of this file's set.
+      The next reader looks in the specification and finds a different rule.
+    kind: contradicts
+    correction: >-
+      The node states the key a side-less dispute is identified by, and the code states null.
+      Decide which holds, in the specification, and make the pair agree.
+    node: rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side
+  - file: src/features/curation/components/curation-page-helpers.ts
+    where: >-
+      the docstring of neighbour and the comment inside it, lines 83-88 and 97
+    evidence: |-
+      * Wraps around the queue boundaries so j on the last item lands back
+       * on the first — matches the spec's "list is a ring" feel (BDD §9
+       * Scenario 8 implies wrap-around with `j` on the last item).
+      ...
+        // When nothing is selected, j → first, k → last.
+    cost: >-
+      The ring behavior is stated in prose as well as in code (lines 98-105, the
+      `(cur + 1) % len` and `(cur - 1 + len) % len` branches). The comment also cites a scenario
+      section as the authority, which gives the reader a second place to look for a rule the node
+      holds.
+    kind: restates
+    correction: >-
+      Remove the docstring wording and the inline comment. The rule is held by the modular
+      arithmetic in neighbour.
+    node: rules/curation-workspace/next-and-previous-move-through-the-queue-as-a-ring
+  - file: src/features/curation/components/curation-page-helpers.ts
+    where: >-
+      the docstring of selectByIndex, lines 111-115
+    evidence: |-
+      * 1-indexed item lookup (matches the spec's `1..9` shortcut: "1 =
+       * primeiro item"). Returns null if the index is out of range or the
+       * queue does not have that many items.
+    cost: >-
+      The 1 to 9 range and the "beyond the loaded items" outcome are restated in prose, while
+      line 121 (`if (oneBasedIndex < 1 || oneBasedIndex > 9) return null;`) and line 123 already
+      hold them in code.
+    kind: restates
+    correction: >-
+      Remove the docstring. selectByIndex holds the rule.
+    node: rules/curation-workspace/select-by-number-picks-the-nth-loaded-item
+  - file: src/features/curation/components/curation-page-helpers.ts
+    where: >-
+      the docstring of deriveInitialSelection, lines 127-136, and the file header, lines 9-14
+    evidence: |-
+      *   1. If `deepLink` matches an item in the queue → that item.
+       *   2. Else if queue has items → the first one.
+       *   3. Else → null (UI-07 EmptyQueue).
+    cost: >-
+      The fallback to the first loaded item, or to nothing when the queue is empty, is stated in
+      prose beside the branches that implement it (lines 141-151). The prose cites a UI-07 label
+      the node does not carry, so the next reader may not know which of the two homes to trust.
+    kind: restates
+    correction: >-
+      Remove the docstring and the header paragraph. deriveInitialSelection holds the rule.
+    node: rules/curation-workspace/unknown-item-in-the-address-selects-the-first-item
+read:
+  - node: domain/curation-workspace/selected-item
+    held_at: nowhere
+    evidence: |-
+      import type { SelectedItem } from "../state/curation-store";
+      The file only reads `target.kind`, `target.id`, `selected.kind` and `selected.id` of a
+      shape declared in curation-store.ts.
+  - node: rules/curation-workspace/next-and-previous-move-through-the-queue-as-a-ring
+    held_at: >-
+      neighbour(), lines 89-109
+    evidence: |-
+      const idx =
+          cur === -1
+            ? direction === "next"
+              ? 0
+              : len - 1
+            : direction === "next"
+              ? (cur + 1) % len
+              : (cur - 1 + len) % len;
+  - node: rules/curation-workspace/select-by-number-picks-the-nth-loaded-item
+    held_at: >-
+      selectByIndex(), lines 116-125
+    evidence: |-
+      if (oneBasedIndex < 1 || oneBasedIndex > 9) return null;
+        const target = list.items[oneBasedIndex - 1];
+        if (target === undefined) return null;
+  - node: rules/curation-workspace/selection-matches-a-dispute-by-any-side
+    held_at: >-
+      findItemInQueue() line 38 and indexOfSelected() line 77
+    evidence: |-
+      const matches = item.sides.some((s) => s.itemId === target.id);
+  - node: rules/curation-workspace/unknown-item-in-the-address-selects-the-first-item
+    held_at: >-
+      deriveInitialSelection(), lines 137-152
+    evidence: |-
+      if (list === undefined || list.items.length === 0) return null;
+        const found = findItemInQueue(list, deepLink);
+        if (found !== null) return deepLink;
+        const first = list.items[0];
+looked_past: >-
+  The same any-side loop is written twice in the file (findItemInQueue and indexOfSelected), and
+  the null guards after array indexing are defensive duplication; both are code-quality matters,
+  not a domain fact.
+candidates_opened:
+  - rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side

@@ -1,0 +1,56 @@
+findings:
+  - file: src/features/curation/components/StaleBanner/StaleBanner.tsx
+    where: >-
+      Header docstring, lines 21-23, and the `onReload` prop doc, lines 31-32
+    evidence: |-
+      The component is intentionally trivial (icon + text + Recarregar button).
+       * The "should I show this?" decision lives one layer up, in the page or
+       * useDecisionDispatch (which observes 409 responses).
+    cost: >-
+      The rule that the banner leaves the decision to appear and the reload to its caller is also written as prose in this file, so a reader can take the comment for where it is decided. The code holds it by having no visibility logic and by forwarding `onReload` untouched. The comment also names callers (`page`, `useDecisionDispatch`) that no node or code in this file establishes, so it can go stale without anything signalling it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code already holds the fact: no visibility condition, and `onClick={onReload}` on the button. The route is the comment route, then `/reconcile` over this file.
+    node: rules/curation-workspace/stale-banner-is-a-non-blocking-alert
+  - file: src/features/curation/components/StaleBanner/StaleBanner.tsx
+    where: >-
+      Header docstring lines 4-8, and the `message` prop doc, lines 34-35
+    evidence: |-
+      'Este item
+       *    mudou desde que você o abriu. [Recarregar]' (bg-warning).").
+      ...
+       *  (e.g. queue moved while user was idle). Defaults to the spec UI-10 text. */
+    cost: >-
+      The default notice wording and the replaceable-message rule are restated in comments while the code also holds them. A later change to the node's wording could then be chased in the comment rather than in `DEFAULT_MESSAGE` and the `message` prop. The comment cites a feature spec (`curadoria.feature.spec.md` UI-10) as the authority for the text, not the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in `const DEFAULT_MESSAGE = "Este item mudou desde que você o abriu.";` and in the `message = DEFAULT_MESSAGE` prop default. The route is the comment route, then `/reconcile` over this file.
+    node: rules/curation-workspace/stale-banner-says-the-item-changed
+read:
+  - node: rules/curation-workspace/stale-banner-is-a-non-blocking-alert
+    held_at: >-
+      The returned JSX, lines 47-63: the `role="alert"` container, the `onReload` prop, and the `Button` handler
+    evidence: |-
+      <div
+            role="alert"
+      ...
+            <Button type="button" size="sm" variant="outline" onClick={onReload}>
+              Recarregar
+            </Button>
+      The component has no visibility condition and takes no state beyond its props.
+  - node: rules/curation-workspace/stale-banner-says-the-item-changed
+    held_at: >-
+      `DEFAULT_MESSAGE`, line 40, and the optional `message` prop with its default, lines 36 and 44
+    evidence: |-
+      const DEFAULT_MESSAGE = "Este item mudou desde que você o abriu.";
+      ...
+        message = DEFAULT_MESSAGE,
+  - node: rules/curation-workspace/stale-item-shows-the-notice-with-a-reload
+    held_at: >-
+      The rendered `<p>` with `{message}` and the `Recarregar` button wired to `onClick={onReload}`, lines 55-61
+    evidence: |-
+      <Button type="button" size="sm" variant="outline" onClick={onReload}>
+              Recarregar
+            </Button>
+looked_past: >-
+  The header comment states facts that only prose holds in this file, namely the 409 `BUSINESS_REVIEW_NOT_PENDING` / `BUSINESS_ITEM_NOT_DISPUTED` and `revalidateOnWindowFocus` triggers. It also says an identical banner exists in `components/DecisionPanel/StaleBanner.tsx`. I did not open that file because it is outside the file set, so I could not judge whether it holds the same rule a second time.

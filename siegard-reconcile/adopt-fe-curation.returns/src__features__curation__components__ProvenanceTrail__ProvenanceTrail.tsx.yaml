@@ -1,0 +1,134 @@
+findings:
+  - file: src/features/curation/components/ProvenanceTrail/ProvenanceTrail.tsx
+    where: |-
+      the accessible names of the four render branches, lines 158, 177, 197 and 218
+    evidence: |-
+      aria-label="Proveniência indisponível"
+      aria-label="Erro ao carregar proveniência"
+      aria-label="Sem proveniência"
+      aria-label="Trilha de evidência"
+    cost: |-
+      These four labels are what a screen reader announces for the trail's compliance-deleted, failed, empty and loaded states. The specification holds only the visible texts and the loading label "Carregando evidência". A change to the wording is made here, and the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: |-
+      The analysis would give the accessible names of the evidence trail a home in the show-evidence operation, or decide they are not part of the contract.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/ProvenanceTrail/ProvenanceTrail.tsx
+    where: |-
+      the header docstring, lines 12-19 ("Evidence-viewed tracking")
+    evidence: |-
+      The trail fires `onEvidenceViewed()` exactly once per mount, the FIRST
+       *   time either of these happens:
+       *     1. The root sentinel enters the viewport (IntersectionObserver,
+       *        threshold 0.25 — enough surface visible to count as "viewing").
+       *     2. The root receives keyboard focus (Tab navigation lands on it).
+    cost: |-
+      The once-per-mount, quarter-visible and focus facts are stated in prose as well as in the node. When the node moves, the docstring keeps saying the old rule and nothing reads it. The code that holds the fact is IO_THRESHOLD, firedRef and the focusin listener in this file.
+    kind: restates
+    correction: |-
+      Remove the prose. The code in this file already holds the fact, and the node is the place to read it.
+    node: rules/curation-workspace/trail-signals-that-the-evidence-was-viewed-once
+  - file: src/features/curation/components/ProvenanceTrail/ProvenanceTrail.tsx
+    where: |-
+      the comments at lines 82-83 and 94-95
+    evidence: |-
+      // Detect the compliance-tombstone case explicitly — keeps the
+        // decision-bar gate closed (caller never sees onEvidenceViewed).
+      // Only observe when there IS evidence to view (compliance tombstone
+        // case must keep the gate closed — see spec §6 row).
+    cost: |-
+      The rule that the viewed signal does not fire on a loading, failed or compliance-deleted trail is repeated in comments beside the code. The comments also name a "decision-bar gate" and a "spec §6 row" that no node of this set holds, so they point a reader to a second home. The code that holds the fact is `dataReady = !isPending && !isError && data !== undefined`, which gates the effect.
+    kind: restates
+    correction: |-
+      Remove the comments. The `dataReady` gate holds the fact.
+    node: rules/curation-workspace/viewed-signal-never-fires-on-a-failed-trail
+
+read:
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file calls `useProvenanceByLink(...)` and `useProvenanceByAttribute(...)` imported from "../../api/provenance.hooks". It declares no request or response shape. It reads `data?.fragments`, `chunk.rawInformation.sourceType`, `chunk.offsetStart` and similar fields from what the hooks return. The routes and the shapes sit in another file.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      the render branches and the trail map, lines 140-255
+    evidence: |-
+      aria-label="Carregando evidência"; "A fonte original foi excluída por conformidade. Sem proveniência disponível."; "Não foi possível carregar a evidência."; "Nenhuma proveniência disponível."; <span>Fragmento</span> ... <span>confiança {(frag.confidence * 100).toFixed(0)}%</span>; {formatSourceType(chunk.rawInformation.sourceType)} · {formatDate(chunk.rawInformation.receivedAt)} · trecho {chunk.offsetStart}–{chunk.offsetEnd}
+  - node: rules/curation-workspace/chunk-excerpt-is-cut-to-200-characters
+    held_at: |-
+      truncate() and its call on the chunk excerpt, lines 62-65 and 249
+    evidence: |-
+      {truncate(chunk.excerpt, 200)}
+  - node: rules/curation-workspace/chunk-shows-its-source-date-and-offsets
+    held_at: |-
+      the chunk paragraph, lines 239-243, with formatSourceType and formatDate
+    evidence: |-
+      {formatSourceType(chunk.rawInformation.sourceType)} ·{" "}
+      {formatDate(chunk.rawInformation.receivedAt)} · trecho{" "}
+      {chunk.offsetStart}–{chunk.offsetEnd}
+  - node: rules/curation-workspace/fragment-shows-its-confidence-as-a-percentage
+    held_at: |-
+      the fragment header, line 231
+    evidence: |-
+      <span>confiança {(frag.confidence * 100).toFixed(0)}%</span>
+  - node: rules/curation-workspace/fragment-text-is-cut-to-280-characters
+    held_at: |-
+      truncate() default max and its call on the fragment text, lines 62-65 and 233
+    evidence: |-
+      function truncate(text: string, max = 280): string {
+        if (text.length <= max) return text;
+        return `${text.slice(0, max - 1).trimEnd()}…`;
+      }
+  - node: rules/curation-workspace/trail-keeps-the-answered-order
+    held_at: |-
+      the nested maps over the fragments and over their chunks, lines 222 and 234
+    evidence: |-
+      {fragments.map((frag) => ( ... {frag.chunks.map((chunk) => (
+  - node: rules/curation-workspace/trail-reads-by-link-or-by-attribute
+    held_at: |-
+      the two hook calls and the selection of the active query, lines 75-79
+    evidence: |-
+      const linkQ = useProvenanceByLink(itemKind === "link" ? itemId : undefined);
+      const attrQ = useProvenanceByAttribute(
+        itemKind === "attribute" ? itemId : undefined,
+      );
+      const active = itemKind === "link" ? linkQ : attrQ;
+  - node: rules/curation-workspace/trail-signals-that-the-evidence-was-viewed-once
+    held_at: |-
+      the effect, lines 93-136
+    evidence: |-
+      el.addEventListener("focusin", onFocus);
+      if (typeof IntersectionObserver !== "undefined") {
+        observer = new IntersectionObserver(... { threshold: IO_THRESHOLD }); observer.observe(el); }
+      with const IO_THRESHOLD = 0.25 and fire() guarded by firedRef
+  - node: rules/curation-workspace/unlabelled-source-type-shows-as-it-is
+    held_at: |-
+      formatSourceType(), lines 52-54
+    evidence: |-
+      return SOURCE_TYPE_LABELS[t] ?? t;
+  - node: rules/curation-workspace/viewed-signal-fires-once-per-mount
+    held_at: |-
+      firedRef, which is never reset, lines 90, 96 and 101-102
+    evidence: |-
+      const firedRef = useRef(false);
+      if (!dataReady || firedRef.current) return;
+      if (firedRef.current) return;
+      firedRef.current = true;
+  - node: rules/curation-workspace/viewed-signal-may-fire-on-an-empty-trail
+    held_at: |-
+      dataReady and the sentinel on the empty-trail region, lines 91, 193-197
+    evidence: |-
+      const dataReady = !isPending && !isError && data !== undefined;
+      <GlassSurface level="ambient" role="region" ref={sentinelRef} aria-label="Sem proveniência" tabIndex={0}
+  - node: rules/curation-workspace/viewed-signal-never-fires-on-a-failed-trail
+    held_at: |-
+      the dataReady gate on the effect, lines 91 and 96
+    evidence: |-
+      const dataReady = !isPending && !isError && data !== undefined;
+      if (!dataReady || firedRef.current) return;
+
+looked_past: |-
+  The comment at lines 60-61 mentions an "Abrir no documento" link that no code renders, a prose-only claim for the comment route. The code uses the BUSINESS_RAW_INFORMATION_DELETED code to detect the compliance-deleted source. I attributed that code to contracts/knowledge-base/retrieval and filed no finding for it. The GlassSurface dependency and the styling are a design-system matter and not a domain fact.
+
+candidates_opened:
+  - contracts/knowledge-base/retrieval

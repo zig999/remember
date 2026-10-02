@@ -1,0 +1,93 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DecisionBar.tsx
+    where: >-
+      the file header comment, lines 1-17 (and the comment inside gated(), lines 57-59)
+    evidence: |-
+      * Click handlers fire even when `evidenceViewed=false`? NO — aria-disabled
+       * + a guard in the click handler skips the dispatch. This matches BDD
+       * Scenario 2 ("nenhuma ação é disparada").
+    cost: >-
+      The evidence-gate rule (a blocked click sends nothing) is also written as prose in this
+      file. When the node moves, a reader may take the comment for the decided rule. The comment
+      is not bound to the node, so nothing signals that it has gone stale. The code already holds
+      the rule in gated(), which returns before calling handler() when evidenceViewed is false,
+      so only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The behavior is already correct and held by
+      gated().
+    node: rules/curation-workspace/every-decision-waits-for-the-evidence
+  - file: src/features/curation/components/DecisionPanel/DecisionBar.tsx
+    where: >-
+      the toolbar element's accessible name, line 71
+    evidence: |-
+      role="toolbar"
+            aria-label="Ações de decisão"
+    cost: >-
+      This text is read aloud to screen-reader users, so the system tells someone this label.
+      Neither the curation-screen contract nor any node under the specification root states it.
+      A grep of the root for "Ações de decisão" and "toolbar" returned nothing. Anyone looking
+      for the screen's wording in the specification will not find this string, and no node
+      governs a change to it.
+    kind: unstated
+    correction: >-
+      An analysis should decide whether the decision bar's accessible name belongs in
+      contracts/curation-workspace/curation-screen, for example under read-decision-panel.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      nowhere. This file carries no label, hint or notice text from the contract. Button labels
+      arrive through the `buttons` prop and the blocked hint through `blockedHintId`, both
+      supplied by the parent.
+    evidence: |-
+      readonly label: ReactNode;
+        readonly blockedHintId?: string;
+        {b.label}
+  - node: rules/curation-workspace/decision-shows-as-sending-until-answered
+    held_at: >-
+      the `loading={submitting}` prop on each rendered Button, line 90. The parent decides when
+      `submitting` is true.
+    evidence: |-
+      submitting = false,
+      loading={submitting}
+  - node: rules/curation-workspace/every-decision-waits-for-the-evidence
+    held_at: >-
+      the gated() wrapper (lines 54-66) and the aria-disabled attribute on each Button (line 86)
+    evidence: |-
+      if (!evidenceViewed) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            handler();
+      aria-disabled={!evidenceViewed || undefined}
+  - node: rules/curation-workspace/merge-checks-the-gate-then-a-candidate-then-the-reason
+    held_at: >-
+      nowhere. This file holds only the evidence gate. The candidate and reason checks, and their
+      order, are not here, because the bar only forwards onClick.
+    evidence: |-
+      if (!evidenceViewed) {
+      ...
+      }
+      handler();
+  - node: rules/curation-workspace/prefer-checks-the-gate-then-a-side-then-the-reason
+    held_at: >-
+      nowhere. This file holds only the evidence gate. The side and reason checks, and their
+      order, are not here, because the bar only forwards onClick.
+    evidence: |-
+      handler();
+  - node: rules/curation-workspace/stale-item-blocks-no-decision
+    held_at: >-
+      nowhere as a positive statement. The file gates buttons only on `evidenceViewed` and has no
+      stale input. The rule's content holds here only by that absence.
+    evidence: |-
+      readonly evidenceViewed: boolean;
+        readonly submitting?: boolean;
+        readonly buttons: ReadonlyArray<DecisionBarButtonProps>;
+looked_past: >-
+  The header comment names a button "Ajustar períodos" that read-decision-panel does not list, and
+  only a comment states it (no code here emits it), so it is prose for the comment route and not
+  an unstated finding.
+
+candidates_opened: []

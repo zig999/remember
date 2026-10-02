@@ -1,0 +1,189 @@
+findings:
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      header docstring, lines 4-7 (spec reference listing the keys), and the doc on onSelectIndex, lines 52-53
+    evidence: |-
+      curadoria.feature.spec.md §8 "Atalhos de teclado (j/k, x, e, m/s,
+      1..9, c/r/u, ?)
+      ...
+      /** 1-9 selects the Nth visible queue item (1-indexed). `n` is in
+         `[1, 9]`.
+    cost: >-
+      The key-to-action table is written a second time in prose that no running system emits. If the node moves, `--check` does not reach this comment, and a reader can take the comment for the authority. The code already holds the mapping in mapKey (`if (key === "j") return "next";` ... `return { kind: "selectIndex", n: Number(key) };`).
+    kind: restates
+    correction: >-
+      Remove the key list from the docstring and the digit range from the onSelectIndex doc. mapKey in this file is where the fact is held.
+    node: rules/curation-workspace/shortcut-keys-have-fixed-meanings
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      header docstring lines 10-15, the `target` option doc lines 66-73, and the hook docstring lines 144-148
+    evidence: |-
+      a single listener attached to `window` (capture: false) keeps the
+      routing in one place.
+      ...
+      listener is attached to that element (capture phase) instead of
+      `window`.
+    cost: >-
+      The listen-on-window-unless-a-target-is-given rule is restated in prose, and the prose is not accurate. The doc says "capture phase" for the target, but the code calls `el.addEventListener("keydown", onKeyDown)` with no capture option. A reader trusting the comment would be wrong about how the listener attaches. The code holds the rule in `const el: EventTarget = targetRef?.current ?? window;`.
+    kind: restates
+    correction: >-
+      Remove the prose. The `?? window` fallback in this file is where the fact is held.
+    node: rules/curation-workspace/shortcuts-listen-on-the-whole-window
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      header docstring lines 16-22, the isEditableTarget doc lines 80-85, and the comments inside it at lines 92-94
+    evidence: |-
+      The hook DISABLES itself when the active element is an editable
+      surface (`<input>`, `<textarea>`, `<select>`, or `[contenteditable]`).
+    cost: >-
+      The set of fields where keys are not shortcuts is written again in prose, and that version omits the role combobox, listbox and textbox cases the node includes. A reader of the comment would learn a narrower rule than the one the code applies. The code holds the rule in isEditableTarget (`if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;` and the `role === "combobox" || role === "listbox" || role === "textbox"` branch).
+    kind: restates
+    correction: >-
+      Remove the prose. isEditableTarget in this file is where the fact is held.
+    node: rules/curation-workspace/keys-typed-into-a-field-are-no-shortcut
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      header docstring lines 23-25 and the comment at line 120 inside mapKey
+    evidence: |-
+      We also skip when a modifier is held (`Ctrl`, `Meta`, `Alt`) — those
+      belong to browser/OS shortcuts (Ctrl+R reload, Cmd+S save, etc.).
+    cost: >-
+      The modifier exclusion is restated in prose. The code already holds it in `if (event.ctrlKey || event.altKey || event.metaKey) return null;`, so the comment is a second home that `--check` does not follow when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The guard in mapKey is where the fact is held.
+    node: rules/curation-workspace/modified-keys-are-no-shortcut
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      doc on CurationKeyboardCallbacks, lines 42-44
+    evidence: |-
+      Every
+       *  field is optional — missing callbacks are silently ignored (the
+       *  shortcut becomes a no-op for the page that doesn't support it).
+    cost: >-
+      The rule that an unwired shortcut does nothing is restated in prose. The code holds it in each case's `if (cb.onNext !== undefined) { event.preventDefault(); ... }` guard, so the default is left alone when no callback is wired. The comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The per-case undefined guards in the keydown handler are where the fact is held.
+    node: rules/curation-workspace/unwired-shortcut-does-nothing
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      the `enabled` option doc, lines 62-65
+    evidence: |-
+      Master switch. When `false`, the listener is detached entirely (used
+         *  to disable shortcuts when the drawer is open and consuming its own
+         *  key handling, for example). Defaults to `true`.
+    cost: >-
+      The enabled-by-default rule is restated in prose. The code already holds it in `const { enabled = true, target } = options;` and `if (!enabled) return undefined;`. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The `enabled = true` default and the early return in this file are where the fact is held.
+    node: rules/curation-workspace/keyboard-shortcuts-act-only-while-enabled
+  - file: src/features/curation/hooks/useCurationKeyboard.ts
+    where: >-
+      the comment inside onKeyDown, lines 181-186
+    evidence: |-
+      shortcuts that would change the page state
+      // call `preventDefault()` so a stray `c` does not also reach a
+      // sibling listener ... We don't
+      // prevent default for `?` because some browsers may render a
+      // search panel
+    cost: >-
+      The rule that wired shortcuts stop the default except help is restated in prose, with a rationale of its own. The code already holds it: each wired case calls `event.preventDefault();` and the `toggleHelp` case does not. The comment is a second home that does not move with the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The preventDefault calls and the toggleHelp case in the switch are where the fact is held.
+    node: rules/curation-workspace/wired-shortcuts-stop-the-default-except-help
+read:
+  - node: domain/curation-workspace/curation-shortcut
+    held_at: >-
+      the `CurationShortcut` type declaration, lines 106-117
+    evidence: |-
+      export type CurationShortcut =
+        | "next"
+        | "prev"
+        | "toggleCheck"
+        | "evidence"
+        | "merge"
+        | "keepSeparate"
+        | "confirm"
+        | "reject"
+        | "undo"
+        | "toggleHelp"
+        | { readonly kind: "selectIndex"; readonly n: number };
+  - node: rules/curation-workspace/keyboard-shortcuts-act-only-while-enabled
+    held_at: >-
+      the `enabled` default and the early return in useCurationKeyboard, lines 153 and 172
+    evidence: |-
+      const { enabled = true, target } = options;
+      ...
+      if (!enabled) return undefined;
+  - node: rules/curation-workspace/keys-typed-into-a-field-are-no-shortcut
+    held_at: >-
+      isEditableTarget, lines 86-100, and its use in onKeyDown at line 178
+    evidence: |-
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (target.isContentEditable) return true;
+      ...
+      if (role === "combobox" || role === "listbox" || role === "textbox") {
+      ...
+      if (isEditableTarget(event.target)) return;
+  - node: rules/curation-workspace/modified-keys-are-no-shortcut
+    held_at: >-
+      the first guard in mapKey, line 121
+    evidence: |-
+      if (event.ctrlKey || event.altKey || event.metaKey) return null;
+  - node: rules/curation-workspace/shortcut-keys-have-fixed-meanings
+    held_at: >-
+      mapKey, lines 123-136
+    evidence: |-
+      if (key === "j") return "next";
+      if (key === "k") return "prev";
+      if (key === "x") return "toggleCheck";
+      if (key === "e") return "evidence";
+      if (key === "m") return "merge";
+      if (key === "s") return "keepSeparate";
+      if (key === "c") return "confirm";
+      if (key === "r") return "reject";
+      if (key === "u") return "undo";
+      if (key === "?") return "toggleHelp";
+      if (key.length === 1 && key >= "1" && key <= "9") {
+        return { kind: "selectIndex", n: Number(key) };
+  - node: rules/curation-workspace/shortcut-letters-act-in-lower-case-only
+    held_at: >-
+      the strict equality comparisons against lower-case letters in mapKey, lines 123-131
+    evidence: |-
+      const key = event.key;
+      if (key === "j") return "next";
+      if (key === "k") return "prev";
+  - node: rules/curation-workspace/shortcuts-listen-on-the-whole-window
+    held_at: >-
+      the listener target resolution in the effect, line 173
+    evidence: |-
+      const el: EventTarget = targetRef?.current ?? window;
+  - node: rules/curation-workspace/unwired-shortcut-does-nothing
+    held_at: >-
+      the per-case undefined guards in onKeyDown, lines 189-257, where preventDefault sits inside the guard
+    evidence: |-
+      case "next":
+        if (cb.onNext !== undefined) {
+          event.preventDefault();
+          cb.onNext();
+        }
+        return;
+  - node: rules/curation-workspace/wired-shortcuts-stop-the-default-except-help
+    held_at: >-
+      the preventDefault calls in each wired case and the toggleHelp case without one, lines 189-257
+    evidence: |-
+      case "undo":
+        if (cb.onUndo !== undefined) {
+          event.preventDefault();
+          cb.onUndo();
+        }
+        return;
+      case "toggleHelp":
+        if (cb.onToggleHelp !== undefined) {
+          cb.onToggleHelp();
+        }
+looked_past: >-
+  The CurationShortcut values are spelled "prev" and camelCase where the node's enumeration says previous, toggle-check, keep-separate, toggle-help and select-index, and a docstring at lines 27-34 claims the page gates `m` on the item being entity_match with a candidate selected. I did not file the spelling as a finding, and the gating claim is prose only, with no code in this file carrying it.

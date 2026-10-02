@@ -1,0 +1,149 @@
+findings:
+  - file: src/features/curation/api/curation.hooks.ts
+    where: >-
+      header docstring, lines 13-17, and the doc comment on useListReviewQueue, lines 99-103
+    evidence: |-
+      * `listReviewQueue`: staleTime 0 (volatile), refetchInterval 30s,
+      *      refetchOnWindowFocus true — spec §4.
+      * `getCurationMetrics`: staleTime 30s, refetchOnWindowFocus true.
+      ...
+      * every 30s (only while tab is visible — TanStack Query honours
+      * `document.visibilityState`). staleTime 0 (volátil).
+    cost: >-
+      The queue's refresh timings are written a second time in prose. If the node moves, `--check` never reaches these lines, and a reader can take the docstring for the rule. The code that holds the fact is `staleTime: QUEUE_STALE_MS, refetchInterval: QUEUE_POLL_MS, refetchOnWindowFocus: true` in the same file.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code stays as it is, and the node is already bound.
+    node: rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+  - file: src/features/curation/api/curation.hooks.ts
+    where: >-
+      header docstring line 17, and the comment above `retry: 1` in useCurationMetrics, lines 152-153
+    evidence: |-
+      * `getCurationMetrics`: staleTime 30s, refetchOnWindowFocus true.
+      ...
+      // Retry once: metrics is advisory, a single transient failure shouldn't
+      // spam retries while the queue is being interacted with.
+    cost: >-
+      The metrics freshness window, the focus refresh and the single retry are restated in prose, along with a rationale ("advisory") that no node holds. A reader can take the comment for the decision, and a change to the node does not reach it. The code that holds the fact is `staleTime: METRICS_STALE_MS, refetchOnWindowFocus: true, retry: 1`.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code stays as it is, and the node is already bound.
+    node: rules/curation-workspace/metrics-stay-fresh-for-thirty-seconds
+  - file: src/features/curation/api/curation.hooks.ts
+    where: >-
+      header docstring, lines 18-30, and the comments in invalidateCurationAndAffected, lines 173-182
+    evidence: |-
+      * Every
+      *    mutation on success invalidates:
+      *      - `curationKeys.all` (queue + metrics refresh)
+      ...
+      // Queue + metrics (root prefix).
+    cost: >-
+      The refresh-after-success rule is stated again in prose. That prose also claims node-detail invalidation for the "correct" flow, which the code does not perform, so the comment and the code now say different things. A reader of the docstring would look for behavior that is not there. The code that holds the fact is `void queryClient.invalidateQueries({ queryKey: curationKeys.all })`, called only from `onSuccess`.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code stays as it is, and the node is already bound.
+    node: rules/curation-workspace/successful-action-refreshes-the-queue-and-the-metrics
+  - file: src/features/curation/api/curation.hooks.ts
+    where: >-
+      useListReviewQueue, line 113
+    evidence: |-
+      const limit = params.limit ?? 20;
+    cost: >-
+      The default page size of twenty is written a second time here, as the literal that derives the cache-key page. The node that holds it is a candidate bound to src/features/curation/hooks/useCurationQueue.ts, not to this file. If that default changes there, the cache pages derived here silently disagree. `--check` does not reach this file when the node moves.
+    kind: contradicts
+    correction: >-
+      The page size would have to come from the single place that holds the first-page-of-twenty request, rather than being a literal in this file. Code cannot read the specification, so the bind that claims this literal has to name this file too.
+    node: rules/curation-workspace/queue-read-asks-the-first-page-of-twenty
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: >-
+      useListReviewQueue and buildQueueQs (queue read), useCurationMetrics, and the mutationFn of the six mutation hooks (lines 90-130, 140-156, 201-350). The answer-reading side (timeouts, 401, error mapping) is in other files.
+    evidence: |-
+      `/api/v1/curation/queue${buildQueueQs(params)}` with `if (params.kind !== undefined) search.set("kind", params.kind)` and the same guard for limit and offset;
+      "/api/v1/curation/metrics";
+      `/api/v1/curation/entity-matches/${encodeURIComponent(node_id)}/resolve`;
+      "/api/v1/curation/nodes/merge";
+      "/api/v1/curation/disputes/resolve";
+      "/api/v1/curation/items/confirm";
+      "/api/v1/curation/items/reject";
+      "/api/v1/curation/items/correct", each with `method: "POST"` and `body: JSON.stringify(body)`
+  - node: rules/curation-workspace/confirmation-or-rejection-refreshes-the-provenance-of-the-item
+    held_at: >-
+      onSuccess of useConfirmItem (lines 289-293) and of useRejectItem (lines 310-314), through invalidateCurationAndAffected
+    evidence: |-
+      invalidateCurationAndAffected(queryClient, {
+        items: [{ kind: variables.item_kind, id: variables.item_id }],
+      });
+  - node: rules/curation-workspace/correction-refreshes-the-provenance-and-the-history
+    held_at: >-
+      onSuccess of useCorrectItem, lines 331-348
+    evidence: |-
+      items: [
+        { kind: variables.item_kind, id: variables.item_id },
+        { kind: variables.item_kind, id: data.new_item_id },
+      ],
+      ...
+      void queryClient.invalidateQueries({ queryKey: historyKey });
+  - node: rules/curation-workspace/dispute-resolution-refreshes-the-provenance-of-its-items
+    held_at: >-
+      onSuccess of useResolveDispute, lines 265-272
+    evidence: |-
+      items: variables.item_ids.map((id) => ({
+        kind: variables.item_kind,
+        id,
+      })),
+  - node: rules/curation-workspace/entity-match-resolution-refreshes-the-node-details
+    held_at: >-
+      onSuccess of useResolveEntityMatch, lines 217-227
+    evidence: |-
+      const nodeIds: string[] = [variables.node_id];
+      if (variables.body.target_node_id) {
+        nodeIds.push(variables.body.target_node_id);
+      }
+      invalidateCurationAndAffected(queryClient, { nodeIds });
+  - node: rules/curation-workspace/link-items-use-link-reads-and-others-attribute-reads
+    held_at: >-
+      the item branch in invalidateCurationAndAffected (lines 183-189) and the history branch in useCorrectItem (lines 343-346)
+    evidence: |-
+      kind === "link"
+        ? provenanceKeys.link(id)
+        : provenanceKeys.attribute(id);
+      ...
+      variables.item_kind === "link"
+        ? ["history", "link", variables.item_id]
+        : ["history", "attribute", variables.item_id];
+  - node: rules/curation-workspace/merge-refreshes-both-node-details
+    held_at: >-
+      onSuccess of useMergeNodes, lines 244-248
+    evidence: |-
+      nodeIds: [variables.survivor_id, variables.absorbed_id],
+  - node: rules/curation-workspace/metrics-stay-fresh-for-thirty-seconds
+    held_at: >-
+      the useQuery options of useCurationMetrics, lines 150-154, with the constant on line 75
+    evidence: |-
+      const METRICS_STALE_MS = 30_000;
+      ...
+      staleTime: METRICS_STALE_MS,
+      refetchOnWindowFocus: true,
+      retry: 1,
+      (there is no refetchInterval)
+  - node: rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+    held_at: >-
+      the useQuery options of useListReviewQueue, lines 126-128, with the constants on lines 73-74
+    evidence: |-
+      const QUEUE_STALE_MS = 0;
+      const QUEUE_POLL_MS = 30_000;
+      ...
+      staleTime: QUEUE_STALE_MS,
+      refetchInterval: QUEUE_POLL_MS,
+      refetchOnWindowFocus: true,
+  - node: rules/curation-workspace/successful-action-refreshes-the-queue-and-the-metrics
+    held_at: >-
+      invalidateCurationAndAffected (line 174), called only from the onSuccess handlers of the six mutations. keys.ts line 26 defines curationKeys.all as the root prefix that covers the queue and metrics keys.
+    evidence: |-
+      void queryClient.invalidateQueries({ queryKey: curationKeys.all });
+looked_past: >-
+  The docstring's claim that the server clamps the page size to [1, 100], the comment that `data.affected` carries the repointed counts (the contract reads them flat), the spec path citations, and the inline `["history", ...]` key literal that bypasses the key factory are prose or code-style matters for the comment route or a code review, not a domain fact this pass reports.
+candidates_opened:
+  - rules/curation-workspace/queue-read-asks-the-first-page-of-twenty

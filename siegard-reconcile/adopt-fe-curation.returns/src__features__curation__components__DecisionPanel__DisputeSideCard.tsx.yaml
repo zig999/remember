@@ -1,0 +1,118 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      SOURCE_LABEL (lines 20-26), and the "Vigência:", "Fonte:" and "Confiança" captions in the metadata span (lines 85-89)
+    evidence: |-
+      stated: "Declarada",
+        document: "Doc.",
+        received: "Receb.",
+      ...
+      Vigência: {fmt(side.validFrom)} – {fmt(side.validTo)} ·{" "}
+      Fonte: {SOURCE_LABEL[side.validFromSource]} ·{" "}
+      Confiança {(side.confidence * 100).toFixed(0)}%
+    cost: >-
+      The node requires "the label of its valid-from basis" but never states what the labels are. The three words "Declarada", "Doc." and "Receb." exist only in this file. The date-justification form is the only place the specification gives wording for the same three bases ("Data do documento", "Data de recebimento"), and that wording differs from these. The next reader who looks in the specification for what a person sees as the basis of a disputed side will not find it, and the two vocabularies can drift apart unnoticed. The captions "Vigência:", "Fonte:" and "Confiança" are likewise stated in no node.
+    kind: unstated
+    correction: >-
+      The node that governs a side's validity basis would have to state the label of each of the three bases, and the captions of the validity, basis and confidence fields. The analysis that gives these facts a node closes this. The code cannot read the specification, so the bind is what closes it.
+    node: rules/curation-workspace/side-shows-its-validity-basis-and-confidence
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      the StateBadge rendered inside each side (line 83)
+    evidence: |-
+      <StateBadge state="disputed" size="sm" />
+    cost: >-
+      Every side card carries a disputed state badge. The specification only states a header badge (Para revisar / Disputado) and says nothing about a badge on each side. The next reader who looks in the specification for what a side shows will not find this element, and what it displays lives only in the badge component and this call.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether a side shows a state badge and give that fact a node. If the specification holds it, nothing is owed here.
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      the file's header docstring, lines 1-6
+    evidence: |-
+      Spec: curadoria.feature.spec.md §10 (feature-local), §11 (full-diff mode
+       * lists all sides). Selection sets the `winner_id` for `prefer_one`.
+    cost: >-
+      The docstring is a second home outside behavior for the rule that every side is listed and that selecting a side makes it the winner. It also cites a feature spec outside the specification root as authority, so a reader may take it for the decision rather than the node.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact is held by code in src/features/curation/components/DecisionPanel/DecisionPanel.tsx (`winner_id: selectedSide`) and in ComparePane.tsx, which renders each DisputeSideCard.
+    node: rules/curation-workspace/every-side-is-listed-and-selectable
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      the comment inside fmt(), lines 29-31
+    evidence: |-
+      // Format in UTC: valid_from/valid_to are DATE-ONLY values parsed to UTC
+        // midnight. Formatting in local time (BR = UTC-3) would shift them back a
+        // day (2026-06-17 → 16/06). UTC keeps the stored calendar date.
+    cost: >-
+      The comment states again the rule that dates show as pt-BR calendar dates in UTC. The code already holds it in this same function (`timeZone: "UTC"`), so the comment is a second home for the rule and would go stale on its own.
+    kind: restates
+    correction: >-
+      Remove the comment. The rationale belongs in the decision log of the node.
+    node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      the comment above the useCurationNodeDetail call, lines 41-43
+    evidence: |-
+      // LINK dispute sides carry a target node (no `value`); resolve its canonical
+        // name so the side reads "Apollo (Project)" instead of "—" (R3). ATTRIBUTE
+        // sides carry `value` and pass null here, so the query stays disabled.
+    cost: >-
+      The comment states again how a side with no value is named, including the example "Apollo (Project)" and the reference "(R3)". The code holds the same rule just below (`isLink`, `targetName`, `targetType`), so the comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/curation-workspace/link-side-is-named-by-its-target
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: >-
+      This file sends no request to the back end. It only reads the `side` prop and calls `onSelect(side.itemId)`.
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: >-
+      the useCurationNodeDetail(...) call, line 45. The request itself lives in ../../api/node.hooks, which this file does not hold.
+    evidence: |-
+      const nodeQ = useCurationNodeDetail(isLink ? side.targetNodeId : null);
+      const targetName = nodeQ.data?.node.canonicalName;
+      const targetType = nodeQ.data?.node.nodeType;
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      The file only consumes the enumeration's values as keys of `Record<DisputedItemSide["validFromSource"], string>` (stated, document, received). Its shape is declared in ../../types, not here.
+  - node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+    held_at: fmt(), line 28
+    evidence: |-
+      return d === null ? "—" : d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  - node: rules/curation-workspace/every-side-is-listed-and-selectable
+    held_at: >-
+      the radio button and its onClick, lines 56-61. This file holds only selection. Listing every side is in ComparePane.tsx.
+    evidence: |-
+      role="radio"
+      aria-checked={selected}
+      onClick={() => onSelect(side.itemId)}
+  - node: rules/curation-workspace/link-side-is-named-by-its-target
+    held_at: the isLink and label expressions, lines 44-53
+    evidence: |-
+      const isLink = side.value === null && side.targetNodeId !== null;
+      ...
+      (targetName ??
+            (nodeQ.isPending
+              ? "Carregando…"
+              : `nó ${side.targetNodeId?.slice(0, 8) ?? "?"}`))
+      ...
+      {isLink && targetType && (
+  - node: rules/curation-workspace/side-shows-its-validity-basis-and-confidence
+    held_at: the metadata span, lines 85-89
+    evidence: |-
+      Vigência: {fmt(side.validFrom)} – {fmt(side.validTo)} ·{" "}
+      Fonte: {SOURCE_LABEL[side.validFromSource]} ·{" "}
+      Confiança {(side.confidence * 100).toFixed(0)}%
+  - node: rules/curation-workspace/value-side-is-named-by-its-value
+    held_at: the final branch of the label expression, line 53
+    evidence: |-
+      : (side.value ?? "—");
+looked_past: >-
+  I saw styling comments (opacity and scrim classes, "Group E option a") and the aria/radio-role semantics, which are surface and accessibility choices that no domain judgment covers.
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis

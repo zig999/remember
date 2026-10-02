@@ -1,0 +1,64 @@
+findings:
+  - file: src/features/curation/api/provenance.hooks.ts
+    where: |-
+      the file's header docblock (lines 1-14, the `staleTime 5min, no refetchOnWindowFocus` clause) and the comments `// 5 min` and `Constants — spec §4 TTL` above STABLE_STALE_MS (lines 32-36)
+    evidence: |-
+      the header says "§4 (staleTime 5min, no
+       *    refetchOnWindowFocus)", and the constant reads "const STABLE_STALE_MS = 5 * 60_000; // 5 min"
+    cost: |-
+      The five-minute window and the no-refetch-on-focus behaviour are written in prose as well as in code. The prose cites a document under docs/specs, not the node. Someone changing the window will find two statements and a pointer to a document that is not the specification.
+    kind: restates
+    correction: |-
+      Remove the docblock clause and the two comments that restate the freshness window. The behaviour stays held by `staleTime: STABLE_STALE_MS` and `refetchOnWindowFocus: false`, which appear in the same file in all four hooks.
+    node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+  - file: src/features/curation/api/provenance.hooks.ts
+    where: |-
+      the docblocks above useProvenanceByLink (line 44) and useListAcceptedFragments (lines 134-138), and the `At least one of llmRunId / rawInformationId MUST be set` comment on ListAcceptedFragmentsParams (line 116)
+    evidence: |-
+      "Disabled when `linkId` is undefined/null/empty." and "Disabled until at least one filter is supplied" and "At least one of `llmRunId` / `rawInformationId` MUST be set."
+    cost: |-
+      The rule that a read is not requested without an identifier is also stated in prose beside the `enabled` expressions that implement it. A change to the rule would have to be made in the prose and in the code, and nothing checks that the two agree.
+    kind: restates
+    correction: |-
+      Remove the three comments. The rule stays held by `const enabled = typeof linkId === "string" && linkId.length > 0` in the provenance hooks and by the `enabled` expression in useListAcceptedFragments.
+    node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+  - file: src/features/curation/api/provenance.hooks.ts
+    where: |-
+      the header docblock (lines 9-13) and the docblock above useProvenanceByLink (lines 42-45)
+    evidence: |-
+      "REST responses are
+       *    enveloped (`{ ok: true, result: ProvenanceResponse }`). `lib/http.ts`
+       *    unwraps the envelope" and "Returns the provenance trail (fragment → chunk → raw_information) for
+       * a `KnowledgeLink`."
+    cost: |-
+      The read's envelope and the shape of its answer are described in prose that cites an openapi.yaml under docs/specs. The contract node is not cited. The prose can drift from the contract without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the prose. The reads stay held by the `http<ProvenanceResponseWire>(...)` calls and the endpoint paths, and the answer shape stays held by the types file.
+    node: contracts/curation-workspace/bff-curation-reads
+
+read:
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: |-
+      the three provenance hooks (useProvenanceByLink, useProvenanceByAttribute, useProvenanceByFragment) and useListAcceptedFragments, with buildFragmentsQs. The answer shapes are held in ../types, which is not in this file set. The node's read-node, read-link-history and read-attribute-history operations are not in this file.
+    evidence: |-
+      `/api/v1/provenance/links/${encodeURIComponent(linkId as string)}`, `/api/v1/provenance/attributes/${encodeURIComponent(attributeId as string)}`, `/api/v1/provenance/fragments/${encodeURIComponent(fragmentId as string)}`, and `/api/v1/fragments/accepted${buildFragmentsQs(params)}` with `search.set("llm_run_id", ...)`, `search.set("raw_information_id", ...)`, `search.set("limit", ...)` and `search.set("offset", ...)`, each set only when `!== undefined`
+  - node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+    held_at: |-
+      the `enabled` constants of the three provenance hooks, and the `enabled` expression of useListAcceptedFragments
+    evidence: |-
+      const enabled = typeof linkId === "string" && linkId.length > 0;
+      const enabled =
+          (typeof params.llmRunId === "string" && params.llmRunId.length > 0) ||
+          (typeof params.rawInformationId === "string" &&
+            params.rawInformationId.length > 0);
+  - node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+    held_at: |-
+      STABLE_STALE_MS (line 36), used as `staleTime` with `refetchOnWindowFocus: false` in all four hooks
+    evidence: |-
+      const STABLE_STALE_MS = 5 * 60_000; // 5 min
+      staleTime: STABLE_STALE_MS,
+          refetchOnWindowFocus: false,
+
+looked_past: |-
+  Two items. First, the comment saying that calling without a filter "would trigger a 422 `VALIDATION_INVALID_FORMAT`" is prose only, and no code or emitted text in this file carries that BFF refusal. Second, the default `limit: params.limit ?? 20` appears only inside a query-key literal and is never sent on the wire, so it is a code-style matter for another pass.

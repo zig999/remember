@@ -1,0 +1,187 @@
+findings:
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      the BatchKind type alias, line 36
+    evidence: |-
+      export type BatchKind = "entity_match" | "disputed" | "uncertain";
+    cost: >-
+      The node spells the first value `entity-match`, and this declaration spells it `entity_match`. Other nodes
+      in the specification already use `entity_match` as a kind literal, for example in
+      unreadable-item-link-selects-nothing. A reader who looks up the batch kinds in the specification finds one
+      spelling and the code that declares the shape uses another, so nobody can tell which spelling was decided.
+    kind: contradicts
+    correction: >-
+      Settle which spelling the enumeration node holds (`entity-match` or `entity_match`), by changing either the
+      node or this declaration.
+    node: domain/curation-workspace/batch-kind
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      the "Limpar seleção" Button, line 151
+    evidence: |-
+      aria-label="Limpar seleção"
+    cost: >-
+      This is text the running system emits, announced to assistive technology as the name of the clear-selection
+      control. No node holds this label, and the contract's use-batch-bar answer lists only "N selecionados" and
+      the three actions. The label lives only in this file, so a reader looking for it in the specification does
+      not find it.
+    kind: unstated
+    correction: >-
+      Give the clear-selection control's accessible name to a node, most naturally the use-batch-bar answer of
+      contracts/curation-workspace/curation-screen.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      the GlassSurface wrapper, line 113
+    evidence: |-
+      aria-label="Ações em lote"
+    cost: >-
+      This is the accessible name of the bar's group, emitted to assistive technology. No node holds it, so the
+      wording lives only in this file.
+    kind: unstated
+    correction: >-
+      Give the batch bar's group name to a node, most naturally the use-batch-bar answer of
+      contracts/curation-workspace/curation-screen.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      header docblock, lines 14-15 and the BatchBarProps comment on `count`, line 40
+    evidence: |-
+      Hidden when `count < 2` — the consumer can render the component
+      unconditionally; the bar self-occults below the threshold.
+    cost: >-
+      The rule is restated in prose while `if (count < 2) return null;` (line 77) already holds it. The comment is
+      a second home outside behavior, and it must be kept in step with the node by hand.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact.
+    node: rules/curation-workspace/batch-bar-needs-two-items
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      header docblock, lines 16-21
+    evidence: |-
+      - Per-kind actions (homogeneous selection only):
+          - entity_match → "Manter separados N" (non-destructive)
+          - uncertain    → "Confirmar N" (non-destructive) + "Rejeitar N" (destructive)
+          - disputed     → all batch actions disabled with tooltip
+    cost: >-
+      The per-kind action map is restated in prose. The code holds it (`const showConfirm = kind === "uncertain";`
+      and the two lines after it), and the prose differs from that code. For disputed items it says the actions
+      are "disabled with tooltip", but the code renders no action at all for them.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact.
+    node: rules/curation-workspace/batch-bar-actions-follow-the-kind
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      header docblock, lines 22-23, and the BATCH_REJECT_CONFIRM_THRESHOLD comment, lines 55-58
+    evidence: |-
+      * Threshold above which destructive batch actions require a one-step inline
+      * confirmation (spec §5: "Você está rejeitando N itens. Confirmar?").
+    cost: >-
+      The five-item rule is restated in prose, while `if (count >= BATCH_REJECT_CONFIRM_THRESHOLD)` with
+      `BATCH_REJECT_CONFIRM_THRESHOLD = 5` already holds it. A second statement of the threshold sits outside
+      behavior.
+    kind: restates
+    correction: >-
+      Remove the comments. The constant and the branch in this file hold the fact.
+    node: rules/curation-workspace/rejecting-five-or-more-asks-first
+  - file: src/features/curation/components/BatchBar/BatchBar.tsx
+    where: >-
+      the BatchBarProps comment on `onClear`, line 48
+    evidence: |-
+      /** Fired by the "X" button — caller clears the selection set. */
+    cost: >-
+      The rule that the bar leaves the clearing to its caller is restated in prose. The code already holds it
+      with `onClick={onClear}` and no state of its own, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact.
+    node: rules/curation-workspace/batch-bar-offers-to-clear-the-selection
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the JSX return: the "{count} selecionados" span, the three action Buttons, the disputed note span and the
+      inline confirmation row
+    evidence: |-
+      <span aria-live="polite">{count} selecionados</span>
+      Manter separados {count}
+      Confirmar {count}
+      Rejeitar {count}
+      <span>Você está rejeitando {count} itens. Confirmar?</span>
+      const disputedTooltip =
+        "Disputas devem ser resolvidas individualmente.";
+  - node: domain/curation-workspace/batch-kind
+    held_at: >-
+      the exported type alias BatchKind, line 36, with its first value spelled `entity_match` where the node
+      spells it `entity-match` (see the finding)
+    evidence: |-
+      export type BatchKind = "entity_match" | "disputed" | "uncertain";
+  - node: rules/curation-workspace/batch-bar-actions-follow-the-kind
+    held_at: >-
+      the per-kind flags, lines 84-86, and the conditional rendering of each action
+    evidence: |-
+      const showConfirm = kind === "uncertain";
+      const showReject = kind === "uncertain";
+      const showKeepSeparate = kind === "entity_match";
+  - node: rules/curation-workspace/batch-bar-acts-on-one-kind
+    held_at: >-
+      the single `kind: BatchKind` prop, which takes one value for the whole selection, and the flags derived
+      from it
+    evidence: |-
+      readonly kind: BatchKind;
+  - node: rules/curation-workspace/batch-bar-needs-two-items
+    held_at: >-
+      the guard at line 77
+    evidence: |-
+      if (count < 2) return null;
+  - node: rules/curation-workspace/batch-bar-offers-to-clear-the-selection
+    held_at: >-
+      the clear Button, lines 147-155, which only calls the `onClear` prop
+    evidence: |-
+      aria-label="Limpar seleção"
+      onClick={onClear}
+  - node: rules/curation-workspace/batch-bar-shows-the-count
+    held_at: >-
+      the count span, line 146
+    evidence: |-
+      <span aria-live="polite">{count} selecionados</span>
+  - node: rules/curation-workspace/inline-confirmation-confirms-or-cancels
+    held_at: >-
+      handleConfirmReject and handleCancelReject, lines 96-103
+    evidence: |-
+      function handleConfirmReject(): void {
+        setPendingReject(false);
+        onReject?.();
+      }
+
+      function handleCancelReject(): void {
+        setPendingReject(false);
+      }
+  - node: rules/curation-workspace/pending-confirmation-survives-a-selection-change
+    held_at: >-
+      the `pendingReject` state, line 73. Nothing resets it when `count` or `kind` changes, and it is declared
+      before the `count < 2` early return.
+    evidence: |-
+      const [pendingReject, setPendingReject] = useState(false);
+  - node: rules/curation-workspace/rejecting-five-or-more-asks-first
+    held_at: >-
+      BATCH_REJECT_CONFIRM_THRESHOLD, line 59, and handleRejectClick, lines 88-94
+    evidence: |-
+      export const BATCH_REJECT_CONFIRM_THRESHOLD = 5;
+      if (count >= BATCH_REJECT_CONFIRM_THRESHOLD) {
+        setPendingReject(true);
+        return;
+      }
+      onReject?.();
+  - node: rules/curation-workspace/submitting-batch-shows-busy-buttons
+    held_at: >-
+      the `loading={submitting}` prop on the three action buttons and on the inline Confirmar. The Cancelar
+      button and the clear button carry no `loading`.
+    evidence: |-
+      variant="destructive"
+      loading={submitting}
+      onClick={handleConfirmReject}
+looked_past: >-
+  The comment on the `pendingReject` state, "Reset whenever the selection count or kind changes (the parent rebuilds the bar on selection edits)", claims behavior the code does not carry and the node denies. That is prose with no code behind it, so it belongs to the comment route and is not filed as a finding here. The unreachable `disabled={isDisputed}` props and the GlassSurface import are code review matters, not this judgment's.
+candidates_opened:
+  - rules/curation-workspace/unreadable-item-link-selects-nothing

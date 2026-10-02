@@ -1,0 +1,116 @@
+findings:
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.tsx
+    where: >-
+      the effect at lines 104-109 (firstFieldRef and useEffect), under the comment "focus first field on mount (§8)"
+    evidence: |-
+      useEffect(() => {
+          firstFieldRef.current?.focus();
+        }, [itemKind]);
+    cost: >-
+      The form moves focus to its first field whenever it mounts or the item kind changes. No node states
+      this. The nearest node, correction-opens-inline-and-returns-focus, covers only opening inline and
+      returning focus on cancel. The next reader will look in the specification for where focus lands on
+      open and find nothing, so the code becomes the only home of that behavior.
+    kind: unstated
+    correction: >-
+      An analysis would give this fact a node, for example by extending
+      rules/curation-workspace/correction-opens-inline-and-returns-focus or adding a sibling rule.
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.tsx
+    where: >-
+      the "Motivo" label (line 163), the reason Textarea placeholder (line 173) and the form's aria-label (line 133)
+    evidence: |-
+      <Label htmlFor="cf-reason">Motivo</Label>
+      placeholder="Explique brevemente por que a correção é necessária."
+      aria-label="Formulário de correção"
+    cost: >-
+      These are texts the running system shows or announces to the owner. The nodes in the set and the
+      candidate index hold none of the three. Of the candidates I searched, only the "Informe um motivo
+      para continuar." message (a refusal under the reason field) mentions the reason field's wording.
+      The wording therefore lives only in the code.
+    kind: unstated
+    correction: >-
+      The correct-item answers of contracts/curation-workspace/curation-screen would have to list the
+      reason field's label and placeholder, and the form's accessible name, if the business means to fix
+      them.
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.tsx
+    where: >-
+      the comment inside the disabled prop of the "Salvar correção" Button, lines 198-200
+    evidence: |-
+      // Targeted requirement (spec UI-11 / BDD 5): when stated is
+      // chosen, "Salvar permanece desabilitado até fragmento ser
+      // selecionado". For other sources the schema gates submission.
+    cost: >-
+      The comment restates the node's fact in prose beside the expression that already implements it. If
+      the node moves, the comment is a second home that nothing reads, and the node's bind does not reach
+      it.
+    kind: restates
+    correction: >-
+      Remove the comment. The code at lines 201-202 holds the fact, so the pair conforms and only the
+      prose is owed a removal.
+    node: rules/curation-workspace/save-is-disabled-without-a-stated-fragment
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: >-
+      The file only passes the request along with onSubmit(buildCorrectItemRequest(itemKind, itemId,
+      values)). It never sends the request or reads the answer, and the correct-item request body and
+      the answer's shape live elsewhere.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      fieldForServerCode (lines 42-55), formLevelError (lines 124-127) and the "Salvar correção" and
+      "Cancelar" labels
+    evidence: |-
+      case "BUSINESS_TEMPORAL_INCOHERENT": return "validTo";
+      case "BUSINESS_DATE_UNJUSTIFIED": return "validFromSource";
+      case "BUSINESS_FRAGMENT_NOT_ACCEPTED": return "validFromFragmentId";
+      case "BUSINESS_REASON_REQUIRED": return "reason";
+      serverError?.code === "BUSINESS_CORRECTION_NO_CHANGES" ? "Nenhuma alteração detectada. Modifique pelo menos um campo." : null
+  - node: rules/curation-workspace/correction-fields-start-from-the-item
+    held_at: >-
+      the defaultValues passed to useForm through buildDefaults (lines 68-85). The basis fallback is held
+      here. The empty reason is not visible in this file and is presumably in buildDefaults.
+    evidence: |-
+      value: defaults.value ?? null,
+      validFrom: defaults.validFrom ?? null,
+      validFromSource: defaults.validFromSource ?? "document",
+  - node: rules/curation-workspace/correction-shows-submitting
+    held_at: the two Buttons in the footer (lines 185-207)
+    evidence: |-
+      onClick={onCancel}
+      disabled={submitting}
+      ...
+      loading={submitting}
+  - node: rules/curation-workspace/field-messages-appear-on-blur-and-submit
+    held_at: the useForm options and the submit handler binding (lines 68-87 and 131)
+    evidence: |-
+      mode: "onBlur",
+      onSubmit={handleSubmit(submit)}
+  - node: rules/curation-workspace/save-is-disabled-without-a-stated-fragment
+    held_at: the disabled prop of the "Salvar correção" Button (lines 197-203)
+    evidence: |-
+      validFromSource === "stated" &&
+      (watch("validFromFragmentId") ?? "").length === 0
+  - node: rules/curation-workspace/server-refusal-lands-on-its-field
+    held_at: fieldForServerCode, the server-error effect (lines 112-118) and formLevelError
+    evidence: |-
+      setError(field, { type: "server", message: serverError.message });
+      serverError?.code === "BUSINESS_CORRECTION_NO_CHANGES"
+  - node: rules/curation-workspace/stated-basis-needs-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The requirement that a fragment id be present under stated and absent under document or received
+      is not declared in this file. It only forwards the schema with zodResolver(correctionSchema). The
+      disabled gating on the Save button belongs to the save-is-disabled-without-a-stated-fragment node,
+      not to this one.
+  - node: rules/curation-workspace/unmapped-refusal-shows-nothing-on-the-form
+    held_at: the default branch of fieldForServerCode and the guard on formLevelError
+    evidence: |-
+      default:
+            return null;
+      if (field) { setError(...) }
+looked_past: >-
+  I saw the header comment's citations of other specification documents (curadoria.feature.spec.md,
+  openapi.yaml, "300-line limit"), the "BR-15" mention, and the double cast through unknown with its
+  explanatory comment. These are prose or code-quality matters that belong to other judgments.
+candidates_opened:
+  - rules/curation-workspace/correction-opens-inline-and-returns-focus

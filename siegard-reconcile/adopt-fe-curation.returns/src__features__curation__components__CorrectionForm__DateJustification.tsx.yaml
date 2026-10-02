@@ -1,0 +1,99 @@
+findings:
+  - file: src/features/curation/components/CorrectionForm/DateJustification.tsx
+    where: >-
+      the file's docstring, lines 5 to 8
+    evidence: |-
+      * Owns the R2 accepted-fragment picker and its degradation (flow spec 3o):
+       * when `valid_from_source=stated` and a filter is available, it lists
+       * accepted fragments; otherwise (no filter, or empty/errored list) it falls
+       * back to a plain text input for the fragment id.
+    cost: >-
+      The docstring states a second time the rule that the picker falls back to a manual fragment-id input.
+      Code holds that rule in this same file, in `showPicker` and `showManualFragment`.
+      If the rule moves in the node, the docstring still says the old condition, and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the docstring paragraph. The rule is already held by the node and by `showPicker` and `showManualFragment`.
+    node: rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id
+  - file: src/features/curation/components/CorrectionForm/DateJustification.tsx
+    where: >-
+      the texts the form shows around the fragment field and the basis group, lines 80, 89, 109, 125, 142 and 152
+    evidence: |-
+      Justificativa da data
+      aria-label="Fonte da data de início"
+      <Label htmlFor="cf-frag">Fragmento</Label>
+      placeholder="Selecione um fragmento…"
+      <Label htmlFor="cf-frag-manual">ID do fragmento</Label>
+      placeholder="UUID do fragmento accepted"
+    cost: >-
+      These are what the owner reads on the correction form, and no node states them.
+      Among them is the claim that the manual input expects a UUID of a fragment with status accepted.
+      The next reader looks for these texts in the specification, does not find them, and treats the code as where they were decided.
+    kind: unstated
+    correction: >-
+      Give these texts a home in the correct-item operation of the curation-screen contract, or decide that they are surface.
+      The node that holds the neighbouring texts, the three basis hints and the manual-input message, is the one that would hold them.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: >-
+      nowhere
+    evidence: |-
+      const fragmentQ = useListAcceptedFragments(fragmentParams);
+      the file only passes the filter along and reads `items`, `fragmentId` and `text`; the shape of the accepted-fragment listing is declared in the hook module `../../api/provenance.hooks`, which this file only imports
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the SOURCE_OPTIONS constant, lines 20 to 40, and the manual-input hint paragraph, lines 157 to 159
+    evidence: |-
+      label: "Declarada no fragmento",
+      hint: "A própria fonte diz a data — selecione o fragmento.",
+      label: "Data do documento", hint: "Derivada da data do documento de origem.",
+      label: "Data de recebimento", hint: "Quando o sistema recebeu a informação.",
+      Listagem de fragmentos indisponível — informe o id manualmente.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the inline union type of the `value` field in SOURCE_OPTIONS, line 21
+    evidence: |-
+      readonly value: "stated" | "document" | "received";
+  - node: rules/curation-workspace/date-justification-offers-three-bases
+    held_at: >-
+      SOURCE_OPTIONS, lines 20 to 40, rendered by the RadioGroup map, lines 91 to 102
+    evidence: |-
+      { value: "stated", label: "Declarada no fragmento", hint: ... },
+      { value: "document", label: "Data do documento", hint: ... },
+      { value: "received", label: "Data de recebimento", hint: ... },
+      {SOURCE_OPTIONS.map((opt) => (
+  - node: rules/curation-workspace/fragment-field-shows-only-under-stated
+    held_at: >-
+      the conditions of `showPicker` and `showManualFragment`, lines 70 to 75, which gate both fragment blocks and the `fragmentErrorMessage` paragraphs inside them
+    evidence: |-
+      const showPicker =
+        validFromSource === "stated" &&
+      const showManualFragment = validFromSource === "stated" && !showPicker;
+  - node: rules/curation-workspace/picker-choice-shows-eighty-characters
+    held_at: >-
+      the `options` mapping of the Select, lines 121 to 124
+    evidence: |-
+      options={(fragmentQ.data?.items ?? []).map((f) => ({
+        value: f.fragmentId,
+        label: f.text.slice(0, 80),
+      }))}
+  - node: rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id
+    held_at: >-
+      `showPicker` and `showManualFragment`, lines 70 to 75
+    evidence: |-
+      const showPicker =
+        validFromSource === "stated" &&
+        hasFilter &&
+        !fragmentQ.isError &&
+        (fragmentQ.data?.items.length ?? 0) > 0;
+      const showManualFragment = validFromSource === "stated" && !showPicker;
+  - node: rules/curation-workspace/stated-basis-lists-the-accepted-fragments
+    held_at: >-
+      the filter built into `fragmentParams`, lines 58 to 69, and the picker block, lines 107 to 138
+    evidence: |-
+      if (validFromSource === "stated" && hasFilter) {
+      const fragmentQ = useListAcceptedFragments(fragmentParams);
+      {showPicker && fragmentQ.data && (
+looked_past: >-
+  The hook is called on every render, with empty params when the basis is not stated or no filter is given, and the Radix comment at lines 114 to 117 states no domain fact; both are another judgment's.

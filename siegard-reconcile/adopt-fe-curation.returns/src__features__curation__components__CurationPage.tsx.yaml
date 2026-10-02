@@ -1,0 +1,201 @@
+findings:
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the header docblock, line 28 (Responsibilities owned HERE)
+    evidence: |-
+      *  - Deep-link `?item=<kind>:<id>` resolution + auto-select-first.
+    cost: |-
+      The docblock states the address format of the selected item a second time, outside any running behavior. The code holds that fact in `parseItemSearchParam` and `stringifyItemSearchParam` in src/features/curation/state/curation-store.ts, and the page itself uses the `item` key at `search: next !== undefined ? { item: next } : {}`. If the node moves, this prose is not reached and keeps saying the old format.
+    kind: restates
+    correction: |-
+      Remove the line. The code in the store and in `handleSelect` holds the fact, and the node binds it.
+    node: rules/curation-workspace/selected-item-is-carried-in-the-address
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the header docblock, line 29, and the comment at line 98
+    evidence: |-
+      *  - Polling pill: when `data.total` grows above `lastSeenTotal`.
+    cost: |-
+      The docblock restates the new-item count rule as prose. The code holds the rule at lines 99-105 (`Math.max(0, total - lastSeenTotal)` and `updateLastSeen(total)` only while `lastSeenTotal === null`). The prose omits the clamp at zero and the baseline moving only on the pill click, so it would mislead a reader who trusts it over the code.
+    kind: restates
+    correction: |-
+      Remove the prose. The `delta` computation and the baseline effect are where the fact is held.
+    node: rules/curation-workspace/new-item-count-is-the-total-minus-the-baseline
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the header docblock, lines 35-36 (Deferred), against the render tree at lines 168-265
+    evidence: |-
+      * Deferred (not yet wired here): BatchBar multi-select dispatch (the queue
+      * checkbox state exists; the batch action bar is a follow-up).
+    cost: |-
+      The node says the screen offers the batch bar ("N selecionados" with "Manter separados N", "Confirmar N" and "Rejeitar N"). The page builds its checked set (`onToggleCheck` calls `setSelectedItems(next)`) but mounts no BatchBar. In the whole non-test tree under src/features/curation, BatchBar appears only in its own files and in comments, and nothing renders it. The owner can check items, but nothing on the screen acts on the checked set. The comment says as much, yet the node reads as if the capability exists. Which of the two is the decision is not stated anywhere.
+    kind: contradicts
+    correction: |-
+      Either the page mounts the bar over `checkedIds`, or the node is narrowed to what the page delivers. That choice is for a person.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the comment at lines 107-108 above `handleSelect`
+    evidence: |-
+      // Selection callback — mirrors the choice into the URL (replace, no back-
+      // stack pollution) so a reload / share-link reproduces the same view.
+    cost: |-
+      The comment restates the rule that selecting writes the item to /curation replacing the history entry. The code holds it in the same file at `void navigate({ to: "/curation", ..., replace: true })`. The prose adds a rationale (reload and share-link) that no node states, so it is a second home for the fact outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The `navigate` call holds the fact.
+    node: rules/curation-workspace/selecting-writes-the-item-to-the-address
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the comment at lines 128-129 above `metricsFallback`
+    evidence: |-
+      // R1 fallback for MetricsStrip — best-effort per-kind counts from the
+      // loaded page (≤20 items). Only consulted when metrics errors out.
+    cost: |-
+      The comment restates the metrics fallback rule and states a page size of 20. The code holds the counting at lines 130-138. The page size of 20 is held in src/features/curation/hooks/useCurationQueue.ts (`const QUEUE_LIMIT = 20;`). The number in the comment can drift from that constant without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the comment. The loop counting entity_match entries toward one queue and every other entry toward the other is where the fact is held.
+    node: rules/curation-workspace/page-counts-loaded-entries-as-the-metrics-fallback
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      the region names at lines 185 and 247
+    evidence: |-
+      aria-label="Fila de curadoria"
+      aria-label="Painel de decisão"
+    cost: |-
+      These are the accessible names the screen announces for its two regions. They are text the running system emits, and no node holds them. The screen contract lists its other labels and messages exactly, so a reader looking in the specification for what the screen says will not find these two. A change to them would have to be made in code alone.
+    kind: unstated
+    correction: |-
+      Give the region names a home in curation-screen, or decide they are surface and not domain. That decision is for the analysis.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/CurationPage.tsx
+    where: |-
+      line 200, the page heading
+    evidence: |-
+      <h2 className="text-lg font-semibold tracking-tight text-foreground">Curadoria</h2>
+    cost: |-
+      The visible title of the queue column is emitted text. The only "Curadoria" the node holds is the title of the overlay (the open-drawer operation); the page heading is held by nothing. The next reader of the node cannot learn from it what the page titles itself.
+    kind: unstated
+    correction: |-
+      Add the page title to the show-queue answer in curation-screen, or decide it is surface.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      nowhere
+    evidence: |-
+      The page makes no request itself. It calls `useCurationQueue(kindFilter)` and `useCurationMetrics()` and reads `queueQuery.data`. The contract's operations are held in the api layer (src/features/curation/api/_request.ts and curation.hooks.ts) and in src/features/curation/hooks/useCurationQueue.ts.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      lines 217-228 and 241-261, the queue-failure banner, the empty state, the list, and the idle decision panel
+    evidence: |-
+      <p className="text-xs text-muted-foreground">
+        Selecione um item da fila para começar.
+      </p>
+      and, for the queue, `{isError ? (<QueueErrorBanner onRetry={() => void queueQuery.refetch()} />) : isEmpty ? (<EmptyQueue />) : (<QueueList ... />)}`. The banner, empty and pill texts, the metrics labels and the other operations are held in curation-page-parts.tsx, MetricsStrip, QueueTabs and the decision components. The batch bar is not mounted here (see the finding).
+  - node: rules/curation-workspace/active-tab-lives-only-on-the-page
+    held_at: |-
+      line 74
+    evidence: |-
+      const [kindFilter, setKindFilter] = useState<QueueKindFilter>(undefined);
+      The state is page-local and starts at all (undefined) on each mount. The only address write is `search: next !== undefined ? { item: next } : {}`, which carries no tab.
+  - node: rules/curation-workspace/baseline-ignores-tab-changes
+    held_at: |-
+      lines 101-105 and 201
+    evidence: |-
+      useEffect(() => {
+        if (lastSeenTotal === null && data !== undefined) {
+          updateLastSeen(total);
+        }
+      }, [lastSeenTotal, total, data, updateLastSeen]);
+      The baseline is written only when null and from the pill's `onAck={() => updateLastSeen(total)}`. `setKindFilter` triggers no call to `updateLastSeen`.
+  - node: rules/curation-workspace/check-toggles-the-item-in-the-checked-set
+    held_at: |-
+      lines 156-165, `onToggleCheck`
+    evidence: |-
+      const next = new Set(checkedIds);
+      if (next.has(selectedItem.id)) {
+        next.delete(selectedItem.id);
+      } else {
+        next.add(selectedItem.id);
+      }
+      setSelectedItems(next);
+  - node: rules/curation-workspace/keyboard-moves-follow-the-click-path
+    held_at: |-
+      lines 144-155, `onNext`, `onPrev` and `onSelectIndex`
+    evidence: |-
+      if (next !== null) handleSelect(next);
+      The keyboard callbacks end in `handleSelect`, the same function passed as `onSelect={handleSelect}` to QueueList.
+  - node: rules/curation-workspace/new-item-count-is-the-total-minus-the-baseline
+    held_at: |-
+      lines 99-105 and 201
+    evidence: |-
+      const delta = lastSeenTotal === null ? 0 : Math.max(0, total - lastSeenTotal);
+      The baseline starts at the first total seen and moves only at `<PollingPill delta={delta} onAck={() => updateLastSeen(total)} />`.
+  - node: rules/curation-workspace/page-counts-loaded-entries-as-the-metrics-fallback
+    held_at: |-
+      lines 130-138, `metricsFallback`
+    evidence: |-
+      if (it.kind === "entity_match") em += 1;
+      else dp += 1;
+  - node: rules/curation-workspace/page-keeps-its-state-when-left
+    held_at: |-
+      lines 77-80, the store slices, with no unmount cleanup in the file
+    evidence: |-
+      const selectedItem = useCurationStore((s) => s.selectedItem);
+      const lastSeenTotal = useCurationStore((s) => s.lastSeenTotal);
+      The page has no cleanup effect. The store's `reset` is called nowhere in the non-test tree under src/features/curation, so the selection, the checked set and the baseline outlive the page.
+  - node: rules/curation-workspace/page-lists-only-one-queue-page
+    held_at: |-
+      lines 119-120
+    evidence: |-
+      const items = data?.items ?? [];
+      The page lists only `data.items` of the single read, and no further pages are requested here.
+  - node: rules/curation-workspace/page-wires-four-shortcuts
+    held_at: |-
+      lines 143-166
+    evidence: |-
+      useCurationKeyboard({ onNext: ..., onPrev: ..., onSelectIndex: (n) => {...}, onToggleCheck: () => {...} });
+      Exactly these four callbacks are wired.
+  - node: rules/curation-workspace/queue-failure-is-checked-before-empty
+    held_at: |-
+      lines 120 and 217-221
+    evidence: |-
+      const isEmpty = !isPending && !isError && items.length === 0;
+      {isError ? (<QueueErrorBanner ... />) : isEmpty ? (<EmptyQueue />) : (
+  - node: rules/curation-workspace/queue-kind-is-sent-only-when-chosen
+    held_at: |-
+      nowhere
+    evidence: |-
+      The page only passes the choice along: `const queueQuery = useCurationQueue(kindFilter);`. The rule is held in src/features/curation/hooks/useCurationQueue.ts at `if (kind !== undefined) qs.set("kind", kind);`.
+  - node: rules/curation-workspace/select-by-number-picks-the-nth-loaded-item
+    held_at: |-
+      lines 152-155 (the page leaves the selection when nothing is picked); the 1-to-9 range and the Nth pick are held in `selectByIndex` in src/features/curation/components/curation-page-helpers.ts
+    evidence: |-
+      onSelectIndex: (n) => {
+        const picked = selectByIndex(data, n);
+        if (picked !== null) handleSelect(picked);
+      },
+  - node: rules/curation-workspace/selected-item-is-carried-in-the-address
+    held_at: |-
+      lines 67-71 and 109-116 (the `item` parameter); the `kind:id` form is held in `parseItemSearchParam` and `stringifyItemSearchParam` in src/features/curation/state/curation-store.ts
+    evidence: |-
+      const search = useSearch({ from: curationRoute.id }) as { item?: string };
+      search: next !== undefined ? { item: next } : {},
+  - node: rules/curation-workspace/selecting-writes-the-item-to-the-address
+    held_at: |-
+      lines 109-117, `handleSelect`
+    evidence: |-
+      void navigate({
+        to: "/curation",
+        search: next !== undefined ? { item: next } : {},
+        replace: true,
+      });
+  - node: rules/curation-workspace/tabs-choose-the-queue-kind
+    held_at: |-
+      nowhere
+    evidence: |-
+      The page only holds the choice and forwards it: `<QueueTabs value={kindFilter} onChange={setKindFilter} />` and `useCurationQueue(kindFilter)`. The mapping of tabs to queues is held in QueueTabs.tsx and in the kind parameter of useCurationQueue.ts.
+looked_past: |-
+  I saw the comment at lines 178-179 that says "full width below @md, 1/3 at @md, 1/4 at @xl", which differs from the `@3xl` and `@5xl` classes in the code, and the layout, container-query and GlassSurface choices; none of these states a domain fact, so they are another judgment's.

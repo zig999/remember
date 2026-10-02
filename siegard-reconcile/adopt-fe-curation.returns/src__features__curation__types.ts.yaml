@@ -1,0 +1,158 @@
+findings:
+  - file: src/features/curation/types.ts
+    where: |-
+      line 27, the ItemKind type
+    evidence: |-
+      export type ItemKind = "link" | "attribute";
+    cost: |-
+      The type is named ItemKind, the name of the node that holds "node | link | fragment" (what a search item stands for). It declares the values of a different node, assertion-kind ("link | attribute"). A reader who follows the name to the specification finds a different vocabulary. When assertion-kind moves, `--check` does not reach this file, because the trace binds this file to item-kind and not to assertion-kind.
+    kind: contradicts
+    correction: |-
+      The vocabulary this type declares is held by domain/knowledge-base/assertion-kind, so that node is the one the bind to this file should name. domain/knowledge-base/item-kind has no declaration here and should not stay bound to this file. Source cannot read the specification, so the correction is the bind and not a change to the code.
+    node: domain/knowledge-base/assertion-kind
+  - file: src/features/curation/types.ts
+    where: |-
+      line 38-43, the EffectiveStatus type
+    evidence: |-
+      export type EffectiveStatus =
+        | "active"
+        | "uncertain"
+        | "disputed"
+        | "superseded"
+        | "deleted";
+    cost: |-
+      The node declares six values, including inactive, which is how an ended assertion reads. This type has five. The inactive value that the node defines for an ended assertion cannot be typed on AttributeDetailWire.effective_status, LinkDetailWire.effective_status, AttributeDetail or LinkDetail. A reader of this file would conclude that inactive is not a status the screen can receive.
+    kind: contradicts
+    correction: |-
+      The EffectiveStatus union has to carry "inactive" as the node lists it.
+    node: domain/knowledge-base/effective-status
+  - file: src/features/curation/types.ts
+    where: |-
+      the header docstring, lines 1-20, the passage on bare-body answers and envelope unwrapping
+    evidence: |-
+      KG/QR envelopes are unwrapped (the curation REST domain is bare-body on
+       * 2xx — see curadoria.feature.spec.md §6).
+    cost: |-
+      The docstring is a second statement, outside any behavior, of how the screen reads the curation answers (the bare 2xx body, the unwrapping of the other answers). It cites a document under docs/specs as its authority and not a node. Code holds the fact too, so this prose is a second home that can drift from it.
+    kind: restates
+    correction: |-
+      Remove the passage. The fact lives in the code (src/features/curation/api/_request.ts, "2xx — bare body", line 220) and in the node. The docstring also cites docs/specs paths, which are not specification nodes.
+    node: contracts/curation-workspace/bff-curation
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      the Wire interfaces ReviewQueueListWire, EntityMatchQueueItemWire, DisputeQueueItemWire, CurationMetricsWire (lines 51-113) and the request and response DTOs (lines 185-289)
+    evidence: |-
+      export interface ReviewQueueListWire {
+        readonly total: number;
+        readonly limit: number;
+        readonly offset: number;
+        readonly items: ReadonlyArray<ReviewQueueItemWire>;
+      }
+      and export interface CorrectItemResponse { readonly item_kind: ItemKind; readonly predecessor_id: string; readonly new_item_id: string; readonly action_id: string; }
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: |-
+      NodeDetailWire, AttributeDetailWire, LinkDetailWire, the history responses, the Provenance*Wire shapes and the AcceptedFragment*Wire shapes (lines 295-377 and 407-542)
+    evidence: |-
+      export interface AcceptedFragmentItemWire {
+        readonly fragment_id: string;
+        readonly text: string;
+        readonly confidence: number;
+        readonly llm_run_id: string;
+        readonly created_at: string;
+        readonly source: AcceptedFragmentSourceRefWire;
+      }
+  - node: domain/knowledge-base/alias-kind
+    held_at: |-
+      the kind field of NodeAliasWire (line 418) and NodeAlias (line 460)
+    evidence: |-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/assertion-flag
+    held_at: |-
+      the AssertionFlag type, line 44
+    evidence: |-
+      export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/assertion-status
+    held_at: |-
+      the AssertionStatus type, lines 31-36
+    evidence: |-
+      export type AssertionStatus =
+        | "active"
+        | "uncertain"
+        | "disputed"
+        | "superseded"
+        | "deleted";
+  - node: domain/knowledge-base/curation-metrics
+    held_at: |-
+      CurationMetricsWire (lines 104-113) and CurationMetrics (lines 170-179)
+    evidence: |-
+      readonly accept_rate: number;
+        readonly reject_rate_by_code: Readonly<Record<string, number>>;
+        readonly needs_review_count: number;
+  - node: domain/knowledge-base/dispute-decision
+    held_at: |-
+      the DisputeDecision type, line 29
+    evidence: |-
+      export type DisputeDecision = "prefer_one" | "adjust_periods" | "keep_disputed";
+  - node: domain/knowledge-base/dispute-scope
+    held_at: |-
+      DisputeScopeWire (lines 77-83) and DisputeScope (lines 145-151)
+    evidence: |-
+      export interface DisputeScopeWire {
+        readonly source_node_id: string | null;
+        readonly target_node_id: string | null;
+        readonly link_type: string | null;
+        readonly node_id: string | null;
+        readonly attribute_key: string | null;
+      }
+  - node: domain/knowledge-base/effective-status
+    held_at: |-
+      nowhere
+    evidence: |-
+      the EffectiveStatus type (lines 38-43) lists "active", "uncertain", "disputed", "superseded" and "deleted" and has no "inactive", which the node lists
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: |-
+      the EntityMatchDecision type, line 28
+    evidence: |-
+      export type EntityMatchDecision = "merge_into" | "keep_separate";
+  - node: domain/knowledge-base/entity-match-review
+    held_at: |-
+      EntityMatchQueueItemWire and EntityMatchCandidateWire (lines 51-64), with EntityMatchCandidate and EntityMatchQueueItem (lines 119-132)
+    evidence: |-
+      export interface EntityMatchCandidateWire {
+        readonly candidate_node_id: string;
+        readonly canonical_name: string;
+        readonly similarity: number;
+      }
+  - node: domain/knowledge-base/item-kind
+    held_at: |-
+      nowhere
+    evidence: |-
+      the only type of this name, `export type ItemKind = "link" | "attribute";` (line 27), declares the values of domain/knowledge-base/assertion-kind and not the node | link | fragment of the item-kind node; no declaration in the file carries "fragment" as a kind
+  - node: domain/knowledge-base/node-status
+    held_at: |-
+      the NodeStatus type, line 30
+    evidence: |-
+      export type NodeStatus = "active" | "needs_review" | "merged" | "deleted";
+  - node: domain/knowledge-base/review-queue-kind
+    held_at: |-
+      the ReviewQueueKind type, line 26
+    evidence: |-
+      export type ReviewQueueKind = "entity_match" | "disputed";
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: |-
+      the ValidFromSource type, line 37
+    evidence: |-
+      export type ValidFromSource = "stated" | "document" | "received";
+  - node: domain/knowledge-base/value-type
+    held_at: |-
+      the AttributeValueType type, line 45
+    evidence: |-
+      export type AttributeValueType = "text" | "date" | "number" | "bool";
+looked_past: |-
+  AttributeDetailWire declares an optional `provenance?: ReadonlyArray<unknown>` field that the consumed contract contracts/curation-workspace/bff-curation-reads does not list; the published retrieval contract does carry it, and no code in the file reads it, so I left it as a different judgment's.
+candidates_opened:
+  - domain/knowledge-base/assertion-kind
+  - domain/knowledge-base/reject-rate
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/reject-rate-by-code

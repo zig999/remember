@@ -1,0 +1,89 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/ComparePane.tsx
+    where: >-
+      EntityMatchView, the radiogroup's aria-label (line 71); the same kind of text sits at the DisputeView radiogroup (line 141) and the ComparePane section (line 175)
+    evidence: |-
+      aria-label="Candidatos para fusão"
+      aria-label="Lados em disputa"
+      aria-label="Comparação"
+    cost: >-
+      These are the accessible names announced for the comparison region and for the two selection groups. They are text the screen tells a person using assistive technology. No node states them, and a search of the specification root for these strings found nothing. The wording lives only in this file, so a reader who looks for what the panel announces will not find it in the specification.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the accessible names a node, most naturally the read-decision-panel operation of contracts/curation-workspace/curation-screen.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/DecisionPanel/ComparePane.tsx
+    where: >-
+      EntityMatchView, the radiogroup branch (lines 68-93). It renders the "Múltiplos candidatos" line before the empty-candidates check, and it is also the branch taken by a single candidate outside summary presentation.
+    evidence: |-
+      <p className="text-xs text-foreground">
+        Múltiplos candidatos — escolha qual representa a mesma entidade.
+      </p>
+      {item.candidates.length === 0 ? (
+        <p className="text-xs text-body">
+          Nenhum candidato sugerido. Você pode manter separados ou fundir
+    cost: >-
+      The node gives each hint its own case: "for several candidates 'Múltiplos candidatos — escolha qual representa a mesma entidade.', for none 'Nenhum candidato sugerido. Você pode manter separados ou fundir ad-hoc por busca.'". The code shows both hints when there are no candidates. It also shows "Múltiplos candidatos" for a single candidate in full presentation. The owner is told to choose among several candidates when there are none or only one, and the node does not say that is intended.
+    kind: contradicts
+    correction: >-
+      Either the node would have to state that the "Múltiplos candidatos" hint also shows for none and for a single candidate outside summary presentation, or the code would have to show that hint only for several candidates.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: >-
+      The file sends no request and reads no answer. It receives an already-read ReviewQueueItem as the prop `readonly item: ReviewQueueItem;`.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the texts emitted by EntityMatchView (lines 50-93) and DisputeSubject/DisputeView (lines 103-161)
+    evidence: |-
+      Candidato com alta similaridade (≥{" "}
+      {Math.round(HIGH_SIMILARITY_THRESHOLD * 100)}%): podemos fundir diretamente.
+      `Apenas um valor pode vigorar por vez no mesmo período. Escolha qual vale ou ajuste os períodos.`
+      "Selecione qual lado prefere ou ajuste os períodos."
+      The texts for the link and attribute disputes and the summary/full-diff instruction match the node. The file departs from the node only at the finding above.
+  - node: domain/curation-workspace/display-mode
+    held_at: >-
+      the inline union `readonly mode: "summary" | "full-diff";` in the props of EntityMatchView (line 45) and DisputeView (line 134), with the value from `const mode = resolveDisplayMode(item);` (line 172)
+    evidence: |-
+      readonly mode: "summary" | "full-diff";
+      const mode = resolveDisplayMode(item);
+  - node: domain/knowledge-base/dispute-scope
+    held_at: nowhere
+    evidence: >-
+      The shape is declared elsewhere (types). The file only reads fields of it: `const relation = isLink ? item.scope.linkType : item.scope.attributeKey;`
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the review. It reads `item.candidates` and `candidate.candidateNodeId` from the entity-match item, whose type is imported from "../../types".
+  - node: rules/curation-workspace/every-side-is-listed-and-selectable
+    held_at: >-
+      the item.sides.map in DisputeView (lines 150-157), wiring each card's onSelect to onSelectSide
+    evidence: |-
+      {item.sides.map((s) => (
+        <DisputeSideCard
+          key={s.itemId}
+          side={s}
+          selected={selectedSide === s.itemId}
+          onSelect={onSelectSide}
+        />
+  - node: rules/curation-workspace/full-presentation-lists-every-candidate
+    held_at: >-
+      the fall-through branch of EntityMatchView, the item.candidates.map at lines 83-91
+    evidence: |-
+      item.candidates.map((c) => (
+        <CandidateCard
+          key={c.candidateNodeId}
+  - node: rules/curation-workspace/periods-are-listed-in-words-under-the-sides
+    held_at: >-
+      the unconditional `<PeriodTimeline sides={item.sides} />` in DisputeView (line 158), which is rendered in both modes. The wording and the A, B, C lettering sit in PeriodTimeline, another file.
+    evidence: >-
+      <PeriodTimeline sides={item.sides} />
+  - node: rules/curation-workspace/summary-shows-the-single-candidate-alone
+    held_at: >-
+      the first branch of EntityMatchView, line 50
+    evidence: |-
+      if (mode === "summary" && item.candidates.length === 1) {
+        const top = item.candidates[0]!;
+looked_past: >-
+  The header comment and the DisputeSubject comment cite spec sections and say the panel HEADER shows the subject node and relation, and the prop comment says a SELF_MERGE_FORBIDDEN refusal highlights the candidate. Those facts belong to nodes outside this set and are held by code in DecisionPanel and CandidateCard, so they are prose for the comment route and not findings here.

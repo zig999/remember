@@ -1,0 +1,84 @@
+findings:
+  - file: src/features/curation/components/UndoToast/UndoToast.tsx
+    where: >-
+      header doc comment, lines 9-10 (and line 6, "Item removido · Desfazer (5s)")
+    evidence: |-
+      * - curadoria.flow.md FL-CURATION-05 — "no BFF request during the 5-second
+      *    window".
+    cost: >-
+      The five-second window and the rule that nothing is sent during it are written here a second
+      time, in prose that no running system emits. The next reader may take this comment for the
+      home of the rule. The comment will not follow the node if the window or the send rule changes.
+    kind: restates
+    correction: >-
+      Remove the prose. The window is held by `export const UNDO_WINDOW_MS = 5_000;` in this file.
+      "Sent only when it ends" is held by the commit timer in
+      src/features/curation/hooks/useDecisionDispatch.tsx, `}, UNDO_WINDOW_MS);`.
+    node: rules/curation-workspace/undo-window-is-five-seconds
+  - file: src/features/curation/components/UndoToast/UndoToast.tsx
+    where: >-
+      header doc comment, lines 29-32
+    evidence: |-
+      * `onUndo` is the only side-effect this component triggers — it does NOT
+      * call `toast.dismiss()` itself.
+    cost: >-
+      The rule that the undo action only reports to its caller is stated again in a comment. The
+      code that holds it is `onClick={onUndo}`, a few lines below. The comment is a second home
+      that will not follow a change to the node.
+    kind: restates
+    correction: >-
+      Remove the prose (lines 29-32 and the `onUndo` JSDoc at lines 46-47). The fact is held by
+      `onClick={onUndo}` in this file.
+    node: rules/curation-workspace/undo-toast-only-reports-the-undo
+  - file: src/features/curation/components/UndoToast/UndoToast.tsx
+    where: >-
+      JSDoc on `deadlineMs` in UndoToastProps, lines 43-44
+    evidence: |-
+      /** Absolute deadline (ms since epoch) at which the destructive action
+       *  commits. The toast renders `ceil((deadline - now()) / 1000)`. */
+    cost: >-
+      The rounding rule (whole seconds, rounded up from the deadline) is restated in a comment,
+      alongside the code that holds it. The next reader has two places to compare.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by `Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000))`
+      in `secondsRemaining`.
+    node: rules/curation-workspace/undo-toast-counts-down-in-whole-seconds
+  - file: src/features/curation/components/UndoToast/UndoToast.tsx
+    where: >-
+      the Desfazer Button, line 101
+    evidence: |-
+      aria-label="Desfazer ação"
+    cost: >-
+      This is text the screen emits: it is the accessible name of the undo control. No node holds
+      it. The contract only says the toast "offers Desfazer". The aria-label overrides the visible
+      "Desfazer" with a different announced name that exists only in this file. A reader looking in
+      the specification for what the control is called does not find it.
+    kind: unstated
+    correction: >-
+      The node contracts/curation-workspace/curation-screen should hold the control's accessible
+      name, or the file should drop the override so that the name matches what the node holds.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: rules/curation-workspace/undo-toast-counts-down-in-whole-seconds
+    held_at: >-
+      `secondsRemaining` (line 57-59) and the render of `{label}` and `{remaining}s` in UndoToast (lines 88-93)
+    evidence: |-
+      return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
+      <span>{label}</span>
+      {remaining}s
+  - node: rules/curation-workspace/undo-toast-only-reports-the-undo
+    held_at: >-
+      the Desfazer Button's handler, line 100
+    evidence: |-
+      onClick={onUndo}
+  - node: rules/curation-workspace/undo-window-is-five-seconds
+    held_at: >-
+      the constant `UNDO_WINDOW_MS` (line 54) in this file. The send-only-at-the-end half sits in
+      the commit timer of src/features/curation/hooks/useDecisionDispatch.tsx, not in this file.
+    evidence: |-
+      export const UNDO_WINDOW_MS = 5_000;
+looked_past: >-
+  The 100 ms refresh interval `TICK_MS` is a repaint cadence with no domain value, and the header comment's captions "Item removido" and "3 itens removidos" are prose only (the captions arrive through the `label` prop). Neither is reported.
+candidates_opened:
+  - rules/curation-workspace/destructive-decision-opens-the-undo-toast

@@ -1,0 +1,109 @@
+findings:
+  - file: src/features/curation/components/CurationDrawer/CurationDrawer.tsx
+    where: |-
+      line 376, the aria-label of DialogPrimitive.Close in CurationDrawer
+    evidence: |-
+      <DialogPrimitive.Close
+                      aria-label="Fechar curadoria"
+                      data-testid="curation-drawer-close"
+    cost: |-
+      The close button's accessible name is text the running system tells assistive-technology users. It is stated only in this file. The next reader who looks in the specification for what the drawer's close control is called will not find it, and a change of the wording will not reach any node.
+    kind: unstated
+    correction: |-
+      Contracts/curation-workspace/curation-screen, operation open-drawer, would have to state the close control's accessible name, or a node would have to declare that it is not a fact of the business.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: |-
+      this file sends no curation request itself. It only calls `useListReviewQueue()` and `useDecisionDispatch({...})`, so the contract's request and answer reading sits in the api and hook files.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      DrawerBody, the open-drawer branches, plus the title in CurationDrawer and DrawerInlineError
+    evidence: |-
+      "Carregando item de curadoria…"; if (queueQuery.isError) { ... message="Não foi possível carregar a evidência." ...}; message="Este item não está mais disponível na fila."; <Link to="/curation" search={{ item: escapeItemParam }} ...>Abrir na fila de curadoria</Link>; <DialogPrimitive.Title ...>Curadoria</DialogPrimitive.Title>
+  - node: rules/curation-workspace/destructive-decisions-carry-a-caption
+    held_at: |-
+      the captions passed to dispatchDestructive in DrawerPanel (lines 186, 203, 225)
+    evidence: |-
+      dispatch.dispatchDestructive({ kind: "resolve_entity_match_merge", ... }, item.nodeId, "Item fundido"); ... "Lado preferido"); ... "Item rejeitado");
+  - node: rules/curation-workspace/destructive-decisions-wait-for-undo
+    held_at: |-
+      the dispatchDestructive branches for the merge, the preference and the rejection in DrawerPanel actions
+    evidence: |-
+      const isDestructive = body.decision === "merge_into"; if (isDestructive) { dispatch.dispatchDestructive(...) }; if (body.decision === "prefer_one") { dispatch.dispatchDestructive(...) }; onReject: (body) => { dispatch.dispatchDestructive({ kind: "reject_item", body }, ...
+  - node: rules/curation-workspace/drawer-closes-on-esc-close-backdrop-or-removal
+    held_at: |-
+      the Dialog Root's onOpenChange and the onItemRemove closure in DrawerPanel
+    evidence: |-
+      <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}> ... <DialogPrimitive.Close aria-label="Fechar curadoria" ...> ... onItemRemove: () => { forceClose(); } with close(): void { onOpenChange(false); }
+  - node: rules/curation-workspace/drawer-dispute-decisions-wait-for-the-evidence
+    held_at: |-
+      provenanceContextOf, and effectiveEvidenceViewed in DrawerPanel
+    evidence: |-
+      const first = item.sides[0]; ... return { itemKind: item.itemKind, itemId: first.itemId }; const armedImmediately = provenance === null; const effectiveEvidenceViewed = armedImmediately || evidenceViewed; <ProvenanceTrail ... onEvidenceViewed={() => { setEvidenceViewed(true); }} />
+  - node: rules/curation-workspace/drawer-entity-match-decisions-are-enabled-at-once
+    held_at: |-
+      provenanceContextOf and armedImmediately
+    evidence: |-
+      if (item.kind === "entity_match") return null; const armedImmediately = provenance === null; const effectiveEvidenceViewed = armedImmediately || evidenceViewed;
+  - node: rules/curation-workspace/drawer-finds-its-item-in-the-queue-listing
+    held_at: |-
+      findDrawerItem, and the no-argument useListReviewQueue() call in DrawerBody
+    evidence: |-
+      if (it.nodeId === itemId) return it; ... if (it.sides.some((s) => s.itemId === itemId)) return it; const queueQuery = useListReviewQueue();
+  - node: rules/curation-workspace/drawer-has-no-next-item
+    held_at: |-
+      the getNextItem and onItemRemove arguments of useDecisionDispatch in DrawerPanel
+    evidence: |-
+      getNextItem: () => null, onItemRemove: () => { forceClose(); },
+  - node: rules/curation-workspace/drawer-holds-one-queue-item
+    held_at: |-
+      DrawerBodyProps (kind, itemId) and findDrawerItem. The CurationDrawerProps shape lives in CurationDrawer.types.ts, outside this file.
+    evidence: |-
+      readonly kind: "entity_match" | "disputed"; readonly itemId: string; ... export function findDrawerItem(items, kind: "entity_match" | "disputed", itemId: string): ReviewQueueItem | null
+  - node: rules/curation-workspace/drawer-never-changes-the-address
+    held_at: |-
+      DrawerInlineError, the only navigation, and the absence of any navigation call in the rest of the file
+    evidence: |-
+      <Link to="/curation" search={{ item: escapeItemParam }} onClick={onClose} ...> with const escapeItemParam = `${kind}:${itemId}`;
+  - node: rules/curation-workspace/drawer-reads-the-queue-only-while-open
+    held_at: |-
+      the body of CurationDrawer, which mounts DrawerBody, the only caller of useListReviewQueue, only when open
+    evidence: |-
+      {open ? (
+                      <DrawerBody kind={kind} itemId={itemId} close={close} />
+                    ) : null}
+  - node: rules/curation-workspace/drawer-shares-the-evidence-flag
+    held_at: |-
+      the store selectors at the top of DrawerPanel
+    evidence: |-
+      const evidenceViewed = useCurationStore((s) => s.evidenceViewed); const setEvidenceViewed = useCurationStore((s) => s.setEvidenceViewed);
+  - node: rules/curation-workspace/drawer-shows-the-callers-label
+    held_at: |-
+      the Description inside the header of CurationDrawer
+    evidence: |-
+      {itemLabel !== undefined && itemLabel.length > 0 && (
+                        <DialogPrimitive.Description className="mt-xs text-xs text-muted-foreground truncate">
+                          {itemLabel}
+  - node: rules/curation-workspace/immediate-decisions-are-sent-at-once
+    held_at: |-
+      the dispatchNonDestructive branches in DrawerPanel actions
+    evidence: |-
+      dispatch.dispatchNonDestructive({ kind: "resolve_entity_match_keep", ... }); dispatch.dispatchNonDestructive({ kind: "resolve_dispute_keep", body }); dispatch.dispatchNonDestructive({ kind: "resolve_dispute_adjust", body }); onConfirm: ... dispatchNonDestructive({ kind: "confirm_item", body }); onCorrect: ... dispatchNonDestructive({ kind: "correct_item", body });
+  - node: rules/curation-workspace/preference-removes-its-item-by-the-first-id
+    held_at: |-
+      onResolveDispute in DrawerPanel
+    evidence: |-
+      const optimisticId = body.item_ids[0] ?? item.sides[0]?.itemId ?? "";
+  - node: rules/curation-workspace/undo-keeps-the-drawer-open
+    held_at: |-
+      the onItemRestore handler in DrawerPanel, which does nothing and so leaves the drawer open on the same item
+    evidence: |-
+      onItemRestore: () => {
+            // No-op: the drawer state is already correct — the item is the
+            // current `item` prop. Sonner has already restored the toast UI.
+          },
+looked_past: |-
+  The comments at lines 129-131 and 135-136 claim the evidence-viewed state is "local to the drawer (NOT the page store)", and the file's imports and selectors show the shared useCurationStore. That claim is prose no code carries, so it is a comment-route matter. The header comment also cites a GlassSurface, a z-index scale and a 20-item page default, which are prose or styling that conformance does not judge.
+candidates_opened: []

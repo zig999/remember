@@ -1,0 +1,78 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/CandidateCard.tsx
+    where: |-
+      lines 63-72, the progressbar span: its aria-label and its visible text
+    evidence: |-
+      aria-label="Similaridade com o nó proposto"
+      ...
+      Similaridade {pct} de 100
+    cost: |-
+      This is text the screen emits to the owner and to assistive technology. It states the similarity as "Similaridade N de 100" and names the compared node "o nó proposto". No node holds either wording; the grep for "Similaridade" over the specification root returned nothing. The next reader looks in the specification for what the candidate card says and does not find it. The wording therefore lives only in this file, and no node's change reaches it.
+    kind: unstated
+    correction: |-
+      The analysis would give the candidate card's similarity label and its progressbar accessible name a home, most likely in the curation-screen read-decision-panel answer. The rule candidate-shows-its-similarity-as-a-percentage only constrains the percentage value and the canonical name, not this wording.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/DecisionPanel/CandidateCard.tsx
+    where: |-
+      the file docstring, lines 4-5
+    evidence: |-
+      Selecting a candidate sets the merge target_node_id.
+    cost: |-
+      Prose states the rule a node already holds. The code that holds it is in another file. DecisionPanel.tsx keeps `selectedCandidate` in state and sends it as `target_node_id: selectedCandidate`. This file only calls `onSelect(candidate.candidateNodeId)`. The docstring is a second home for the rule, and it can drift from the node unnoticed.
+    kind: restates
+    correction: |-
+      Remove the sentence from the docstring.
+    node: rules/curation-workspace/selecting-a-candidate-makes-it-the-merge-target
+  - file: src/features/curation/components/DecisionPanel/CandidateCard.tsx
+    where: |-
+      the comment on the `invalid` prop, lines 17-18
+    evidence: |-
+      When the parent surfaces BUSINESS_INVALID_TARGET_NODE / SELF_MERGE
+         *  inline, the card highlights with the error border.
+    cost: |-
+      Prose restates the self-merge refusal rule, which says to mark the selected candidate invalid. The code holds that marking in two places. DecisionPanel.tsx derives `invalidCandidateId` from `selectedCandidate`, and this file's `aria-invalid` and `border-border-error` classes render it. The comment adds a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/curation-workspace/self-merge-refusal-shows-the-fixed-text
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file makes no request and reads no answer. It receives `candidate: EntityMatchCandidate` as a prop and calls `onSelect(candidate.candidateNodeId)`.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      nowhere for the read-decision-panel labels. The file renders only the candidate's name and similarity, as in the progressbar span, lines 63-72. The "Fundir neste" label is named only in the docstring and is not rendered here.
+    evidence: |-
+      <span className="font-medium text-foreground">{candidate.canonicalName}</span>
+      <span className="text-xs text-body">{pct}%</span>
+  - node: domain/knowledge-base/entity-match-review
+    held_at: |-
+      nowhere
+    evidence: |-
+      The shape of the candidate's similarity is declared in `../../types` (`import type { EntityMatchCandidate } from "../../types"`). This file only reads `candidate.similarity`, a field of a shape declared in another file.
+  - node: rules/curation-workspace/candidate-shows-its-similarity-as-a-percentage
+    held_at: |-
+      clampPct, lines 23-27, and the render of the name and percentage at lines 60-61
+    evidence: |-
+      function clampPct(n: number): number {
+        if (n < 0) return 0;
+        if (n > 1) return 100;
+        return Math.round(n * 100);
+      }
+  - node: rules/curation-workspace/selecting-a-candidate-makes-it-the-merge-target
+    held_at: |-
+      the onClick handler, line 43, which hands the candidate id to the parent. The parent makes it the merge target, as `target_node_id: selectedCandidate` in DecisionPanel.tsx.
+    evidence: |-
+      onClick={() => onSelect(candidate.candidateNodeId)}
+  - node: rules/curation-workspace/self-merge-refusal-shows-the-fixed-text
+    held_at: |-
+      only the marking of the candidate as invalid, here: the `invalid` prop rendered as aria-invalid and the error border, lines 42 and 55. The fixed text is not in this file.
+    evidence: |-
+      aria-invalid={invalid || undefined}
+      ...
+      invalid ? "border-border-error" : null,
+looked_past: |-
+  The docstring's "Visual: name, similarity bar, \"Fundir neste\" selection radio" and its citation of the feature spec "curadoria.feature.spec.md" and "TC-05" are prose only. The code renders no "Fundir neste" label and no similarity bar, so I did not file them, and the styling comments (glass surface, scrim) are another judgment's.
+candidates_opened: []

@@ -1,0 +1,226 @@
+findings:
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      line 44, the type SelectedItemKind, and line 181, the kind check in parseItemSearchParam
+    evidence: |-
+      export type SelectedItemKind = "entity_match" | "disputed";
+      ...
+      if (kind !== "entity_match" && kind !== "disputed") return null;
+    cost: |-
+      The review queue vocabulary is declared a second time here, and the check repeats the literals inline. The node domain/knowledge-base/review-queue-kind is bound to src/features/curation/types.ts, where `ReviewQueueKind = "entity_match" | "disputed"` is declared. When the node changes, `--check` reaches types.ts and never reaches this file. The two lists can then diverge with nothing saying which one was decided. The node lists `entity-match` with a hyphen, while both files use the underscore form, so a reader comparing them cannot tell which spelling is authoritative.
+    kind: contradicts
+    correction: |-
+      Take the kind type from the file that holds the vocabulary (`ReviewQueueKind` in src/features/curation/types.ts) and derive the parse check from that single declaration. This file would then hold no list of its own.
+    node: domain/knowledge-base/review-queue-kind
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 126-128, the comment inside setSelectedItem
+    evidence: |-
+      // Re-selecting the same item is a no-op (avoids spurious resets of
+      // evidenceViewed). Comparing by kind+id, not by reference — the URL
+      // search routine creates a fresh object every render.
+    cost: |-
+      The prose restates a rule the node already holds, and the code holds it too (the `same` branch returning `{}`). Two readers will treat the comment as a second statement of the rule, and when the node moves the comment will not.
+    kind: restates
+    correction: |-
+      Remove the comment. The code in this file holds the rule.
+    node: rules/curation-workspace/selecting-the-same-item-changes-nothing
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 55-57 and 74-77, the docstrings on evidenceViewed and setSelectedItem
+    evidence: |-
+      Reset to `false` whenever `selectedItem`
+         *  changes (every item starts with evidenceViewed=false). */
+      ...
+      Resets
+         *  `evidenceViewed` to false because every new item must re-prove its
+         *  evidence. `null` returns to UI-01.
+    cost: |-
+      The docstrings restate the not-viewed mark rule, and the `return { selectedItem: item, evidenceViewed: false }` branch and `evidenceViewed: false` in makeInitialState hold it as code. The prose is a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the rule.
+    node: rules/curation-workspace/selecting-another-item-clears-the-evidence-mark
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 167-174, the docstring on parseItemSearchParam
+    evidence: |-
+      Parse a `?item=<kind>:<id>` URL search param into a `SelectedItem`.
+       * Returns `null` if the string is malformed or the kind is unknown
+    cost: |-
+      The docstring restates the unreadable-link rule, and the code holds it in this file (`typeof raw !== "string" || raw.length === 0`, `colon < 1 || colon >= raw.length - 1`, the kind check). The prose can drift from the code, and nothing reads it.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the rule.
+    node: rules/curation-workspace/unreadable-item-link-selects-nothing
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 37-43 and 185-190, the docstrings on SelectedItemKind and stringifyItemSearchParam
+    evidence: |-
+      the URL deep-link encodes it as
+       * `?item=<kind>:<id>`.
+      ...
+      Returns `undefined` when `item === null` so
+       * callers can spread the result into a `to` search object without
+       * polluting the URL with empty values.
+    cost: |-
+      The prose states the address form and the no-item-parameter outcome. The code holds both in this file: `return `${item.kind}:${item.id}`` and `if (item === null) return undefined;`. The docstring is a second home for both facts. Neither rule is the only place the parameter name appears in code. The name `item` is not in this file's code at all, only in these comments.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the address form and the empty-selection outcome.
+    node: rules/curation-workspace/selected-item-is-carried-in-the-address
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 98-102, the docstring on reset
+    evidence: |-
+      Reset every field to the initial state. Called on route unmount so
+         *  the next visit starts clean
+    cost: |-
+      The docstring restates the reset rule. The code holds it as `set(makeInitialState())`. Whoever edits the starting values reads the comment as a second statement of the rule.
+    kind: restates
+    correction: |-
+      Remove the docstring.
+    node: rules/curation-workspace/reset-restores-the-starting-values
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 60-63 and 83-84, the docstrings on sessionResolved and incrementResolved
+    evidence: |-
+      Number of items decided in the current page session. Persists across
+         *  refetches but resets when the page unmounts.
+    cost: |-
+      The prose restates the start value and the counting rule. The code holds both: `sessionResolved: 0` in makeInitialState and `sessionResolved: state.sessionResolved + 1`.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the rule.
+    node: rules/curation-workspace/resolved-count-starts-at-zero
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 65-68, the docstring on lastSeenTotal
+    evidence: |-
+      `null`
+       *  before the first resolve so the pill never flashes on mount.
+    cost: |-
+      The docstring restates the empty-until-first-answer rule. The code holds it as `lastSeenTotal: null` and the `state.lastSeenTotal === total` guard in updateLastSeen.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the rule.
+    node: rules/curation-workspace/last-seen-total-starts-empty-and-follows-changes
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 70-72 and 93-96, the docstrings on selectedItems and setSelectedItems
+    evidence: |-
+      Replace the batch-selection set. The caller computes the new set
+         *  (toggle / clear / select-all); the store just stores it.
+    cost: |-
+      The prose restates the replace-whole rule, and the code holds it as `set({ selectedItems: items })`. The start-empty half is held by `new Set<string>()` in makeInitialState.
+    kind: restates
+    correction: |-
+      Remove the docstring text that states the rule.
+    node: rules/curation-workspace/checked-set-starts-empty-and-is-replaced-whole
+  - file: src/features/curation/state/curation-store.ts
+    where: |-
+      lines 8-9, the file header docstring on sessionResolved
+    evidence: |-
+      resets
+       *     when the page unmounts (not persisted)
+    cost: |-
+      The prose restates the not-persisted rule, and the code holds it: the store is a plain `create<CurationState>(...)` with no persistence middleware. The comment is a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/curation-workspace/session-state-is-not-persisted
+read:
+  - node: domain/curation-workspace/selected-item
+    held_at: |-
+      the SelectedItem interface, lines 46-49
+    evidence: |-
+      export interface SelectedItem {
+        readonly kind: SelectedItemKind;
+        readonly id: string;
+      }
+  - node: rules/curation-workspace/checked-set-starts-empty-and-is-replaced-whole
+    held_at: |-
+      makeInitialState and setSelectedItems
+    evidence: |-
+      selectedItems: new Set<string>(),
+      ...
+      set({ selectedItems: items });
+  - node: rules/curation-workspace/item-id-is-everything-after-the-first-colon
+    held_at: |-
+      parseItemSearchParam, lines 177-180
+    evidence: |-
+      const colon = raw.indexOf(":");
+      ...
+      const id = raw.slice(colon + 1);
+  - node: rules/curation-workspace/last-seen-total-starts-empty-and-follows-changes
+    held_at: |-
+      makeInitialState and updateLastSeen
+    evidence: |-
+      lastSeenTotal: null,
+      ...
+      if (state.lastSeenTotal === total) return {};
+      return { lastSeenTotal: total };
+  - node: rules/curation-workspace/moving-on-selects-the-next-item-and-counts-it
+    held_at: |-
+      incrementResolved holds the count half. Choosing the next item is not in this file. It is done by whoever calls setSelectedItem.
+    evidence: |-
+      incrementResolved: () => {
+        set((state) => ({ sessionResolved: state.sessionResolved + 1 }));
+      },
+  - node: rules/curation-workspace/no-selection-leaves-no-item-parameter
+    held_at: |-
+      stringifyItemSearchParam, line 194
+    evidence: |-
+      if (item === null) return undefined;
+  - node: rules/curation-workspace/reset-restores-the-starting-values
+    held_at: |-
+      reset and makeInitialState
+    evidence: |-
+      reset: () => {
+        set(makeInitialState());
+      },
+  - node: rules/curation-workspace/resolved-count-starts-at-zero
+    held_at: |-
+      makeInitialState
+    evidence: |-
+      sessionResolved: 0,
+  - node: rules/curation-workspace/selected-item-is-carried-in-the-address
+    held_at: |-
+      stringifyItemSearchParam, line 195, and the parse inverse
+    evidence: |-
+      return `${item.kind}:${item.id}`;
+  - node: rules/curation-workspace/selecting-another-item-clears-the-evidence-mark
+    held_at: |-
+      setSelectedItem, line 136, and makeInitialState
+    evidence: |-
+      return { selectedItem: item, evidenceViewed: false };
+      ...
+      evidenceViewed: false,
+  - node: rules/curation-workspace/selecting-the-same-item-changes-nothing
+    held_at: |-
+      setSelectedItem, lines 130-135
+    evidence: |-
+      const same =
+        state.selectedItem !== null &&
+        item !== null &&
+        state.selectedItem.kind === item.kind &&
+        state.selectedItem.id === item.id;
+      if (same) return {};
+  - node: rules/curation-workspace/session-state-is-not-persisted
+    held_at: |-
+      the store creation, line 122, a plain create with no persistence middleware
+    evidence: |-
+      export const useCurationStore = create<CurationState>((set) => ({
+  - node: rules/curation-workspace/unreadable-item-link-selects-nothing
+    held_at: |-
+      parseItemSearchParam, lines 176-181
+    evidence: |-
+      if (typeof raw !== "string" || raw.length === 0) return null;
+      ...
+      if (colon < 1 || colon >= raw.length - 1) return null;
+      ...
+      if (kind !== "entity_match" && kind !== "disputed") return null;
+looked_past: |-
+  Several comments state facts only in prose, with no code or emitted text in this file carrying them: the evidenceViewed gate that arms the DecisionBar, the "N novos" pill, the reset on route unmount, and the rationale for choosing Zustand over Context. Their route is the comment route, and no node holds them.
+candidates_opened:
+  - domain/knowledge-base/review-queue-kind

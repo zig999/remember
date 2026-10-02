@@ -1,0 +1,76 @@
+findings:
+  - file: src/features/curation/components/QueueList.tsx
+    where: >-
+      the aria-label on the listbox root in the empty branch (line 140) and in the populated branch (line 154)
+    evidence: |-
+      aria-label="Fila de curadoria"
+    cost: >-
+      The accessible name a screen reader announces for the review queue is text the system emits to the owner, and it
+      lives only in this file. The specification's full-text projection has no match for it, so the next reader who
+      looks in the specification for what the queue is called will not find it.
+    kind: unstated
+    correction: >-
+      Give the accessible name of the queue list a node, through the analysis route, in the curation-workspace
+      screen's domain or rules.
+  - file: src/features/curation/components/QueueList.tsx
+    where: >-
+      the doc comment above buildItemKey (lines 51-56) and the inline comment in its disputed branch (lines 61-64)
+    evidence: |-
+      entity_match
+       * uses `node_id`; disputed uses a synthesized
+       * `<itemKind>:<scopeFingerprint>` so two disputes on different scopes
+       * never collide.
+      and
+      // Disputed: prefer item-id of the first side (stable per dispute),
+      // falling back to a deterministic scope-based id when sides is empty
+    cost: >-
+      The prose states the identification rule a second time, outside behavior. The `buildItemKey` code holds it, so
+      the pair conforms. The comment is a second home that can drift from the node, and its wording
+      ("scopeFingerprint") already differs from the node's "assertion kind, source node and link type or attribute key".
+    kind: restates
+    correction: >-
+      Remove the comment. The rule stays held by `buildItemKey` in this file, and the node binds it.
+    node: rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: |-
+      The file receives `items: ReadonlyArray<ReviewQueueItem>` as a prop and makes no request. A search of the file
+      found no `/api/v1/curation/queue` path and no `fetch`. The only reader of the list-review-queue answer's fields
+      here is `item.nodeId`, `item.sides[0].itemId` and `item.scope.sourceNodeId`, which read shapes declared in
+      "../types".
+  - node: domain/curation-workspace/selected-item
+    held_at: nowhere
+    evidence: |-
+      import type { SelectedItem } from "../state/curation-store";
+      The shape (kind, id) is declared in another file. This file only builds values with `return { kind: "disputed", id };`
+      and reads `selected.kind` and `selected.id`.
+  - node: rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side
+    held_at: buildItemKey, lines 57-73
+    evidence: |-
+      if (item.kind === "entity_match") {
+        return { kind: "entity_match", id: item.nodeId };
+      }
+      const firstSide = item.sides[0];
+      const id =
+        firstSide !== undefined
+          ? firstSide.itemId
+          : `${item.itemKind}:${item.scope.sourceNodeId ?? "?"}:${
+              item.scope.linkType ?? item.scope.attributeKey ?? "?"
+            }`;
+  - node: rules/curation-workspace/queue-keeps-the-answered-order
+    held_at: the virtualItems.map in the render, lines 162-193
+    evidence: |-
+      const virtualItems = virtualizer.getVirtualItems();
+      ...
+      {virtualItems.map((v) => {
+        const item = items[v.index];
+      The component indexes `items` positionally and applies no sort, filter or reorder.
+looked_past: >-
+  The comment "sides should always have ≥2 entries" states a fact only in prose, with no code or emitted text carrying
+  it. The same applies to the row-height, overscan and skeleton-count constants, which are layout details and not
+  domain facts.
+candidates_opened:
+  - domain/curation-workspace/selected-item
+  - rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side
+  - rules/curation-workspace/queue-keeps-the-answered-order

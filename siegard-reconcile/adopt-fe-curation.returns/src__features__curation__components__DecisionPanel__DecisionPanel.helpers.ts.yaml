@@ -1,0 +1,53 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.helpers.ts
+    where: |-
+      relative(), lines 11-22
+    evidence: |-
+      if (min < 1) return "agora";
+        if (min < 60) return `há ${min} min`;
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return `há ${hr} h`;
+        const day = Math.floor(hr / 24);
+        if (day < 30) return `há ${day} d`;
+        return then.toLocaleDateString("pt-BR");
+    cost: |-
+      The age wording and its thresholds (under a minute, under an hour, under a day, under thirty days, then the pt-BR date) are held here by code, but the node that states them is not in this file's node set, so a change to the node does not reach this file through the trace. The same format string is also present in frontend/src/features/curation/components/QueueItem.tsx, so two copies of one rule exist and nothing ties either to the node. The negative-diff clamp `Math.max(0, ...)` is the node's "future time reading agora".
+    kind: contradicts
+    correction: |-
+      Bind this file to rules/curation-workspace/item-age-reads-in-minutes-hours-and-days. The code agrees with the node, and the claim is that a bind is missing. It is not a request for the code to read the specification.
+    node: rules/curation-workspace/item-age-reads-in-minutes-hours-and-days
+read:
+  - node: rules/curation-workspace/correction-starts-from-the-first-sides-values
+    held_at: |-
+      buildCorrectionDefaults(), lines 43-58
+    evidence: |-
+      const first = item.sides[0];
+        if (!first) {
+          return { validFromSource: "document" };
+        }
+        return {
+          value: first.value,
+          targetNodeId: first.targetNodeId,
+          validFrom: first.validFrom ? first.validFrom.toISOString().slice(0, 10) : null,
+          validTo: first.validTo ? first.validTo.toISOString().slice(0, 10) : null,
+          validFromSource: first.validFromSource,
+          validFromFragmentId: null,
+        };
+  - node: rules/curation-workspace/dispute-header-falls-back-until-the-name-arrives
+    held_at: |-
+      describeScope(), lines 36-39
+    evidence: |-
+      if (item.kind === "entity_match") return item.canonicalName;
+        return item.scope.linkType ?? item.scope.attributeKey ?? "Item em disputa";
+  - node: rules/curation-workspace/header-badge-names-the-queue-kind
+    held_at: |-
+      headerBadge(), lines 25-33
+    evidence: |-
+      if (item.kind === "entity_match") {
+          return { state: "uncertain", label: "Para revisar" };
+        }
+        return { state: "disputed", label: "Disputado" };
+looked_past: |-
+  The file's header docstring cites a "300-line limit" for DecisionPanel.tsx, which is a code-structure convention and no domain fact, so it is prose for the comment route and not a finding here.
+candidates_opened:
+  - rules/curation-workspace/item-age-reads-in-minutes-hours-and-days

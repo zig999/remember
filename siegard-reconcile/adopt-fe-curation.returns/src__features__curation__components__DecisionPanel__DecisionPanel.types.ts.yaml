@@ -1,0 +1,88 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.types.ts
+    where: >-
+      Header docstring line 8 and the JSDoc on the `evidenceViewed` prop, lines 53-54.
+    evidence: |-
+      * - `evidenceViewed`   — gates the DecisionBar (caller-managed).
+      /** Set true after the curator scrolled/focused the ProvenanceTrail. */
+      readonly evidenceViewed: boolean;
+    cost: >-
+      The prose says in a second place that the caller owns the viewed-evidence flag. A reader who finds that
+      comment may take it as the place the rule lives. The required `evidenceViewed: boolean` prop in this file
+      already carries it, and the comment adds nothing the prop does not.
+    kind: restates
+    correction: >-
+      Remove the header line and the JSDoc through the comment route, then run /reconcile over this file. The
+      prop declaration holds the fact.
+    node: rules/curation-workspace/evidence-viewed-is-supplied-by-the-caller
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.types.ts
+    where: >-
+      The `DecisionPanelActions` interface, lines 38-44, and the imports of `ConfirmItemRequest` and
+      `RejectItemRequest`, lines 26-27.
+    evidence: |-
+      readonly onConfirm?: (body: ConfirmItemRequest) => void;
+      readonly onReject?: (body: RejectItemRequest) => void;
+    cost: >-
+      The node says the decision panel takes no confirm, reject or adjust-periods decision. This props contract
+      has the panel accept callbacks for confirm and reject. Anyone who reads the specification will believe
+      those decisions cannot reach the panel, while the contract here lets a caller supply them. The two
+      sources now say opposite things about what the panel takes.
+    kind: contradicts
+    correction: >-
+      Either the node or the contract has to move. If the node stands, `onConfirm` and `onReject` leave
+      `DecisionPanelActions`. If the contract is the intended behaviour, the node is the one to revise through
+      the analysis route.
+    node: rules/curation-workspace/panel-takes-no-confirm-reject-or-adjust
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.types.ts
+    where: >-
+      The `itemKindOf` function body, the `entity_match` branch, lines 91-98.
+    evidence: |-
+      if (item.kind === "entity_match") {
+        ...
+        return "link";
+      }
+    cost: >-
+      The code maps every entity-match queue item to the item kind "link". No node holds that mapping. The
+      comment above it calls the branch unused, so the value reads as a type-totality default. It is still a
+      domain value that lives only in this file, and a later reader who relies on it will not find it in the
+      specification.
+    kind: unstated
+    correction: >-
+      Give the item kind of a curation queue item a node, or remove the unused branch.
+
+read:
+  - node: rules/curation-workspace/evidence-viewed-is-supplied-by-the-caller
+    held_at: >-
+      The required `evidenceViewed` prop in `DecisionPanelProps`, line 54. The file declares no logic that
+      computes it.
+    evidence: |-
+      readonly evidenceViewed: boolean;
+  - node: rules/curation-workspace/fragment-filter-reaches-the-picker
+    held_at: >-
+      The optional `fragmentFilter` prop in `DecisionPanelProps`, lines 70-73. This file declares the shape of
+      the filter the caller hands in. The forwarding to the picker is in another file that this pass did not
+      read.
+    evidence: |-
+      readonly fragmentFilter?: {
+        readonly llmRunId?: string;
+        readonly rawInformationId?: string;
+      };
+  - node: rules/curation-workspace/panel-takes-no-confirm-reject-or-adjust
+    held_at: nowhere
+    evidence: |-
+      readonly onConfirm?: (body: ConfirmItemRequest) => void;
+      readonly onReject?: (body: RejectItemRequest) => void;
+      The interface declares both callbacks. No callback for adjust-periods is declared.
+  - node: rules/curation-workspace/staleness-is-never-detected-by-the-panel
+    held_at: >-
+      The optional `stale` and `onRefetch` props in `DecisionPanelProps`, lines 56 and 58. The staleness flag is
+      an input, and the file declares nothing that detects it.
+    evidence: |-
+      readonly stale?: boolean;
+      readonly onRefetch?: () => void;
+
+looked_past: >-
+  The JSDoc and header comments cite spec sections and describe component behaviour (StaleBanner overlay, GlassSurface surfaces, "gates the DecisionBar"), and the prose "Set true after the curator scrolled/focused the ProvenanceTrail" states a trigger that no code in this file holds. All of it is prose for the comment route, not a fact of the pair.
+
+candidates_opened:
+  - domain/knowledge-base/item-kind

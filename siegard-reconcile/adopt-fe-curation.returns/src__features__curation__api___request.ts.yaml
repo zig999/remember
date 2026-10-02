@@ -1,0 +1,116 @@
+findings:
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the module docstring, lines 4-16 and 22-26, and the httpCuration docstring, lines 139-143
+    evidence: |-
+      " *  - On 2xx: parses the bare JSON body and returns it typed as `T`.
+       *  - On 4xx/5xx: parses the standard error envelope and throws
+       *    `EnvelopeError`" and " *    the body is not JSON (raw 5xx HTML), `SYSTEM_UPSTREAM` is used."
+    cost: |-
+      The bare-body rule and the SYSTEM_UPSTREAM fallback are written a second time in prose that no running system emits. If the contract moves, the docstring stays behind and reads as the decided rule. The code that holds both is `return (await response.json()) as T;` and `response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN"` in this same file.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route. The contract already holds the fact, and the code in this file already implements it.
+    node: contracts/curation-workspace/bff-curation
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the field comment on `__retried`, lines 59-60, and the module docstring, lines 27-31
+    evidence: |-
+      "INTERNAL — set by the 401 retry path so the second attempt cannot
+         *  re-enter the silent-refresh branch." and "The `__retried` guard prevents
+       *        infinite recursion on a second 401."
+    cost: |-
+      The rule that a resent request never refreshes again is stated in prose beside the code that enforces it with `if (response.status === 401 && __retried !== true)`. A reader may take the comment, rather than the node, as where that rule was decided.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route. The rule is held by the node and implemented in this file.
+    node: rules/curation-workspace/resent-curation-request-never-refreshes-again
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the module docstring, lines 27-31, and the httpCuration docstring, lines 144-146
+    evidence: |-
+      "HTTP 401 → attempts DC silent refresh once via `fetchAccessToken()`;
+       *    on success, retries the original request once with the new JWT."
+    cost: |-
+      The refresh-once rule is repeated in prose, and the prose adds the wording "DC silent refresh". The code that holds the rule is `trySilentRefresh()` (`fetchAccessToken()` then `setToken(newJwt)`) and the `__retried: true` resend in this file.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route.
+    node: rules/curation-workspace/first-unauthorized-curation-answer-refreshes-the-token-once
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the module docstring, lines 29-30, and the httpCuration docstring, lines 146-148
+    evidence: |-
+      "On failure, clears the auth store + redirects to
+       *    `/sign-in?reason=session_expired` and throws `AUTH_SESSION_EXPIRED`."
+    cost: |-
+      The sign-in redirect target is written in prose a second time. The code that holds it is `useAuthStore.getState().clear(); redirectImpl("/sign-in?reason=session_expired");` in `trySilentRefresh`. If the node's address changes, the comment would go on naming the old one.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route.
+    node: rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the constant comment, line 64, and the comment at lines 157-158 inside httpCuration
+    evidence: |-
+      "/** Non-ingest cutoff. Mirrors `lib/http.ts` DEFAULT_TIMEOUT_MS. */" and "// Always wrap in a 30s cutoff (curation calls are sub-second p95 budget;"
+    cost: |-
+      The thirty-second cutoff is restated in comments. The code that holds it is `const DEFAULT_TIMEOUT_MS = 30_000;` and the `setTimeout(..., DEFAULT_TIMEOUT_MS)` abort in this file. The comment "Mirrors `lib/http.ts` DEFAULT_TIMEOUT_MS" points a reader at another file as the source of the value, when the node is where it is decided.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route.
+    node: rules/curation-workspace/curation-request-times-out-after-thirty-seconds
+  - file: src/features/curation/api/_request.ts
+    where: |-
+      the doc comment on `authHeader`, line 49
+    evidence: |-
+      "/** Build the `Authorization: Bearer <jwt>` header when a token is present. */"
+    cost: |-
+      The bearer rule is stated in a doc comment above the function that implements it, `return token !== null ? { Authorization: `Bearer ${token}` } : {};`. The comment is a second home for the rule outside behavior.
+    kind: restates
+    correction: |-
+      Remove the prose by the comment route.
+    node: rules/curation-workspace/curation-request-carries-the-access-token
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      httpCuration(), lines 149-271, for the send-curation-request operation only. The other eight operations (list-review-queue, read-curation-metrics, resolve-entity-match, merge-nodes, resolve-dispute, confirm-item, reject-item, correct-item) are not in this file.
+    evidence: |-
+      `return (await response.json()) as T;`, `if (response.status === 204) return undefined as unknown as T;`, "Tempo limite excedido na requisição.", "Requisição cancelada.", "Falha de rede ao contactar o servidor.", "Sua sessão expirou. Faça login novamente.", "Resposta do servidor não é JSON válido.", "Algo deu errado. Tente novamente.", "Erro desconhecido do servidor.". The code and message selection (`typeof errObj?.code === "string" ? errObj.code : response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN"`) and the 401 and 204 branches agree with the contract.
+  - node: rules/curation-workspace/caller-cancellation-ends-the-request
+    held_at: |-
+      httpCuration(), lines 153-168: the caller's signal is composed with the cutoff signal and passed to fetch.
+    evidence: |-
+      `const signal = composeSignals([timeoutController.signal, userSignal]);` and `if (signal !== undefined) fetchInit.signal = signal;`
+  - node: rules/curation-workspace/curation-request-carries-the-access-token
+    held_at: |-
+      authHeader(), lines 50-53. The function is exported and builds the header here. Attaching it to each request is done by the callers, outside this file, except on the resend path at lines 200-206.
+    evidence: |-
+      `return token !== null ? { Authorization: `Bearer ${token}` } : {};`
+  - node: rules/curation-workspace/curation-request-times-out-after-thirty-seconds
+    held_at: |-
+      the DEFAULT_TIMEOUT_MS constant, line 65, and the abort timer in httpCuration(), lines 159-165.
+    evidence: |-
+      `const DEFAULT_TIMEOUT_MS = 30_000;` and `timeoutController.abort(new DOMException("Request timed out after 30s", "TimeoutError"))`, with `clearTimeout(timer)` once the status has arrived.
+  - node: rules/curation-workspace/first-unauthorized-curation-answer-refreshes-the-token-once
+    held_at: |-
+      the 401 branch of httpCuration(), lines 196-212, with trySilentRefresh(), lines 123-134.
+    evidence: |-
+      `const newJwt = await fetchAccessToken(); useAuthStore.getState().setToken(newJwt);` and `return httpCuration<T>(path, { ...opts, headers: Object.fromEntries(nextHeaders.entries()), __retried: true });`
+  - node: rules/curation-workspace/reading-the-answer-body-has-no-cutoff
+    held_at: |-
+      httpCuration(), lines 193-226. The cutoff timer is cleared right after fetch resolves with the status, and the body is read afterwards.
+    evidence: |-
+      `clearTimeout(timer);` followed by `return (await response.json()) as T;` and `raw = await response.json();`
+  - node: rules/curation-workspace/resent-curation-request-never-refreshes-again
+    held_at: |-
+      the `__retried` guard at line 196. The resend is a fresh httpCuration call, so it creates its own thirty-second timer at lines 159-165.
+    evidence: |-
+      `if (response.status === 401 && __retried !== true) {` and `__retried: true,` in the recursive call.
+  - node: rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in
+    held_at: |-
+      the catch branch of trySilentRefresh(), lines 128-133, with the redirect seam at lines 69-76.
+    evidence: |-
+      `useAuthStore.getState().clear(); redirectImpl("/sign-in?reason=session_expired"); return false;` with `window.location.replace(url);`
+looked_past: |-
+  I saw a comment-only claim that curation calls have a "sub-second p95 budget", the `httpStatus: 0` and `details: { cause: String(err) }` values on the timeout, abort, network and invalid-JSON failures, the `__setCurationRedirectForTests` test seam, and the cross-feature duplication rationale for `authHeader`. I did not report them: the first is prose no code holds, the second and third are error-object construction and test plumbing rather than a domain fact, and the last is a code-structure convention.

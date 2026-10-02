@@ -1,0 +1,110 @@
+findings:
+  - file: src/features/curation/components/MetricsStrip/MetricsStrip.tsx
+    where: >-
+      the strip's root element, line 111, and the placeholder cell, line 124
+    evidence: |-
+      aria-label="Métricas de curadoria"
+      aria-label="Carregando métrica"
+    cost: >-
+      The region name and the placeholder name are text the running system gives a screen reader. No node holds either string. A change to them would be made in this file only, and the reader would not find them in the specification.
+    kind: unstated
+    correction: >-
+      The show-metrics operation of contracts/curation-workspace/curation-screen, or a rule beside it, would have to state the region name and the loading placeholder name.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/MetricsStrip/MetricsStrip.tsx
+    where: >-
+      header docblock, lines 20-26 (the "R1 degradation" paragraph)
+    evidence: |-
+      R1 degradation: when `metrics === null && isMetricsError === true`, the
+       * strip renders fallback counts derived from the queue total + the
+       * homogeneous-kind split. Only `entity_match_queue_count` and
+       * `disputed_queue_count` can be derived this way; the calibration rates
+       * (`accept_rate`, etc.) are blanked with `—`
+    cost: >-
+      The fallback rule is written a second time as prose. The code that holds it is the `hasError && fallback` branch of buildCells, in this file. If the node moves, this comment keeps stating the old rule.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The code in buildCells holds the fact.
+    node: rules/curation-workspace/failed-metrics-fall-back-to-the-queue-totals
+  - file: src/features/curation/components/MetricsStrip/MetricsStrip.tsx
+    where: >-
+      header docblock, lines 16-18 (the "Loading" paragraph)
+    evidence: |-
+      Loading: skeleton row (5 cells of pulse-bg) until either:
+       *   - the metrics query resolves OR
+       *   - the metrics query errors AND a fallback total is provided (R1).
+    cost: >-
+      The placeholder rule is restated as prose. The code that holds it is `const skeleton = !settled || cells.length === 0` together with `aria-busy={skeleton || undefined}`, in this file.
+    kind: restates
+    correction: >-
+      Remove the paragraph.
+    node: rules/curation-workspace/metrics-strip-shows-placeholders-until-settled
+  - file: src/features/curation/components/MetricsStrip/MetricsStrip.tsx
+    where: >-
+      header docblock, lines 27-29 (the "Spec constraint" paragraph)
+    evidence: |-
+      Spec constraint: the strip MUST NOT cause the page to error. We accept
+       * `isMetricsError` as a boolean prop
+    cost: >-
+      The never-fail rule is restated as prose. The code that holds it is that buildCells returns `[]` when there is no fallback, so the strip stays in its placeholders and never throws. If the node moves, the comment stays behind.
+    kind: restates
+    correction: >-
+      Remove the paragraph.
+    node: rules/curation-workspace/failed-metrics-never-fail-the-strip
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: >-
+      nowhere. The file only reads the fields of a `CurationMetrics` shape declared in "../../types".
+    evidence: |-
+      import type { CurationMetrics } from "../../types";
+      formatPercent(metrics.acceptRate)
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the `metrics` and `hasError && fallback` branches of buildCells, lines 68-92. These hold the show-metrics labels and the dash fallback.
+    evidence: |-
+      { label: "Aceitação", value: formatPercent(metrics.acceptRate) },
+      { label: "Em revisão", value: String(metrics.needsReviewCount) },
+      { label: "Incertos", value: String(metrics.uncertainCount) },
+      { label: "Disputados", value: String(metrics.disputedCount) },
+      { label: "Fila entidades", value: String(metrics.entityMatchQueueCount) },
+  - node: rules/curation-workspace/acceptance-rate-shows-as-a-whole-percentage
+    held_at: >-
+      formatPercent, line 61
+    evidence: |-
+      return `${Math.round(rate * 100)}%`;
+  - node: rules/curation-workspace/failed-metrics-fall-back-to-the-queue-totals
+    held_at: >-
+      the `hasError && fallback` branch of buildCells, lines 77-92
+    evidence: |-
+      { label: "Aceitação", value: "—" },
+      { label: "Em revisão", value: "—" },
+      { label: "Incertos", value: "—" },
+      { label: "Disputados", value: String(fallback.disputedQueueCount) },
+      { label: "Fila entidades", value: String(fallback.entityMatchQueueCount) },
+  - node: rules/curation-workspace/failed-metrics-never-fail-the-strip
+    held_at: >-
+      the final `return [];` of buildCells and the `skeleton` derivation in MetricsStrip, lines 93 and 99
+    evidence: |-
+      return [];
+      const skeleton = !settled || cells.length === 0;
+  - node: rules/curation-workspace/metrics-strip-hides-the-reject-rate-and-the-time
+    held_at: >-
+      Held by absence. buildCells builds only five cells, and none reads `reject_rate_by_code` or `computed_at`.
+    evidence: |-
+      { label: "Fila entidades", value: String(metrics.entityMatchQueueCount) },
+      ];
+  - node: rules/curation-workspace/metrics-strip-shows-five-metrics-in-order
+    held_at: >-
+      the metrics branch of buildCells, lines 69-75, and the lead and counts render, lines 134-153
+    evidence: |-
+      const [lead, ...counts] = cells;
+      <span className="text-lg font-semibold tracking-tight tabular-nums text-foreground">
+  - node: rules/curation-workspace/metrics-strip-shows-placeholders-until-settled
+    held_at: >-
+      the `skeleton` derivation, line 99, and the `aria-busy` attribute with the pulse cells, lines 112 and 119-131
+    evidence: |-
+      aria-busy={skeleton || undefined}
+      {Array.from({ length: 5 }, (_unused, i) => (
+looked_past: >-
+  The inline layout comments about the 2-column grid, the 13px root font and the GlassSurface ambient are not domain facts, and the file's styling is not this pass's judgment.
+candidates_opened: []

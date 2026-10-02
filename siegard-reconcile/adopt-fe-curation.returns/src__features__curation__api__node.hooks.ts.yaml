@@ -1,0 +1,80 @@
+findings:
+  - file: src/features/curation/api/node.hooks.ts
+    where: |-
+      the header docstring, lines 4-7 (Spec references, "§4 (staleTime 5min, no refetchOnWindowFocus)")
+    evidence: |-
+      `§4 (staleTime
+       *    5min, no refetchOnWindowFocus).`
+    cost: |-
+      The five-minute freshness rule is also written as prose here, so a reader can take the comment for where the rule is decided. The behavior is held by `staleTime: STABLE_STALE_MS` and `refetchOnWindowFocus: false` in the three hooks of this same file. When the node moves, the comment keeps saying the old window and nothing flags it.
+    kind: restates
+    correction: |-
+      Remove the sentence from the docstring. The code in this file holds the fact, and the node binds it.
+    node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+  - file: src/features/curation/api/node.hooks.ts
+    where: |-
+      line 42, the trailing comment on STABLE_STALE_MS
+    evidence: |-
+      const STABLE_STALE_MS = 5 * 60_000; // 5 min
+    cost: |-
+      The window is stated twice on one line, as an expression and as prose. If the value changes, the comment can stay behind and disagree with the code.
+    kind: restates
+    correction: |-
+      Remove the trailing comment. `5 * 60_000` already holds the value.
+    node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+  - file: src/features/curation/api/node.hooks.ts
+    where: |-
+      the docstring of UseCurationNodeDetailParams, lines 49-54
+    evidence: |-
+      /** When true, only attributes whose `is_in_effect` is true. */
+      ...
+      /** When false, `uncertain` attributes are omitted. Default true. */
+    cost: |-
+      The conditions under which each option is sent are repeated in prose beside `buildNodeQs`, where code holds them. A reader may treat the comment as the rule, and it can drift from the node.
+    kind: restates
+    correction: |-
+      Remove the two docstrings. `buildNodeQs` holds the behavior (`params.inEffectOnly === true` and `params.includeUncertain === false`).
+    node: rules/curation-workspace/node-detail-sends-its-options-only-when-asked
+  - file: src/features/curation/api/node.hooks.ts
+    where: |-
+      the docstring of useCurationNodeDetail, line 73
+    evidence: |-
+      Disabled when `nodeId` is null/undefined/empty.
+    cost: |-
+      The rule that a read is not requested without an identifier is restated as prose. The code holds it in `const enabled = typeof nodeId === "string" && nodeId.length > 0;`, so the comment is a second home for it.
+    kind: restates
+    correction: |-
+      Remove the sentence. The `enabled` expression holds the fact.
+    node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+read:
+  - node: contracts/curation-workspace/bff-curation-reads
+    held_at: |-
+      Partly. The request side of read-node, read-link-history and read-attribute-history is held in the queryFn of `useCurationNodeDetail`, `useLinkHistory` and `useAttributeHistory`. The wire shapes (`NodeDetailWire`, `LinkHistoryResponseWire`, `AttributeHistoryResponseWire`) are declared in `../types`, and this file only passes them along. read-link-provenance, read-attribute-provenance, read-fragment-provenance and list-accepted-fragments are not in this file.
+    evidence: |-
+      `/api/v1/nodes/${encodeURIComponent(nodeId as string)}${buildNodeQs(params)}`
+      `/api/v1/links/${encodeURIComponent(linkId as string)}/history`
+      `/api/v1/attributes/${encodeURIComponent(attributeId as string)}/history`
+  - node: rules/curation-workspace/node-detail-sends-its-options-only-when-asked
+    held_at: |-
+      the function buildNodeQs, lines 57-65
+    evidence: |-
+      if (params.asOf !== undefined) search.set("as_of", params.asOf);
+      if (params.inEffectOnly === true) search.set("in_effect_only", "true");
+      if (params.includeUncertain === false)
+        search.set("include_uncertain", "false");
+  - node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+    held_at: |-
+      the `enabled` constant in each of the three hooks, lines 79, 102 and 125. The accepted-fragments half of the rule is not in this file.
+    evidence: |-
+      const enabled = typeof nodeId === "string" && nodeId.length > 0;
+      const enabled = typeof linkId === "string" && linkId.length > 0;
+      const enabled = typeof attributeId === "string" && attributeId.length > 0;
+  - node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+    held_at: |-
+      STABLE_STALE_MS at line 42, and the `staleTime` and `refetchOnWindowFocus` options of the three useQuery calls for node detail and lineage history. Provenance and accepted fragments are not in this file.
+    evidence: |-
+      const STABLE_STALE_MS = 5 * 60_000; // 5 min
+      staleTime: STABLE_STALE_MS,
+      refetchOnWindowFocus: false,
+looked_past: |-
+  The query key `nodeKeys.detail(nodeId ?? "")` ignores `params`, so reads with different `as_of` values would share one cache entry. That is a code-quality concern about the hook, not a domain-fact finding. I also did not report the docstring's note on duplication with `features/graph`, which is not a fact of any node.

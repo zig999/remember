@@ -1,0 +1,89 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/PeriodTimeline.tsx
+    where: >-
+      line 50, the aria-label of the ol, built from `description` at line 47
+    evidence: |-
+      const description = sides.map((s, i) => describeSide(i, s)).join("; ");
+        return (
+          <ol
+            aria-label={description}
+    cost: >-
+      The screen reader announces a description of the whole timeline: every
+      side's period line joined with "; ". No node holds that this list carries
+      an accessible label, or what the label says. The behavior lives only in
+      this file. The next reader will look for it in the specification and
+      will not find it there, and only a docstring citing the old
+      curadoria.feature.spec.md §8 mentions it.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the accessible description a node. The
+      natural home is an existing node that governs the period lines, or a new
+      one. The code cannot read the specification, so a bind alone does not
+      close this.
+  - file: src/features/curation/components/DecisionPanel/PeriodTimeline.tsx
+    where: >-
+      lines 22-25, the comment above fmtDate
+    evidence: |-
+      // Full calendar date in UTC — year-only granularity collapsed same-year
+      // disputes into identical text ("de 2026 em diante" on both sides), hiding
+      // the distinct start dates AND the overlap that IS the conflict. UTC keeps
+      // the stored date-only value from shifting a day in BR local time.
+    cost: >-
+      The comment is a second home outside behavior for the rule that side and
+      period dates show as full pt-BR calendar dates in UTC. The same file
+      holds the fact in code, in fmtDate. If the node moves, the comment keeps
+      saying the old fact and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then reconcile this file.
+      The code is where the fact is held, in `d.toLocaleDateString("pt-BR", {
+      timeZone: "UTC" })`.
+    node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+  - file: src/features/curation/components/DecisionPanel/PeriodTimeline.tsx
+    where: >-
+      line 31, the trailing comment in describeSide
+    evidence: |-
+      const label = String.fromCharCode(65 + i); // A, B, C…
+    cost: >-
+      The trailing comment restates that the sides are lettered A, B, C in
+      listing order. This is a second home for the rule outside behavior,
+      while the code on the same line already holds it.
+    kind: restates
+    correction: >-
+      Remove the trailing comment through the comment route, then reconcile
+      this file.
+    node: rules/curation-workspace/periods-are-listed-in-words-under-the-sides
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: >-
+      The file makes no request to the back end and reads no answer. It only
+      receives `sides: ReadonlyArray<DisputedItemSide>` as a prop.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: >-
+      the describeSide function (lines 30-44), the part of read-decision-panel
+      that holds the period lines
+    evidence: |-
+      return `Lado ${label}: sem datas registradas`;
+      return `Lado ${label}: vigente de ${fmtDate(s.validFrom)} em diante`;
+      return `Lado ${label}: vigente até ${fmtDate(s.validTo)}`;
+      return `Lado ${label}: vigente de ${fmtDate(s.validFrom)} a ${fmtDate(
+  - node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+    held_at: the fmtDate function, line 27
+    evidence: >-
+      return d === null ? "" : d.toLocaleDateString("pt-BR", { timeZone: "UTC"
+      });
+  - node: rules/curation-workspace/periods-are-listed-in-words-under-the-sides
+    held_at: >-
+      describeSide, which letters each side by its index, and the PeriodTimeline
+      component, which renders one li per side in the order given
+    evidence: |-
+      const label = String.fromCharCode(65 + i);
+      {sides.map((s, i) => (
+        <li key={s.itemId} className="flex items-center gap-sm">
+          ...
+          {describeSide(i, s)}
+looked_past: >-
+  The header docstring's note on avoiding Tailwind arbitrary widths, and its
+  pointer to a visual bar variant in temp/curate.md, are prose about
+  implementation, not about a domain fact.

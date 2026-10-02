@@ -1,0 +1,43 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/EvidenceChip.tsx
+    where: |-
+      lines 1-12, the file's leading docstring
+    evidence: |-
+      * EvidenceChip — small "Ver evidência / visto" indicator (TC-05).
+       *  - curadoria.feature.spec.md §2 UI-02 (pulse while evidence pending),
+       *    UI-03 (check icon when viewed), §8 (aria-live polite).
+       * Pulse via Tailwind `animate-pulse` — Framer Motion is not needed for
+    cost: |-
+      The docstring restates the pulse-until-viewed rule and cites a feature spec outside the specification root as its authority. A reader who trusts it has a second place to look for the rule. If the node moves, the prose stays behind and disagrees. The behavior itself is correct, because the ternary on `viewed` applies `motion-safe:animate-pulse` and the two labels. What is owed is the prose's removal.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route, then run /reconcile over this file. The code in this file already holds the fact: `viewed ? "Evidência vista" : "Ver evidência"` and `motion-safe:animate-pulse` in the unviewed branch.
+    node: rules/curation-workspace/evidence-indicator-pulses-until-viewed
+  - file: src/features/curation/components/DecisionPanel/EvidenceChip.tsx
+    where: |-
+      lines 26-30, the `aria-label` attribute on the chip's span
+    evidence: |-
+      aria-label={
+        viewed
+          ? "Evidência vista."
+          : "Veja a evidência antes de decidir"
+      }
+    cost: |-
+      The chip emits an accessible name that no node holds. It differs from the visible text, "Evidência vista" and "Ver evidência", which the node does hold. The node's hint "Veja a evidência antes de decidir." belongs to a blocked decision and ends with a period. Here the same sentence, without the period, is the chip's name. Because the chip's accessible name is code-only, the wording a screen-reader user hears lives only here. Someone changing the hint in the node would not know this second statement exists.
+    kind: unstated
+    correction: |-
+      Either the analysis gives the chip's accessible name a place in the read-decision-panel answer of the curation screen contract, or the `aria-label` is dropped so the visible text is the name. That is for a person to decide.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      the visible text expression at line 44 of EvidenceChip, the part of the `read-decision-panel` answer that concerns the evidence indicator. The hint "Veja a evidência antes de decidir." for a blocked decision is not held in this file apart from the `aria-label` finding.
+    evidence: |-
+      {viewed ? "Evidência vista" : "Ver evidência"}
+  - node: rules/curation-workspace/evidence-indicator-pulses-until-viewed
+    held_at: |-
+      the `viewed` ternaries in the `className` (line 33 onward) and in the visible text (line 44)
+    evidence: |-
+      "border-border-glass bg-surface-glass-panel text-foreground motion-safe:animate-pulse"
+looked_past: |-
+  The chip's `aria-live="polite"`, the Tailwind and design-token classes and the lucide icons are surface and accessibility choices that state no domain fact.

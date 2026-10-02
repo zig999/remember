@@ -1,0 +1,81 @@
+findings:
+  - file: src/features/curation/hooks/useCurationQueue.ts
+    where: |-
+      the file's header docstring, lines 1-15, against `refetchIntervalInBackground: false` at line 42
+    evidence: |-
+      * Local copy of `useListReviewQueue` that pins
+      * `refetchIntervalInBackground: false` (TC-04 constraint #4).
+      ...
+      * The TC-04 contract requires the
+      * stricter "only while tab visible" behaviour
+    cost: |-
+      The docstring restates the node's "read again every thirty seconds while the tab is visible" in prose that no running system emits. It cites a "TC-04 constraint #4" and a `spec_divergences` entry as the authority. A reader who trusts the docstring looks for the fact in those places and not in the node. Once the node moves, the docstring stays behind with no check reaching it.
+    kind: restates
+    correction: |-
+      Remove the docstring. The behavior is already held by code in this file (`refetchIntervalInBackground: false` and `refetchInterval: QUEUE_POLL_MS`) and by the node, so nothing is lost.
+    node: rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+  - file: src/features/curation/hooks/useCurationQueue.ts
+    where: |-
+      `QUEUE_POLL_MS`, `staleTime`, `refetchInterval` and `refetchOnWindowFocus` in the useQuery options (lines 23, 40-43), a second copy of the hook in api/curation.hooks.ts
+    evidence: |-
+      const QUEUE_POLL_MS = 30_000;
+      ...
+      staleTime: 0,
+      refetchInterval: QUEUE_POLL_MS,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      // the other copy, src/features/curation/api/curation.hooks.ts line 74 and line 127:
+      const QUEUE_POLL_MS = 30_000;
+      refetchInterval: QUEUE_POLL_MS,
+    cost: |-
+      The queue refresh policy is implemented in two live hooks. This one is `useCurationQueue`. The other is `useListReviewQueue`, which CurationDrawer.tsx calls. Nothing makes either read the other. When the node's thirty-second interval or its visibility behavior changes, one copy can move and the other stay, and nobody can tell which one was decided. The docstring itself says the two already differ on `refetchIntervalInBackground`.
+    kind: contradicts
+    correction: |-
+      The queue refresh policy needs one home in code. Which hook keeps it is for a person to decide, and code cannot read the specification to resolve it. Whichever hook remains is the one the node should be bound to.
+    node: rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      the queryFn of useCurationQueue (lines 29-39), for the list-review-queue operation. The send-curation-request failures belong to httpCuration in api/_request.ts, which this file only calls.
+    evidence: |-
+      const qs = new URLSearchParams();
+      if (kind !== undefined) qs.set("kind", kind);
+      qs.set("limit", String(QUEUE_LIMIT));
+      qs.set("offset", "0");
+      const wire = await httpCuration<ReviewQueueListWire>(
+        `/api/v1/curation/queue?${qs.toString()}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toReviewQueueList(wire);
+  - node: rules/curation-workspace/curation-request-carries-the-access-token
+    held_at: |-
+      the `headers: authHeader()` argument of the httpCuration call (line 36). Whether the header is the bearer token or absent is decided by authHeader() in api/_request.ts, so this file only passes it along.
+    evidence: |-
+      { method: "GET", headers: authHeader() }
+  - node: rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+    held_at: |-
+      the useQuery options (lines 40-43)
+    evidence: |-
+      staleTime: 0,
+      refetchInterval: QUEUE_POLL_MS,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+  - node: rules/curation-workspace/queue-keeps-the-answered-order
+    held_at: |-
+      `return toReviewQueueList(wire);` (line 38). The file applies no sort or reorder to the answer. The transform in api/_transforms.ts maps `wire.items` in place with `items: wire.items.map(toReviewQueueItem)`.
+    evidence: |-
+      return toReviewQueueList(wire);
+  - node: rules/curation-workspace/queue-kind-is-sent-only-when-chosen
+    held_at: |-
+      the kind branch of the queryFn (line 31)
+    evidence: |-
+      if (kind !== undefined) qs.set("kind", kind);
+  - node: rules/curation-workspace/queue-read-asks-the-first-page-of-twenty
+    held_at: |-
+      the limit and offset parameters of the queryFn and the QUEUE_LIMIT constant (lines 24, 32-33)
+    evidence: |-
+      const QUEUE_LIMIT = 20;
+      qs.set("limit", String(QUEUE_LIMIT));
+      qs.set("offset", "0");
+looked_past: |-
+  The docstring's account of the TanStack default for `refetchIntervalInBackground` in the sibling hook, its pointer to `spec_divergences` of the delivery file, and the TC-03/TC-04 references are prose with no node behind them, and the first of them is a claim about another file. The route for such prose is removal, so I did not file them as findings.

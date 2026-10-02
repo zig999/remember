@@ -1,0 +1,121 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/CorrectionSection.tsx
+    where: |-
+      the file's opening docstring, lines 6-9
+    evidence: |-
+      The parent resets this section on item change by
+       * giving it a `key` tied to the item id (remount → fresh state), mirroring
+       * the previous in-panel `setCorrectionOpen(false)` reset.
+    cost: |-
+      The docstring states the node's restart-on-item-change rule a second time, where nothing reads it. The behavior is held by code in both places. Here, `const [open, setOpen] = useState(false);` is the fresh state. In DecisionPanel.tsx, `key={correctionItemId}` on `<CorrectionSection` forces the remount. If the node moves, this prose is a second statement that `--check` never reaches.
+    kind: restates
+    correction: |-
+      Remove the passage from the docstring. The fact stays in the node and in the code, which already holds it (the `key` in src/features/curation/components/DecisionPanel/DecisionPanel.tsx and the initial state here).
+    node: rules/curation-workspace/changing-the-item-restarts-the-correction
+  - file: src/features/curation/components/DecisionPanel/CorrectionSection.tsx
+    where: |-
+      the doc comment above correctionServerError, lines 34-35
+    evidence: |-
+      /** CorrectionForm only cares about these codes; everything else is handled
+       *  by the DecisionPanel-level banner. */
+    cost: |-
+      The comment restates which refusals reach the correction form, which is the node's fact. The same function body already holds that fact as code (four `serverError.code ===` comparisons). A reader gets two statements of the code set, and only the code is bound to the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The code in this file already holds the fact.
+    node: rules/curation-workspace/correction-refusals-reach-the-form
+  - file: src/features/curation/components/DecisionPanel/CorrectionSection.tsx
+    where: |-
+      correctionServerError, lines 36-46 (the filter that decides which server errors the correction form receives)
+    evidence: |-
+      return serverError.code === "BUSINESS_TEMPORAL_INCOHERENT" ||
+          serverError.code === "BUSINESS_CORRECTION_NO_CHANGES" ||
+          serverError.code === "BUSINESS_DATE_UNJUSTIFIED" ||
+          serverError.code === "BUSINESS_FRAGMENT_NOT_ACCEPTED"
+          ? serverError
+          : null;
+    cost: |-
+      The contract's correct-item operation says a BUSINESS_REASON_REQUIRED answer from the server shows "the server's message on the reason field" of the correction. This filter turns that code into `null` before it reaches CorrectionForm. CorrectionForm.tsx, line 50, has `case "BUSINESS_REASON_REQUIRED":`, so it can handle the code but is never given it from this caller. DecisionPanel.tsx instead sends the code to the panel's own ReasonField. So the code reaches only the panel's reason field, never the correction form's reason field, which is where the contract places it. Whether the contract's "reason field" means the form's field or the panel's is not settled by either node, so the owner has to decide it.
+    kind: contradicts
+    correction: |-
+      Either this filter also lets BUSINESS_REASON_REQUIRED through to the form, or the contract's correct-item refusal is restated to say the code lands on the panel's reason field. Which of the two is for the owner to decide.
+    node: contracts/curation-workspace/curation-screen
+  - file: src/features/curation/components/DecisionPanel/CorrectionSection.tsx
+    where: |-
+      the comment inside close(), line 64
+    evidence: |-
+      // Restore focus to the "Corrigir…" button per §8.
+    cost: |-
+      The comment restates the node's focus-return rule, which the `requestAnimationFrame(() => { correctButtonRef.current?.focus(); })` call below it already holds in this file. The comment is a second home for the rule outside behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The focus call in this file already holds the fact.
+    node: rules/curation-workspace/correction-opens-inline-and-returns-focus
+read:
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      the label text of the Button at lines 86-101, which is the Corrigir… trigger for a dispute
+    evidence: |-
+      <Button ref={correctButtonRef} type="button" variant="ghost" ... >
+                Corrigir…
+              </Button>
+  - node: rules/curation-workspace/changing-the-item-restarts-the-correction
+    held_at: |-
+      line 59, the initial closed state. The restart on item change is forced by the caller's `key` (DecisionPanel.tsx), not by this file.
+    evidence: |-
+      const [open, setOpen] = useState(false);
+  - node: rules/curation-workspace/correction-opens-inline-and-returns-focus
+    held_at: |-
+      the `open ? <CorrectionForm ... onCancel={close} />` branch (lines 72-84) and close() (lines 62-68)
+    evidence: |-
+      function close(): void {
+          setOpen(false);
+          // Restore focus to the "Corrigir…" button per §8.
+          requestAnimationFrame(() => {
+            correctButtonRef.current?.focus();
+          });
+        }
+  - node: rules/curation-workspace/correction-refusals-reach-the-form
+    held_at: |-
+      correctionServerError, lines 36-46, and its use at line 79. This file holds the form-side half. The panel's alert half sits in DecisionPanel.tsx.
+    evidence: |-
+      serverError={correctionServerError(serverError)}
+  - node: rules/curation-workspace/every-decision-waits-for-the-evidence
+    held_at: |-
+      the Button's `aria-disabled` and `onClickCapture` guard, lines 91-98
+    evidence: |-
+      onClickCapture={(e) => {
+                  if (!evidenceViewed) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
+  - node: rules/curation-workspace/form-hands-the-request-to-its-caller
+    held_at: |-
+      the `onSubmit` prop of CorrectionForm, lines 81-83, and the `serverError` prop it receives
+    evidence: |-
+      onSubmit={(body) => {
+                onCorrect(body);
+              }}
+  - node: rules/curation-workspace/fragment-filter-reaches-the-picker
+    held_at: |-
+      the conditional spread at line 77
+    evidence: |-
+      {...(fragmentFilter ? { fragmentFilter } : {})}
+  - node: rules/curation-workspace/invalid-target-refusal-marks-the-candidate
+    held_at: nowhere
+    evidence: |-
+      The file never reads BUSINESS_INVALID_TARGET_NODE or any candidate marking. The filter at lines 40-43 lists only four codes, and this is not one of them.
+  - node: rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+    held_at: nowhere
+    evidence: |-
+      The file shows no message under a reason field and moves no focus. Its filter at lines 40-43 omits BUSINESS_REASON_REQUIRED, so the code is handled only in DecisionPanel.tsx (`reasonRef.current?.setServerError(serverError.message)`).
+  - node: rules/curation-workspace/self-merge-refusal-shows-the-fixed-text
+    held_at: nowhere
+    evidence: |-
+      The file never reads BUSINESS_SELF_MERGE_FORBIDDEN or any fixed alert text. The filter at lines 40-43 lists only four codes, and this is not one of them.
+looked_past: |-
+  The header docstring says focus is restored "on cancel/submit", but the code only closes and refocuses on cancel (onSubmit just calls onCorrect). That is prose no code carries, so it is not a finding here. The file's layout classes ("border-t border-border p-md") and `variant="ghost"` are surface, not a domain fact.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
+  - rules/curation-workspace/correction-refusals-reach-the-form

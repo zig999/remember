@@ -1,0 +1,98 @@
+findings:
+  - file: src/features/curation/components/QueueItem.tsx
+    where: |-
+      the file header docstring (lines 1-19) and the docstring above formatRelative (lines 37-41)
+    evidence: |-
+      relative "Há Ns" timestamp
+      ...
+      Pretty-print a Date into a coarse pt-BR "Há …" relative label. Buckets
+       * are intentionally coarse: the queue is volatile (refetches every 30s)
+    cost: |-
+      The age wording is stated in prose as "Há Ns", while the code emits "agora", "há N min", "há N h", "há N d" and a pt-BR date. A reader who trusts the docstring learns a second, different age vocabulary outside the specification. No running system emits this prose, so removing it is the whole remedy.
+    kind: restates
+    correction: |-
+      Remove the docstring wording. The bucket rule is held by the code in formatRelative (the lines `if (min < 1) return "agora";`, `if (min < 60) return \`há ${min} min\`;` and so on) and by the node. The same prose also states a 30s refetch interval that no code in this file holds; that is not a finding here.
+    node: rules/curation-workspace/item-age-reads-in-minutes-hours-and-days
+  - file: src/features/curation/components/QueueItem.tsx
+    where: |-
+      the comment above the useMemo call in QueueItem (lines 96-99)
+    evidence: |-
+      // `formatRelative` is pure but the `now` it closes over would otherwise
+        // re-compute on every render. Memoise against `createdAt` so the label
+        // is stable while the row is on screen
+    cost: |-
+      This prose restates the rule that an item's age does not advance while the item is open. The code holds it in `useMemo(() => formatRelative(item.createdAt), [item.createdAt])`, so the comment is a second home for the rule. If the memoisation is later removed, the comment would keep claiming a rule the code no longer keeps.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the useMemo dependency on `item.createdAt` and by the node.
+    node: rules/curation-workspace/item-age-is-measured-from-a-fixed-reference
+  - file: src/features/curation/components/QueueItem.tsx
+    where: |-
+      the comment inside handleKey (lines 106-109), plus the docstring lines 14-17 and the `onSelect` prop doc (line 33)
+    evidence: |-
+      // Enter and Space are the standard listbox-option activators. The
+          // browser already fires `click` on these for <button>, but we keep
+          // an explicit handler so future migrations to `<div role="option">`
+          // do not lose the affordance.
+    cost: |-
+      The rule that the owner selects by click, Enter or Space is restated in prose while the code holds it in `onClick={() => onSelect(itemKey)}` and in `if (event.key === "Enter" || event.key === " ")`. The comment is a second home for the rule and adds a rationale (future migration to a div) that no node holds.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the onClick and onKeyDown handlers and by the node.
+    node: rules/curation-workspace/owner-selects-by-click-enter-or-space
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: nowhere
+    evidence: |-
+      The file makes no request and reads no answer. It receives a ready `ReviewQueueItem` through props (`readonly item: ReviewQueueItem;`) and imports only `../types` and `../state/curation-store`. The shape of the wire item is declared elsewhere.
+  - node: contracts/curation-workspace/curation-screen
+    held_at: |-
+      mapKindToBadge and describeScope (the badge labels and the scope line), formatRelative (the age), and the row markup that renders them
+    evidence: |-
+      return { state: "uncertain", label: "Para revisar" };
+      return { state: "disputed", label: "Disputado" };
+      return linkType !== null ? `Link · ${linkType}` : "Link";
+      return attributeKey !== null ? `Atributo · ${attributeKey}` : "Atributo";
+      <StateBadge state={badge.state} size="sm" label={badge.label} />
+      <span className="text-xs text-muted-foreground">{relative}</span>
+  - node: rules/curation-workspace/header-badge-names-the-queue-kind
+    held_at: |-
+      the branches of mapKindToBadge, lines 61-69
+    evidence: |-
+      if (kind === "entity_match") {
+          return { state: "uncertain", label: "Para revisar" };
+        }
+        return { state: "disputed", label: "Disputado" };
+  - node: rules/curation-workspace/item-age-is-measured-from-a-fixed-reference
+    held_at: |-
+      the useMemo call in QueueItem, lines 100-103
+    evidence: |-
+      const relative = useMemo(
+          () => formatRelative(item.createdAt),
+          [item.createdAt],
+        );
+  - node: rules/curation-workspace/item-age-reads-in-minutes-hours-and-days
+    held_at: |-
+      formatRelative, lines 42-52
+    evidence: |-
+      const diffMs = Math.max(0, now.getTime() - date.getTime());
+        const min = Math.floor(diffMs / 60_000);
+        if (min < 1) return "agora";
+        if (min < 60) return `há ${min} min`;
+        ...
+        if (hr < 24) return `há ${hr} h`;
+        ...
+        if (day < 30) return `há ${day} d`;
+        return date.toLocaleDateString("pt-BR");
+  - node: rules/curation-workspace/owner-selects-by-click-enter-or-space
+    held_at: |-
+      the onClick and onKeyDown handlers on the button, lines 124-125, and handleKey, lines 105-114
+    evidence: |-
+      onClick={() => onSelect(itemKey)}
+      onKeyDown={handleKey}
+      if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(itemKey);
+          }
+looked_past: |-
+  The file also carries comment-only facts that no code here holds (a "Min target size 32px" note and a 30s refetch interval), plus presentation choices (role="option", the StateBadge state "uncertain" for an entity match, glass-surface styling). These are prose or styling and not domain facts held by this file's nodes, so they belong to another judgment.

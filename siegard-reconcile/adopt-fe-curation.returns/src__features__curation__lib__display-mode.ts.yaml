@@ -1,0 +1,72 @@
+findings:
+  - file: src/features/curation/lib/display-mode.ts
+    where: |-
+      the file's header docstring, lines 4-6 ("The decision MUST be derived from queue-item shape only; no LLM call, no async, no network")
+    evidence: |-
+      The decision MUST be derived from
+       * queue-item shape only; no LLM call, no async, no network.
+    cost: |-
+      The rule that the display mode comes from the queue entry alone is written a second time in prose. The code already holds it: the function's only input is `item: ReviewQueueItem`. A later reader can take the comment as the place the rule is decided, and the comment will not follow the node if the node changes.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is already held by the node and by the function's signature, `resolveDisplayMode(item: ReviewQueueItem): DisplayMode`.
+    node: rules/curation-workspace/display-mode-is-decided-from-the-entry-alone
+  - file: src/features/curation/lib/display-mode.ts
+    where: |-
+      the header docstring's entity_match mapping, lines 11-13, and the comment above HIGH_SIMILARITY_THRESHOLD, lines 27-28
+    evidence: |-
+      * exactly 1 candidate AND top similarity ≥ 0.9     -> "summary"
+       *    * else (multiple candidates or low similarity)     -> "full-diff"
+      /** Similarity threshold above which a single entity_match candidate is
+       *  deemed "obvious" and the panel can collapse into summary mode (§11). */
+    cost: |-
+      The one-candidate and 0.9 rule is stated again in comments, and the 0.9 is stated twice. The code holds it in `HIGH_SIMILARITY_THRESHOLD = 0.9` and in `item.candidates.length === 1` with `top.similarity >= HIGH_SIMILARITY_THRESHOLD`. If the node's threshold moves, the comments go on saying 0.9 and a reader cannot tell which figure was decided.
+    kind: restates
+    correction: |-
+      Remove both comments. The code in this same file holds the fact.
+    node: rules/curation-workspace/entity-match-shows-summary-for-one-high-similarity-candidate
+  - file: src/features/curation/lib/display-mode.ts
+    where: |-
+      the header docstring's disputed mapping, lines 14-18, and the inline comment inside the `item.sides.length === 2` branch, lines 43-46
+    evidence: |-
+      * exactly 2 sides AND any side has a closed window
+       *      (`validTo !== null`) — i.e. no temporal overlap -> "summary"
+      // Any side that already closes its window means the two cannot overlap
+          // any longer — the dispute is between "old value" and "new value", not
+    cost: |-
+      The two-sides and ended-validity rule is restated in prose, together with a reading of why ("no temporal overlap") that no node states. The code already holds the rule in `item.sides.length === 2` and `item.sides.some((s) => s.validTo !== null)`. If the node changes, the comments keep claiming the old rule.
+    kind: restates
+    correction: |-
+      Remove both comments. The code in this same file holds the fact.
+    node: rules/curation-workspace/dispute-shows-summary-for-two-sides-with-an-end
+read:
+  - node: domain/curation-workspace/display-mode
+    held_at: |-
+      the `DisplayMode` type alias, line 25, and the return statements of resolveDisplayMode
+    evidence: |-
+      export type DisplayMode = "summary" | "full-diff";
+  - node: rules/curation-workspace/display-mode-is-decided-from-the-entry-alone
+    held_at: |-
+      the signature of resolveDisplayMode, line 31, which takes only the queue entry
+    evidence: |-
+      export function resolveDisplayMode(item: ReviewQueueItem): DisplayMode {
+  - node: rules/curation-workspace/dispute-shows-summary-for-two-sides-with-an-end
+    held_at: |-
+      the disputed branch of resolveDisplayMode, lines 42-50
+    evidence: |-
+      if (item.sides.length === 2) {
+          const noOverlap = item.sides.some((s) => s.validTo !== null);
+          if (noOverlap) return "summary";
+        }
+        return "full-diff";
+  - node: rules/curation-workspace/entity-match-shows-summary-for-one-high-similarity-candidate
+    held_at: |-
+      the entity_match branch of resolveDisplayMode, lines 32-40, and the constant on line 29
+    evidence: |-
+      export const HIGH_SIMILARITY_THRESHOLD = 0.9;
+        if (item.candidates.length === 1) {
+          const top = item.candidates[0];
+          if (top !== undefined && top.similarity >= HIGH_SIMILARITY_THRESHOLD) {
+            return "summary";
+looked_past: |-
+  The comments citing "curadoria.feature.spec.md §11", "TC-05", "Golden Rule 5" and a "feature-spec CR" process are prose pointing outside the specification root, and no running code or emitted text carries them.
