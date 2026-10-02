@@ -1,0 +1,77 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 22-24, the list of relative-date expressions
+    evidence: >-
+      "- When you encounter a relative date in the chunk text (`\"hoje\"`, `\"ontem\"`,",
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis"
+    cost: >-
+      The directive tells the model that "semana que vem", "esta semana" and "similar pt-BR temporal
+      deictics" are also relative dates to resolve. The node holds only "hoje", "ontem" and "amanhã". A
+      reader who looks in the specification for which expressions v4 resolves will not find these, and
+      the prompt text is the only place that widens the set.
+    kind: unstated
+    correction: >-
+      The analysis would decide whether the node's statement should also name these expressions and the
+      open-ended "similar" class, or whether the prompt should name only the three the node holds.
+    node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 24-25, the basis the model is asked to give when it resolves
+      against document_date
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+    cost: >-
+      The prompt asks the model to give the basis "document" for a relative date resolved against the
+      document date. The v4 anchor rule leaves the basis out, and valid-from-basis only enumerates
+      stated, document and received. No node says which basis a relative date resolved this way
+      carries. That mapping lives only in the prompt text.
+    kind: unstated
+    correction: >-
+      The analysis would decide whether the anchor rule should state the basis "document" for the
+      document-date case, or keep leaving the basis out as its decision log does.
+    node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+read:
+  - node: rules/knowledge-base/matched-item-hop-zero
+    held_at: nowhere
+    evidence: >-
+      The file only composes a system prompt: "return `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`;".
+      It states nothing about search items or hops.
+  - node: rules/knowledge-base/matched-node-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      The file contains only prompt text and the re-exports "export { MAX_TOKENS, user };". No search or
+      provenance behavior is stated.
+  - node: rules/knowledge-base/expanded-link-layer-is-node
+    held_at: nowhere
+    evidence: >-
+      "export function system(catalog: CatalogSnapshot): string {" builds the extraction prompt. No search
+      expansion or layer is touched.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 22-23, appended to the v4 system prompt by system() at line 34
+    evidence: >-
+      "- When you encounter a relative date in the chunk text (`\"hoje\"`, `\"ontem\"`,",
+      "  `\"amanhã\"`, `\"semana que vem\"`, ..." and "return `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`;"
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: nowhere
+    evidence: >-
+      The file builds no user message. It only re-exports the one built elsewhere: "export { MAX_TOKENS, user };"
+      from "./extraction.v1.js". The directive's "`document_date` is `(unknown)`" is text addressed to the
+      model about a block this file does not produce.
+looked_past: >-
+  The directive's fallback to the date of `received_at`, its supersession of v3's omit-when-unknown rule,
+  its absolute-dates-stay-stated clause and its never-invent-a-date clause are held by nodes outside my
+  set (extraction-relative-date-falls-back-to-reception, extraction-relative-date-needs-document-date,
+  extraction-stated-basis-needs-written-start, extraction-never-invents-a-date). The prompt, as emitted
+  text, states them in agreement with those nodes, so none is a finding.
+candidates_opened:
+  - rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+  - rules/knowledge-base/extraction-never-invents-a-date
+  - rules/knowledge-base/extraction-stated-basis-needs-written-start
+  - domain/knowledge-base/valid-from-basis
+  - domain/knowledge-base/prompt-version
+  - rules/knowledge-base/extraction-relative-date-needs-document-date
+  - rules/knowledge-base/caller-never-states-received

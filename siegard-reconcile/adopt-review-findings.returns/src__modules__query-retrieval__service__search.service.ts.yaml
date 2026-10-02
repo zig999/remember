@@ -1,0 +1,27 @@
+read:
+  - node: rules/knowledge-base/matched-item-hop-zero
+    held_at: >-
+      the two items.push calls in searchKnowledgeService, one for fragment hits (line 184) and one for node hits (line 220), each setting hop to 0
+    evidence: >-
+      `key: `fragment:${f.id}`, kind: "fragment", layer: "fragment", id: f.id, score: f.score, hop: 0,` and
+      `key: `node:${n.node_id}`, kind: "node", layer: "node", id: n.node_id, score: n.score, hop: 0,`
+  - node: rules/knowledge-base/matched-node-requires-provenance
+    held_at: >-
+      the node-hit loop in searchKnowledgeService, line 207, which skips a node with no provenance rows before it is pushed as an item
+    evidence: >-
+      `if (provenance.length === 0) continue;`
+  - node: rules/knowledge-base/expanded-link-layer-is-node
+    held_at: >-
+      the object returned by toExpandedLinkItem, line 390, where the link item's layer is set to "node"
+    evidence: >-
+      `key: `link:${link.id}`, kind: "link", layer: "node", id: link.id,`
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file is the search service. It builds no extraction prompt and names none of "hoje", "ontem" or "amanhã". Its only emitted text is the log lines `query_retrieval_search_ok` and `query_retrieval_search_empty_link_provenance`.
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: nowhere
+    evidence: >-
+      The file is the search service. It builds no extraction user message and has no reception time, document date or "(unknown)" text. It only reads `received_at` into a provenance entry, `received_at: row.received_at.toISOString()`.
+looked_past: >-
+  The file also drops a reached link silently when no metadata row exists (`if (meta === undefined) return undefined;`), and it has an error-precedence order among layer, link-type and query refusals. Both look like implementation behavior rather than a domain fact, and I report them as neither a finding nor a code review.

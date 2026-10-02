@@ -1,0 +1,85 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 5-8: the sentence about v2 teaching the model to date events
+    evidence: >-
+      // The gap v3 closes: v2 taught the model to DATE events (`event_date`), but
+      // never to CLASSIFY them (`event_type`)
+    cost: >-
+      This is prose, and no running system emits it. It says what rules/knowledge-base/extraction-dates-events holds: from v2 on, an extraction asks the model to propose event_date. A reader of this comment finds a second statement of the fact beside the node. The two can drift when the node moves, and --check does not reach the comment.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The directive in extraction.v2.ts is where the code holds the fact, and the node holds it in the specification.
+    node: rules/knowledge-base/extraction-dates-events
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 8-12: the original closed event_type domain and the values the migration added
+    evidence: >-
+      // `event_type` domain {reunião, go-live, workshop, outro} landed on `outro`
+      // with a lowered confidence (→ `uncertain`). Migration
+      // `0003_event_type_taxonomy.sql` widened that closed domain (cobrança,
+      // decisão, escalonamento, bloqueio, marco);
+    cost: >-
+      This is prose, and no running system emits it. It enumerates values of event_type that rules/knowledge-base/allowed-event-types already holds. The code holds the same values in the migration seed migrations/seeds/0003_event_type_taxonomy.sql, which the comment names. A reader of this file gets a second, partial list of the domain. If the domain changes, the list here goes stale and no check finds it.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. Nothing in the code of this file reads the list. The directive deliberately points at the live catalog line instead.
+    node: rules/knowledge-base/allowed-event-types
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 12-14: the outro fallback with lowered confidence
+    evidence: >-
+      // USE it — pick the best-fitting catalog value, fall back to `outro` only
+      // when none fits (and then lower confidence so curation sees the gap), and
+    cost: >-
+      This is prose, and no running system emits it. It restates rules/knowledge-base/extraction-event-type-fallback: outro only when no other value fits, then confidence at most 0.74. Code in this file already holds the fact, in EVENT_CLASSIFICATION_DIRECTIVE ("- Use `outro` ONLY when NO domain value fits — and, in that case, LOWER the", "  confidence (≤ 0.74)"). The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The directive in this file holds the fact in code.
+    node: rules/knowledge-base/extraction-event-type-fallback
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 14-15: relative dates resolved against document_date
+    evidence: >-
+      // resolve relative dates ("hoje"/"ontem"/…) against `document_date`
+    cost: >-
+      This is prose, and no running system emits it. It restates rules/knowledge-base/extraction-relative-date-needs-document-date. That rule holds under v3 alone, and v4 supersedes it. A reader who finds the sentence here cannot tell that v4 changes it. Code in this file holds the fact in the directive ("resolve against `document_date`: `event_date` (the VALUE) gets the computed", "the date (the backend records `received`)").
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The directive holds the fact in code.
+    node: rules/knowledge-base/extraction-relative-date-needs-document-date
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 27-28: the idempotency key includes prompt_version
+    evidence: >-
+      // actually ran (registry in `./index.ts`), and `idempotency_key` (hash.ts)
+      // includes prompt_version, so a re-ingest under v3 yields a new, distinct run.
+    cost: >-
+      This is prose, and no running system emits it. It states part of rules/knowledge-base/idempotency-key, that the key is derived from the prompt version. It also draws a consequence about re-ingest. The comment's claim that "a re-ingest under v3 yields a new, distinct run" is contradicted by rules/knowledge-base/idempotency-key and the decision that held content answers noop_existing under another prompt version. The specification already settles that outcome in the ingestion nodes. Code holds the key's derivation in backend/src/modules/ingestion/hash.ts, which the comment names.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The derivation is held in hash.ts and in the node.
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: rules/knowledge-base/matched-item-hop-zero
+    held_at: nowhere
+    evidence: >-
+      The file builds a system prompt and states nothing about search items: `export function system(catalog: CatalogSnapshot): string {` / `return `${systemV2(catalog)}\n${EVENT_CLASSIFICATION_DIRECTIVE}`;`
+  - node: rules/knowledge-base/matched-node-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      The file contains nothing about search matching or provenance of a matched node; its only code is `PROMPT_VERSION`, the re-exports and `system(catalog)`.
+  - node: rules/knowledge-base/expanded-link-layer-is-node
+    held_at: nowhere
+    evidence: >-
+      The file contains nothing about search expansion or layers; `export const EVENT_CLASSIFICATION_DIRECTIVE = [` is prompt text for the extraction model.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The node holds the fact under prompt version v4, and the v4 prompt module carries its own directive (`"  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal"` in extraction.v4.ts). This file is v3 (`export const PROMPT_VERSION = "v3" as const;`). Its directive also names the words ("- RELATIVE DATES in the text (\"hoje\", \"ontem\", \"amanhã\", \"semana que vem\")"), and v4 composes it through systemV3, but the node's fact for v4 is stated in extraction.v4.ts.
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: nowhere
+    evidence: >-
+      This file builds no user message. It only re-exports v1's builder: `import { MAX_TOKENS, user, type DocumentMetadata, type UserPromptArgs } from "./extraction.v1.js";` / `export { MAX_TOKENS, user };`
+looked_past: >-
+  The v3 directive's extra deictic "semana que vem", its worked-example confidences (0.9 and 0.85) and its Event, Person and participates_in example are prompt content, and the facts the prompt tells the model (event_type is not temporal, outro fallback at 0.74, never invent a date, received basis on the backend) are each held by nodes outside my set (the temporal attribute keys rule, extraction-event-type-fallback, extraction-never-invents-a-date and the received-basis rule), so I filed nothing on them.

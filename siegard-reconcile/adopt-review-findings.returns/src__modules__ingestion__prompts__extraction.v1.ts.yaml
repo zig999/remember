@@ -1,0 +1,172 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      the header comment, lines 22-24, and the `prevTail` doc comment on UserPromptArgs, line 211
+    evidence: >-
+      "`prev_tail` carries the last ≤ `PREV_TAIL_CHARS` (200) characters of the
+      // previous chunk to provide minimal cross-chunk continuity" and
+      "/** Last ≤ 200 chars of the previous chunk (continuity); empty on chunk_index = 0. */"
+    cost: >-
+      The 200-character window is stated here in prose a second time. The code that cuts it is
+      `PREV_TAIL_CHARS = 200` and `chunk.text.slice(-PREV_TAIL_CHARS)` in
+      backend/src/modules/ingestion/service/extraction.service.ts. If the window changes, this
+      comment keeps saying 200 and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the two comment passages. The fact is held by the node and by
+      extraction.service.ts, so the prose is a second home outside behavior.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), the string array, line 121-122 (rule 3, ATOMICITY)
+    evidence: >-
+      "3. ATOMICITY: one subject–predicate–object assertion = one fragment. Split",
+      "   compound sentences (\"Ana and Bruno joined X\") into one fragment per fact."
+    cost: >-
+      This is an instruction the prompt gives the model that decides how many fragments, and so
+      how many provenance anchors, a chunk yields. No node holds it, so a reader looking in the
+      specification for what the extraction is asked to do about compound sentences finds nothing.
+    kind: unstated
+    correction: >-
+      An analysis would give the rule a node, in the family of the other "an extraction asks the
+      model…" rules that constrain domain/knowledge-base/llm-run and
+      domain/knowledge-base/prompt-version.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 123-127 (rule 4, ORDER)
+    evidence: >-
+      "4. ORDER, per chunk: (a) `propose_fragment` for each atomic claim; (b)",
+      "   `propose_node` for every entity mentioned — propose freely, the backend",
+      "   resolves and dedups (the same entity is matched, never duplicated); (c)",
+      "   `propose_link` / `propose_attribute`, citing node ids from (b) and",
+      "   fragment ids from (a). A link requires BOTH nodes to exist first."
+    cost: >-
+      The order in which the model is told to propose, and the instruction to propose a node for
+      every entity mentioned, are held nowhere in the specification. Only this prompt records
+      them.
+    kind: unstated
+    correction: >-
+      Give the proposal order a node constraining domain/knowledge-base/llm-run and
+      domain/knowledge-base/prompt-version.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 128-131 (rule 5, LITERAL vs ENTITY)
+    evidence: >-
+      "5. LITERAL vs ENTITY: a literal value of an entity that matches a catalog",
+      "   AttributeKey → `propose_attribute`; an entity matching a NodeType →",
+      "   `propose_node` (+ `propose_link` if a relation is stated). A date, number",
+      "   or string value is NEVER a node."
+    cost: >-
+      This decides whether a stated fact becomes a node, a link or an attribute. The
+      specification holds none of it, so the line between an entity and a literal lives only in
+      this prompt.
+    kind: unstated
+    correction: >-
+      Give the rule a node in the extraction-prompt family.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 133-135 (rule 7, second sentence)
+    evidence: >-
+      "   `uncertain` (kept, flagged); < 0.40 → dropped. Lower it for hedged",
+      "   claims (\"should be\", \"maybe\", \"I think\")."
+    cost: >-
+      The thresholds in this rule are held by nodes (active at 0.75 and above, uncertain from
+      0.40, none recorded below 0.40). The instruction to lower confidence for hedged claims, and
+      the hedge words, are not. They steer which assertions become active, uncertain or dropped,
+      and no node records them.
+    kind: unstated
+    correction: >-
+      Give the confidence guidance a node in the extraction-prompt family. The thresholds already
+      have theirs.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 136-138 (rule 8)
+    evidence: >-
+      "8. Extract only what the chunk ASSERTS. Do not invent relations the text",
+      "   does not state (people merely mentioned together are not necessarily",
+      "   related). If nothing is extractable, `end_turn` and call no tools."
+    cost: >-
+      What counts as extractable, and the instruction to propose nothing when nothing is stated,
+      sit only in the prompt. Whoever reads the specification to learn what the extraction
+      refuses to infer will not find it.
+    kind: unstated
+    correction: >-
+      Give the rule a node. The turn-without-proposals behavior has its own node, but this
+      instruction does not.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 140-143 (the first bullet under "## Dates")
+    evidence: >-
+      "- `valid_from` is the date the fact STARTS holding — not the same as a date",
+      "  that is the value itself (a `deadline` value is the deadline date; its",
+      "  `valid_from` is when that deadline became the plan)."
+    cost: >-
+      The specification holds this reading of a validity start for an event's event_date, from v2
+      on. For a Project's deadline under v1 it holds nothing. The prompt makes the choice, and
+      the stored validity start of every deadline extracted under v1 depends on it.
+    kind: unstated
+    correction: >-
+      Give the reading of valid_from against a literal date value a node covering v1, or state
+      that it is v1-only. The existing event_date nodes are scoped "v2 and later".
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), lines 149-155 (the change_hint section)
+    evidence: >-
+      "- `succession`: the chunk says the fact CHANGED (\"moved to…\", \"now reports",
+      "  to…\", \"postponed to…\").",
+      "- `correction`: the chunk fixes a previously wrong value (\"correcting: it",
+      "  was…\"). Use only with explicit textual evidence; otherwise `none`."
+    cost: >-
+      The phrases that tell the model a fact changed, and the instruction to use correction only
+      with explicit textual evidence, are held by no node. A node holds how a proposal with the
+      hint is handled, and a node holds the errata-evidence check on a correction. Neither holds
+      what the model is told to recognize.
+    kind: unstated
+    correction: >-
+      Give the model-facing meaning of the hint values a node in the extraction-prompt family.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      the worked example in system(), lines 191-192
+    evidence: >-
+      "  // a document/event is its own node; `concerns` (aboutness, no valid_from) links it to the topic,",
+      "  // `delivered_to` records the recipient. Do NOT leave \"a proposta\" as a bare fragment."
+    cost: >-
+      The instruction that a document or event becomes its own node, linked by concerns and
+      delivered_to, is held by no node. The catalog fact that concerns is not temporal is held,
+      but the modeling instruction is not.
+    kind: unstated
+    correction: >-
+      Give the document-as-node instruction a node in the extraction-prompt family.
+read:
+  - node: rules/knowledge-base/matched-item-hop-zero
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file builds prompt text and holds no search item or hop. Its only exports are
+      `MAX_TOKENS`, `PROMPT_VERSION`, `system` and `user`. The node's subject is search.
+  - node: rules/knowledge-base/matched-node-requires-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file builds prompt text and holds no search matching or provenance filter. The only
+      occurrence of "provenance" is in the prompt phrase "Ground everything in fragments".
+  - node: rules/knowledge-base/expanded-link-layer-is-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file has no search expansion and no layer. The node's subject is search items.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The node is scoped to prompt version v4. This file is v1 (`export const PROMPT_VERSION =
+      "v1" as const;`), and its system() names no relative-date words. v4 holds the fact in
+      extraction.v4.ts as "`\"hoje\"`, `\"ontem\"`,", "`\"amanhã\"`, `\"semana que vem\"`, ...".
+  - node: rules/knowledge-base/extraction-user-prompt-shows-anchor-dates
+    held_at: >-
+      the metaBlock built in user(), lines 224-232
+    evidence: >-
+      "`- received_at: ${meta.received_at}`,", "meta.document_date !== null ? `-
+      document_date: ${meta.document_date}` : \"- document_date: (unknown)\","
+looked_past: >-
+  A comment at lines 63-64 restates that anything outside the catalog is rejected with the BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY} codes, which structural.ts holds, and the header comments cite the identifiers TC-12, BR-26 and BR-14, so both belong to the comment route, not to this judgment.
