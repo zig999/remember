@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: A node proposal resolved by neither an exact alias nor a single strong candidate, with at least one active knowledge node of its node type at a similarity of 0.55 or more, creates a knowledge node in status needs-review and records an entity match review pairing it with each such node and its similarity.
+statement: A node proposal resolved by neither an exact alias nor a single strong candidate, with at least one active knowledge node of its node type at a similarity of 0.55 or more, creates a knowledge node in status needs-review and records an entity match review pairing it with each of the ten such nodes most similar to it and its similarity.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-node
