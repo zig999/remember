@@ -33,12 +33,15 @@ interface GraphLink {
   readonly id: string;
   readonly source: string;
   readonly target: string;
+  readonly status?: string;
+  readonly confidence?: number;
 }
 
 interface World {
   readonly matches: readonly Match[];
   readonly links: readonly GraphLink[];
   readonly fragmentId?: string;
+  readonly supporters?: Readonly<Record<string, readonly string[]>>;
 }
 
 interface Rows {
@@ -90,8 +93,8 @@ function linkRow(link: GraphLink): unknown {
     valid_to: null,
     recorded_at: RECORDED_AT,
     superseded_at: null,
-    status: "active",
-    confidence: 0.9,
+    status: link.status ?? "active",
+    confidence: link.confidence ?? 0.9,
     valid_from_source: null,
     created_by_run_id: null,
     supersedes_link_id: null,
@@ -112,14 +115,14 @@ function linkMetadataRow(link: GraphLink): unknown {
     target_canonical_name: `Name ${link.target}`,
     link_type: "colabora",
     recorded_at: RECORDED_AT,
-    status: "active",
+    status: link.status ?? "active",
   };
 }
 
-function provenanceRow(anchorId: string): unknown {
+function provenanceRow(anchorId: string, fragmentId: string): unknown {
   return {
     anchor_id: anchorId,
-    fragment_id: `fragment-for-${anchorId}`,
+    fragment_id: fragmentId,
     fragment_text: "texto",
     fragment_confidence: 0.9,
     raw_chunk_id: "chunk-1",
@@ -175,18 +178,35 @@ function respondToSearchLayers(world: World, sql: string): Rows | undefined {
   return undefined;
 }
 
+function provenanceRowsFor(
+  world: World,
+  anchorIds: readonly string[],
+  defaultSupporter: (anchorId: string) => string
+): Rows {
+  return result(
+    anchorIds.flatMap((anchorId) =>
+      (world.supporters?.[anchorId] ?? [defaultSupporter(anchorId)]).map(
+        (fragmentId) => provenanceRow(anchorId, fragmentId)
+      )
+    )
+  );
+}
+
 function respondToProvenance(
+  world: World,
   sql: string,
   params: readonly unknown[]
 ): Rows | undefined {
+  const own = (anchorId: string): string => anchorId;
+  const invented = (anchorId: string): string => `fragment-for-${anchorId}`;
   if (sql.includes("WHERE f.id = ANY")) {
-    return result(asIds(params[0]).map(provenanceRow));
+    return provenanceRowsFor(world, asIds(params[0]), own);
   }
   if (sql.includes("plainto_tsquery")) {
-    return result(asIds(params[1]).map(provenanceRow));
+    return provenanceRowsFor(world, asIds(params[1]), invented);
   }
   if (sql.includes("FROM provenance p") && sql.includes("AS anchor_id")) {
-    return result(asIds(params[0]).map(provenanceRow));
+    return provenanceRowsFor(world, asIds(params[0]), invented);
   }
   if (sql.includes("FROM provenance p") && sql.includes("AS target_id")) {
     return result([]);
@@ -225,7 +245,7 @@ function respond(
 ): Rows {
   return (
     respondToSearchLayers(world, sql) ??
-    respondToProvenance(sql, params) ??
+    respondToProvenance(world, sql, params) ??
     respondToGraph(world, sql, params) ??
     result([])
   );
@@ -443,5 +463,88 @@ describe("searchKnowledgeService expansion: the search item's shape", () => {
       );
       expect(item.provenance.length).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+const UNCERTAIN_BAND_CONFIDENCE = 0.6;
+
+const SUPPORTING_FRAGMENTS: Readonly<Record<string, readonly string[]>> = {
+  "node-a": ["fragment-a1", "fragment-a2"],
+  "node-x": ["fragment-x1"],
+  "link-1": ["fragment-l1"],
+  "link-x1": ["fragment-lx1"],
+  "fragment-1": ["fragment-1"],
+};
+
+describe("searchKnowledgeService: the flags of a search item", () => {
+  it("answers a link whose confidence is in the uncertain band with the uncertain flag and no other", async () => {
+    const world: World = {
+      matches: [{ id: "node-a", score: FIRST_MATCH_SCORE }],
+      links: [
+        {
+          id: "link-u",
+          source: "node-a",
+          target: "node-b",
+          status: "uncertain",
+          confidence: UNCERTAIN_BAND_CONFIDENCE,
+        },
+      ],
+    };
+
+    const body = await searchOver(world);
+
+    expect(linkItem(body, "link-u").flags).toEqual(["uncertain"]);
+  });
+});
+
+describe("searchKnowledgeService: the provenance entries of a search item", () => {
+  it("names, in every entry of a node, a link and a fragment item, only fragments that support that very item", async () => {
+    const world: World = {
+      matches: [
+        { id: "node-a", score: FIRST_MATCH_SCORE },
+        { id: "node-x", score: SECOND_MATCH_SCORE },
+      ],
+      links: [
+        { id: "link-1", source: "node-a", target: "node-b" },
+        { id: "link-x1", source: "node-x", target: "node-y" },
+      ],
+      fragmentId: "fragment-1",
+      supporters: SUPPORTING_FRAGMENTS,
+    };
+
+    const body = await searchOver(world);
+
+    const unsupportedByItem = Object.fromEntries(
+      body.items.map((item) => [
+        item.id,
+        item.provenance
+          .map((entry) => entry.fragment_id)
+          .filter((id) => !(SUPPORTING_FRAGMENTS[item.id] ?? []).includes(id)),
+      ])
+    );
+    expect(unsupportedByItem).toEqual({
+      "node-a": [],
+      "node-x": [],
+      "link-1": [],
+      "link-x1": [],
+      "fragment-1": [],
+    });
+  });
+});
+
+describe("searchKnowledgeService: a matched node no fragment supports", () => {
+  it("answers no item with an empty provenance", async () => {
+    const world: World = {
+      matches: [{ id: "node-a", score: FIRST_MATCH_SCORE }],
+      links: [],
+      supporters: { "node-a": [] },
+    };
+
+    const body = await searchOver(world);
+
+    const itemsWithoutProvenance = body.items
+      .filter((item) => item.provenance.length === 0)
+      .map((item) => item.id);
+    expect(itemsWithoutProvenance).toEqual([]);
   });
 });
