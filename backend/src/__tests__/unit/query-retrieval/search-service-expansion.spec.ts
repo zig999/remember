@@ -322,6 +322,72 @@ describe("searchKnowledgeService expansion: decayed score of an expanded link", 
   });
 });
 
+const TARGET_END_CHAIN: readonly GraphLink[] = [
+  { id: "link-t1", source: "node-b", target: "node-a" },
+  { id: "link-t2", source: "node-c", target: "node-b" },
+];
+
+const OUTGOING_THEN_INCOMING: readonly GraphLink[] = [
+  { id: "link-s1", source: "node-a", target: "node-b" },
+  { id: "link-s2", source: "node-c", target: "node-b" },
+];
+
+const INCOMING_THEN_OUTGOING: readonly GraphLink[] = [
+  { id: "link-s1", source: "node-b", target: "node-a" },
+  { id: "link-s2", source: "node-b", target: "node-c" },
+];
+
+function scoresOf(
+  body: SearchResponse,
+  ids: readonly string[]
+): Record<string, number> {
+  return Object.fromEntries(
+    ids.map((id) => [id, Number(linkItem(body, id).score.toFixed(6))])
+  );
+}
+
+describe("searchKnowledgeService expansion: decayed score of a link reached through its target end", () => {
+  it("scores a link whose target is the matched node at 0.5 times its score at hop 1, and the link beyond it walked the same way at 0.25 times at hop 2", async () => {
+    const world: World = {
+      matches: [{ id: "node-a", score: FIRST_MATCH_SCORE }],
+      links: TARGET_END_CHAIN,
+    };
+
+    const body = await searchOver(world);
+
+    expect(scoresOf(body, ["link-t1", "link-t2"])).toEqual({
+      "link-t1": 0.4,
+      "link-t2": 0.2,
+    });
+  });
+
+  it.each<[string, readonly GraphLink[]]>([
+    [
+      "an outgoing link followed by an incoming one",
+      OUTGOING_THEN_INCOMING,
+    ],
+    [
+      "an incoming link followed by an outgoing one",
+      INCOMING_THEN_OUTGOING,
+    ],
+  ])(
+    "scores the link after a change of walking direction at 0.25 times the matched node's score at hop 2: %s",
+    async (_name, links) => {
+      const world: World = {
+        matches: [{ id: "node-a", score: FIRST_MATCH_SCORE }],
+        links,
+      };
+
+      const body = await searchOver(world);
+
+      expect(scoresOf(body, ["link-s1", "link-s2"])).toEqual({
+        "link-s1": 0.4,
+        "link-s2": 0.2,
+      });
+    }
+  );
+});
+
 describe("searchKnowledgeService expansion: the item's hop", () => {
   it("numbers an expanded link by the links on its path from the matched node, so a link touching the matched node is hop 1 in either direction", async () => {
     const world: World = {
