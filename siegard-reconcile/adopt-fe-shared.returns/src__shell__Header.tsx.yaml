@@ -1,0 +1,94 @@
+findings:
+  - file: src/shell/Header.tsx
+    where: |-
+      the docstring at lines 1-10, lines 3-5
+    evidence: |-
+      * Spec: front.md §2 (fixed/thin), §2.2 (z-frame), frontend-analise-funcional.md §2
+      * (brand · nav between the 5 areas, active highlighted · ⌘K).
+    cost: |-
+      The prose says five areas, while the code in `NAV` lists six (Chat, Grafo, Buscar, Ingerir, Curar, Histórico) and the node holds six. A reader who trusts the docstring gets the wrong count, and it also restates the active-highlight behaviour that the code already carries.
+    kind: restates
+    correction: |-
+      Remove the docstring. The six-area list and the current-area marking are held by the `NAV` array and the `aria-current` branch in this file, and by the node.
+    node: rules/application-shell/the-header-lists-six-areas
+  - file: src/shell/Header.tsx
+    where: |-
+      the JSX comment above the HeaderConversationMenu conditional, lines 103-104
+    evidence: |-
+      {/* Active-conversation menu — only on /chat (TC-02). The hooks live
+                inside this child so chat-feature traffic stays off other routes. */}
+    cost: |-
+      The comment states the menu's chat-only visibility, a fact the node holds and the `onChatRoute ? ... : null` branch in this same file already implements. It is a second home for the rule outside behaviour, and it cites a task identifier, TC-02, that no node reads.
+    kind: restates
+    correction: |-
+      Remove the comment. The `onChatRoute` expression and the conditional render hold the rule.
+    node: rules/application-shell/the-conversation-menu-shows-on-chat-only
+  - file: src/shell/Header.tsx
+    where: |-
+      the brand block, lines 71-77
+    evidence: |-
+      <Diamond className="size-4 text-primary" aria-hidden="true" />
+              <span className="font-sans text-sm font-medium font-bold tracking-tight text-foreground">
+                Remember
+              </span>
+    cost: |-
+      The header shows the visible word "Remember" and a diamond mark as its brand. No node in the specification states a brand or its text. The `show-shell` operation of `contracts/application-shell/shell-screen` lists what the banner holds (the navigation, the palette toggle, the theme choice) and omits it. The product name now lives only in this component, where a reader of the specification will not find it.
+    kind: unstated
+    correction: |-
+      Add the brand text to `contracts/application-shell/shell-screen`, in the `show-shell` accepted answer, or to a rule on the header's content.
+    node: contracts/application-shell/shell-screen
+  - file: src/shell/Header.tsx
+    where: |-
+      the NAV constant, lines 33-40
+    evidence: |-
+      { to: "/chat", label: "Chat", icon: MessageSquare },
+        { to: "/graph", label: "Grafo", icon: Network },
+        { to: "/search", label: "Buscar", icon: Search },
+        { to: "/ingest", label: "Ingerir", icon: Upload },
+        { to: "/curation", label: "Curar", icon: Scale },
+        { to: "/history", label: "Histórico", icon: History },
+    cost: |-
+      The node fixes the area labels and their order, and says an area is current when "its address equals or begins the current address". It never states which address belongs to each area. The pairing of Grafo to "/graph", Buscar to "/search", Ingerir to "/ingest", Curar to "/curation" and Histórico to "/history" is decided only here. The icon chosen for each area is likewise held nowhere in the specification.
+    kind: unstated
+    correction: |-
+      State the address of each area in `rules/application-shell/the-header-lists-six-areas`, or in the node that holds the address list.
+    node: rules/application-shell/the-header-lists-six-areas
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the JSX of Header(), as the banner, the Áreas navigation and the palette toggle. This file holds the header's part of `show-shell`. The theme choice named Tema sits in ThemeSelect and the footer is in another file.
+    evidence: |-
+      role="banner"
+            aria-label="Cabeçalho"
+      <nav aria-label="Áreas" className="flex items-center gap-xs">
+      aria-label="Abrir paleta de comandos (⌘K)"
+  - node: rules/application-shell/the-conversation-menu-shows-on-chat-only
+    held_at: |-
+      `onChatRoute` at line 58 and its conditional render at lines 105-110. The actions div at lines 113-125 holds only ThemeSelect and the palette Button.
+    evidence: |-
+      const onChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
+      {onChatRoute ? (
+              <HeaderConversationMenu
+      <ThemeSelect />
+              <Button
+  - node: rules/application-shell/the-header-lists-six-areas
+    held_at: |-
+      the `NAV` array at lines 33-40 and the `active` computation with `aria-current` at lines 82-88.
+    evidence: |-
+      { to: "/chat", label: "Chat", icon: MessageSquare },
+      { to: "/history", label: "Histórico", icon: History },
+      const active =
+                  pathname === item.to || pathname.startsWith(`${item.to}/`);
+      aria-current={active ? "page" : undefined}
+  - node: rules/application-shell/the-shell-regions-have-names
+    held_at: |-
+      the banner, nav and palette toggle attributes in Header(). The theme choice named Tema is in ThemeSelect and the Rodapé footer with its date input is in Footer. Neither is in this file.
+    evidence: |-
+      role="banner"
+            aria-label="Cabeçalho"
+      <nav aria-label="Áreas" className="flex items-center gap-xs">
+      aria-label="Abrir paleta de comandos (⌘K)"
+looked_past: |-
+  The class string `font-medium font-bold` on the brand, the GlassSurface dependency and the narrow cast on `search` are styling and code-quality matters, not domain facts, so they belong to another judgment.
+candidates_opened:
+  - domain/application-shell/application-shell

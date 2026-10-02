@@ -1,0 +1,56 @@
+findings:
+  - file: src/shell/AmbientBackdrop.tsx
+    where: >-
+      the "Contract" block of the header docstring, line 12
+    evidence: |-
+      *  - <img> with object-fit cover, object-position center, alt="", role="presentation"
+    cost: >-
+      The docstring says in prose that the image has an empty alternative text. The rendered `<img alt="" ...>` and the wrapper's `aria-hidden="true"` already hold that fact in this same file. A second statement in a comment can drift from the node unnoticed. The next reader may also take the comment as the place the rule is decided, not the node.
+    kind: restates
+    correction: >-
+      Remove the "alt" and "role" wording from the docstring. The code in this file already holds the fact, and the node `rules/application-shell/the-backdrop-is-decoration` binds it. Prose is removed by the comment route, followed by `/reconcile` over this file.
+    node: rules/application-shell/the-backdrop-is-decoration
+  - file: src/shell/AmbientBackdrop.tsx
+    where: >-
+      the useEffect at lines 33-54, the conditional `<img>` render at lines 62-70, and the `onError` handler at line 68
+    evidence: |-
+      const ric = (window as unknown as {
+            requestIdleCallback?: (cb: () => void) => number;
+          }).requestIdleCallback;
+          if (typeof ric === "function") {
+            ric(assign);
+          } else {
+            const timer = window.setTimeout(assign, 0);
+      ...
+      {src !== "" && (
+              <img
+                src={src}
+                ...
+                onError={() => setSrc("")}
+              />
+    cost: >-
+      The shell's rules that the image must not load before first paint (so it stays out of the LCP budget) and that a failed load must fall back to the flat `bg-background` colour live only in this code. No node in the specification holds them. They are cited only as `front.back.md BR-15`, in a comment and in a document that is not a node. The next reader will look for these behaviours in the specification and will not find them. A change to the loading or fallback policy would then be made here, where it reads as an implementation detail and not as a business decision.
+    kind: unstated
+    correction: >-
+      Give the deferred-load and flat-colour-fallback behaviour a node under `application-shell` (an analysis step). The presentation values in the same file are not facts a node holds. These are the asset path `/backdrop/cityscape-dusk.png`, the `opacity-60` class and the `z-backdrop` layer, and they are surface.
+
+read:
+  - node: rules/application-shell/the-backdrop-is-decoration
+    held_at: >-
+      the wrapper `<div aria-hidden="true">` at line 58 and the `<img alt="" role="presentation">` at lines 63-66
+    evidence: |-
+      <div
+            aria-hidden="true"
+            className="fixed inset-0 z-backdrop overflow-hidden bg-background"
+            data-testid="ambient-backdrop"
+          >
+            {src !== "" && (
+              <img
+                src={src}
+                alt=""
+                role="presentation"
+
+looked_past: >-
+  The `opacity-60` class, the `z-backdrop` layer, the `object-cover` fit and the asset filename are surface choices, not domain facts, so I did not report them.
+
+candidates_opened: []

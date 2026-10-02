@@ -1,0 +1,169 @@
+findings:
+  - file: src/router/routes.tsx
+    where: |-
+      the module header docblock, lines 1-28 (layout tree and deviation note)
+    evidence: |-
+      RootRoute (no guard, no AppShell — just AmbientBackdrop + boundary + toaster)
+       *   ├── /sign-in            (signInRoute — direct child; FL-AUTH-01 bypass)
+       *   └── "protected"         (protectedLayoutRoute — pathless, id="protected";
+       *                            beforeLoad: JWT guard; component: <AppShell><Outlet/></AppShell>)
+    cost: |-
+      The docblock states in prose that sign-in sits outside the guarded shell and that every other address sits under it. The code that holds this is the parent wiring of signInRoute and protectedLayoutRoute and the routeTree. A second statement of the fact exists outside behavior. It also cites front.md, front.back.md BR-04 and temp/login-screen-plan.md as authorities, which are not the nodes.
+    kind: restates
+    correction: |-
+      Remove the docblock. The fact is held by the node and by the code at signInRoute (getParentRoute: () => RootRoute) and protectedLayoutRoute.
+    node: rules/application-shell/sign-in-sits-outside-the-guarded-shell
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above protectedLayoutRoute, lines 76-83
+    evidence: |-
+      BR-04 (preserved): absent or near-expired token (isFresh() === false)
+       * redirects to /sign-in?reason=session_expired.
+    cost: |-
+      The guard rule is restated in prose beside the code that implements it (beforeLoad throwing redirect to /sign-in with search reason session_expired). A change to the node would leave this sentence behind as a second, unbound statement.
+    kind: restates
+    correction: |-
+      Remove the docblock. The code at protectedLayoutRoute.beforeLoad holds the fact.
+    node: rules/application-shell/the-guard-needs-a-fresh-token
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above indexRoute, lines 99-102
+    evidence: |-
+      Root index route — redirects to /chat per chat.feature.spec.md UI-01
+       * and chat.flow.md FL-01 (the chat workspace is the primary entry).
+    cost: |-
+      The root-redirects-to-chat rule is restated in prose, citing other documents as its authority. The code holds it in indexRoute.beforeLoad (throw redirect({ to: "/chat" })).
+    kind: restates
+    correction: |-
+      Remove the docblock.
+    node: rules/application-shell/the-root-address-leads-to-chat
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above chatRoute, lines 111-120
+    evidence: |-
+      `validateSearch` returns `string | undefined`: empty/missing value yields
+       * `undefined` so the URL stays clean (`/chat` not `/chat?conversation=`).
+    cost: |-
+      The keep-only-a-non-empty-string rule for the conversation key is restated in prose. The code holds it in chatRoute.validateSearch (typeof raw === "string" && raw.length > 0).
+    kind: restates
+    correction: |-
+      Remove the docblock.
+    node: rules/application-shell/chat-and-curation-keep-one-search-key
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above signInRoute and the comment inside its beforeLoad, lines 148-154 and 159-161
+    evidence: |-
+      FL-AUTH-01 bypass: if a fresh JWT is already present, skip the form and
+       * route the operator straight to /chat. Wrapped in try/catch so a corrupt
+       * store never prevents the sign-in form from rendering.
+    cost: |-
+      The rule that a fresh owner skips sign-in, and that a failed freshness check counts as not fresh, is restated in two comments. The code holds it in the try/catch around isFresh() and the `if (fresh) { throw redirect({ to: "/chat" }); }` branch.
+    kind: restates
+    correction: |-
+      Remove both comments.
+    node: rules/application-shell/a-fresh-owner-skips-sign-in
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above curationRoute, lines 211-222
+    evidence: |-
+      Same shape as `chatRoute.validateSearch`: empty or missing yields `{}`,
+       * keeping the URL clean (`/curation` not `/curation?item=`).
+    cost: |-
+      The rule that the item search key is kept only when a non-empty string is restated in prose. The code holds it in curationRoute.validateSearch. The comment also cites curadoria.flow.md §3 row 3b as the authority for the fall-through behavior.
+    kind: restates
+    correction: |-
+      Remove the docblock.
+    node: rules/application-shell/chat-and-curation-keep-one-search-key
+  - file: src/router/routes.tsx
+    where: |-
+      the docblock above routeTree, lines 268-271
+    evidence: |-
+      Route tree — /sign-in stays a sibling of the pathless protected layout so
+       * it renders without the AppShell chrome.
+    cost: |-
+      The sign-in-outside-the-shell fact is stated again in prose next to the routeTree that holds it (RootRoute.addChildren([signInRoute, protectedLayoutRoute.addChildren([...])])).
+    kind: restates
+    correction: |-
+      Remove the docblock.
+    node: rules/application-shell/sign-in-sits-outside-the-guarded-shell
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      protectedLayoutRoute.beforeLoad (show-shell refusal redirect), the three Suspense fallbacks, the StubPage titles of graphRoute, searchRoute and historyRoute, and notFoundRoute (show-page-state)
+    evidence: |-
+      throw redirect({ to: "/sign-in", search: { reason: "session_expired" } });
+      title="Página não encontrada."
+      hint="O endereço solicitado não existe ou foi removido."
+  - node: domain/application-shell/application-shell
+    held_at: |-
+      routeTree, lines 272-284, where the address attribute is realised as the declared routes
+    evidence: |-
+      export const routeTree = RootRoute.addChildren([
+        signInRoute,
+        protectedLayoutRoute.addChildren([
+  - node: rules/application-shell/a-fresh-owner-skips-sign-in
+    held_at: |-
+      signInRoute.beforeLoad, lines 158-171
+    evidence: |-
+      try { fresh = useAuthStore.getState().isFresh(); } catch { fresh = false; }
+      if (fresh) { throw redirect({ to: "/chat" }); }
+  - node: rules/application-shell/a-loading-workspace-says-so-politely
+    held_at: |-
+      the Suspense fallbacks of chatRoute, ingestRoute and curationRoute
+    evidence: |-
+      role="status" aria-live="polite" ... Carregando conversa… / Carregando ingestão… / Carregando curadoria…
+  - node: rules/application-shell/an-unknown-address-says-page-not-found
+    held_at: |-
+      notFoundRoute, lines 256-266, which carries the title and hint. The match-no-route handling without guard or shell is not in this file.
+    evidence: |-
+      path: "/not-found",
+      component: () => (<StubPage title="Página não encontrada." hint="O endereço solicitado não existe ou foi removido." testId="not-found-page" />)
+  - node: rules/application-shell/chat-and-curation-keep-one-search-key
+    held_at: |-
+      chatRoute.validateSearch and curationRoute.validateSearch
+    evidence: |-
+      if (typeof raw === "string" && raw.length > 0) { return { conversation: raw }; } return {};
+      if (typeof raw === "string" && raw.length > 0) { return { item: raw }; } return {};
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: |-
+      the getParentRoute of indexRoute, chatRoute, graphRoute, searchRoute, ingestRoute, curationRoute, historyRoute and notFoundRoute, and the routeTree children list
+    evidence: |-
+      getParentRoute: () => protectedLayoutRoute,
+      component: ProtectedLayout,
+  - node: rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+    held_at: |-
+      only the redirect that carries the reason (protectedLayoutRoute.beforeLoad, search: { reason: "session_expired" }) and the mount of SignInPage. The notice itself is shown in src/router/SignInPage.tsx, outside this file.
+    evidence: |-
+      component: () => <SignInPage />,
+  - node: rules/application-shell/sign-in-sits-outside-the-guarded-shell
+    held_at: |-
+      signInRoute, lines 155-177, a direct child of RootRoute
+    evidence: |-
+      getParentRoute: () => RootRoute,
+      path: "/sign-in",
+  - node: rules/application-shell/some-addresses-show-only-a-placeholder
+    held_at: |-
+      graphRoute, searchRoute and historyRoute components for the titles. The "Conteúdo em breve." line is not in this file.
+    evidence: |-
+      <StubPage title="Grafo" testId="graph-page" />
+      <StubPage title="Busca" testId="search-page" />
+      <StubPage title="Histórico" testId="history-page" />
+  - node: rules/application-shell/the-guard-needs-a-fresh-token
+    held_at: |-
+      protectedLayoutRoute.beforeLoad, lines 87-95
+    evidence: |-
+      const fresh = useAuthStore.getState().isFresh();
+      if (!fresh) { throw redirect({ to: "/sign-in", search: { reason: "session_expired" } }); }
+  - node: rules/application-shell/the-palette-lives-inside-the-shell
+    held_at: |-
+      ProtectedLayout, which mounts AppShell only under the guarded layout. The palette itself is mounted in src/shell/AppShell.tsx, outside this file.
+    evidence: |-
+      function ProtectedLayout() { return (<AppShell><Outlet /></AppShell>); }
+  - node: rules/application-shell/the-root-address-leads-to-chat
+    held_at: |-
+      indexRoute.beforeLoad, lines 103-109, a child of protectedLayoutRoute, so the freshness guard runs first
+    evidence: |-
+      path: "/",
+      beforeLoad: () => { throw redirect({ to: "/chat" }); },
+looked_past: |-
+  The lazy() imports and their explanatory docblock, the testId props and the literal route path strings are implementation choices that no node's fact is about, so they are not this judgment's.

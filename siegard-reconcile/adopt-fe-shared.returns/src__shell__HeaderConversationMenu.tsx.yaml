@@ -1,0 +1,104 @@
+findings:
+  - file: src/shell/HeaderConversationMenu.tsx
+    where: |-
+      the header docblock, line 24 ("On create success → navigate to ...")
+    evidence: |-
+      * - On create success → navigate to `/chat?conversation=<new-id>`.
+    cost: |-
+      The create-then-open rule is stated a second time in prose beside the code that holds it. If the node moves, the comment keeps asserting the old rule, and nothing checks it because it is a comment.
+    kind: restates
+    correction: |-
+      Remove the line. The fact is held by `onCreate` (`createMutation.mutate(undefined, { onSuccess: (created) => { void navigate({ to: "/chat", search: { conversation: created.id } }); } })`) and by `onSelect` in this same file.
+    node: rules/application-shell/choosing-or-creating-a-conversation-opens-it
+  - file: src/shell/HeaderConversationMenu.tsx
+    where: |-
+      the header docblock, line 25, and the comment inside `onArchive`'s `onSuccess`, lines 107-109
+    evidence: |-
+      * - On archive of the ACTIVE conversation → navigate to `/chat` (no id).
+      // If the archived conversation was the active one, drop the
+      // `?conversation` param so the workspace falls back to the
+      // empty-state per chat.feature.spec.md §3.
+    cost: |-
+      The archive-and-leave rule is restated twice in prose, and one copy cites `chat.feature.spec.md §3` as its authority. A reader who trusts the citation looks in `docs/specs/` and not in the node.
+    kind: restates
+    correction: |-
+      Remove both comments. The code holds the fact in `onArchive` (`{ id, archivedAt: new Date().toISOString() }` and `if (id === activeConversationId) { void navigate({ to: "/chat", search: {} }); }`).
+    node: rules/application-shell/archiving-stamps-the-browser-clock
+  - file: src/shell/HeaderConversationMenu.tsx
+    where: |-
+      the header docblock, line 26 ("On delete of the ACTIVE conversation ...")
+    evidence: |-
+      * - On delete of the ACTIVE conversation → navigate to `/chat` (no id).
+    cost: |-
+      The delete-and-leave rule exists a second time as prose, so it can drift from the node without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the line. The code holds the fact in `onDelete` (`deleteMutation.mutate({ id }, { onSuccess: () => { if (id === activeConversationId) { void navigate({ to: "/chat", search: {} }); } } })`).
+    node: rules/application-shell/deleting-the-active-conversation-leaves-it
+  - file: src/shell/HeaderConversationMenu.tsx
+    where: |-
+      the header docblock, lines 27-28, and the comment above `useListConversations`, lines 60-61
+    evidence: |-
+      * - `includeArchived` is the local UI filter — owned here, mirrored into the
+      *   list query so the cache key stays aligned with what the menu shows.
+      // Data: the list query — `includeArchived` is part of the query key so
+      // toggling it swaps to a separate cache entry (chat.feature.spec.md §4).
+    cost: |-
+      The rule that the listing excludes archived conversations unless the owner includes them is described in prose and attributed to `chat.feature.spec.md §4`. The cache-key claim is made here about code in another file.
+    kind: restates
+    correction: |-
+      Remove both comments. The code holds the fact in `useState(false)` and `useListConversations({ includeArchived })` in this file. Any query-key behaviour sits in `@/features/chat/api`, which is outside this file set.
+    node: rules/application-shell/the-header-menu-lists-without-archived-by-default
+  - file: src/shell/HeaderConversationMenu.tsx
+    where: |-
+      the header docblock, lines 30-31 ("Out of scope: ...")
+    evidence: |-
+      * Out of scope: rename does NOT navigate (the active id stays the same);
+      *               unarchive does NOT navigate (the conversation stays active).
+    cost: |-
+      The rule that rename and reactivate stay where they are is stated again in prose. It could survive a change to the node and mislead the next reader.
+    kind: restates
+    correction: |-
+      Remove the lines. The code holds the fact in `onRename` (`updateMutation.mutate({ id, title: newTitle })`) and `onUnarchive` (`updateMutation.mutate({ id, archivedAt: null })`), neither of which navigates.
+    node: rules/application-shell/renaming-and-reactivating-stay-where-they-are
+read:
+  - node: rules/application-shell/a-failed-menu-action-does-not-navigate
+    held_at: |-
+      Every `navigate` call in `onCreate`, `onArchive` and `onDelete` sits inside an `onSuccess` callback. No `onError`, `onSettled` or failure handler is declared anywhere in the file.
+    evidence: |-
+      createMutation.mutate(undefined, { onSuccess: (created) => { void navigate({ ... }); } });
+      updateMutation.mutate({ id, archivedAt: new Date().toISOString() }, { onSuccess: () => { if (id === activeConversationId) { void navigate({ to: "/chat", search: {} }); } } });
+      deleteMutation.mutate({ id }, { onSuccess: () => { ... } });
+  - node: rules/application-shell/archiving-stamps-the-browser-clock
+    held_at: |-
+      `onArchive`, lines 102-116
+    evidence: |-
+      updateMutation.mutate({ id, archivedAt: new Date().toISOString() }, { onSuccess: () => { if (id === activeConversationId) { void navigate({ to: "/chat", search: {} }); } } });
+  - node: rules/application-shell/choosing-or-creating-a-conversation-opens-it
+    held_at: |-
+      `onSelect`, lines 86-88, and `onCreate`, lines 89-98
+    evidence: |-
+      void navigate({ to: "/chat", search: { conversation: id } });
+      createMutation.mutate(undefined, { onSuccess: (created) => { void navigate({ to: "/chat", search: { conversation: created.id } }); } });
+  - node: rules/application-shell/deleting-the-active-conversation-leaves-it
+    held_at: |-
+      `onDelete`, lines 120-131
+    evidence: |-
+      deleteMutation.mutate({ id }, { onSuccess: () => { if (id === activeConversationId) { void navigate({ to: "/chat", search: {} }); } } });
+  - node: rules/application-shell/renaming-and-reactivating-stay-where-they-are
+    held_at: |-
+      `onRename`, lines 99-101, and `onUnarchive`, lines 117-119
+    evidence: |-
+      updateMutation.mutate({ id, title: newTitle });
+      updateMutation.mutate({ id, archivedAt: null });
+  - node: rules/application-shell/the-header-menu-lists-without-archived-by-default
+    held_at: |-
+      `useState(false)` for `includeArchived` (line 58), `useListConversations({ includeArchived })` (line 62), and the `activeTitle` derivation (lines 70-72)
+    evidence: |-
+      const [includeArchived, setIncludeArchived] = useState(false);
+      const listQuery = useListConversations({ includeArchived });
+      const activeTitle = conversations.find((c) => c.id === activeConversationId)?.title ?? null;
+looked_past: |-
+  The docblock also claims that the mutation hooks already invalidate `conversationKeys.all` and that the adapter is mounted by `Header.tsx` only under `/chat`; no node in the specification holds the first, and the second belongs to the candidate `rules/application-shell/the-conversation-menu-shows-on-chat-only`, whose code lives in another file. This file holds neither, so I treated both as prose for the comment route and not as findings, and the `exactOptionalPropertyTypes` remark is not a domain fact.
+candidates_opened:
+  - rules/application-shell/the-conversation-menu-shows-on-chat-only

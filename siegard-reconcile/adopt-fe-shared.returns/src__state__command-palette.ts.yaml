@@ -1,0 +1,31 @@
+findings:
+  - file: src/state/command-palette.ts
+    where: |-
+      the docstring above the store, lines 1-10 (`useCommandPaletteStore — open/closed state of ⌘K (in-memory only)` and `front.back.md §2 (Store: useCommandPaletteStore — in-memory only)`)
+    evidence: |-
+      /**
+       * useCommandPaletteStore — open/closed state of ⌘K (in-memory only).
+       *
+       * Spec references:
+       *  - front.md §4.3 (client state catalog)
+       *  - front.back.md §2 (Store: useCommandPaletteStore — in-memory only)
+    cost: |-
+      The docstring says a second time, outside behavior, that the open state is held in memory only. The code already holds this: `create<CommandPaletteState>(...)` has no persistence middleware and sets `open: false`. A reader can take the docstring as a second authority for the rule. If the node moves, nothing reaches this prose. The docstring also cites `front.md` and `front.back.md` section numbers as if they governed the store.
+    kind: restates
+    correction: |-
+      Remove the docstring. The behavior is correct and the node already holds the fact, so the prose is the only thing owed a change.
+    node: rules/application-shell/the-palette-starts-closed-in-memory
+read:
+  - node: rules/application-shell/the-palette-starts-closed-in-memory
+    held_at: |-
+      the `create<CommandPaletteState>((set, get) => ({ open: false, ... }))` call, lines 20-24. The initial value `open: false` makes it start closed, and the plain `create` has no `persist` middleware or storage, so the state lives in memory only.
+    evidence: |-
+      export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
+        open: false,
+        setOpen: (open) => set({ open }),
+        toggle: () => set({ open: !get().open }),
+      }));
+looked_past: |-
+  The `setOpen` and `toggle` actions are the store's mechanism for the shortcut rule in rules/application-shell/the-shortcut-toggles-the-palette. The key handling is not in this file, so I report nothing against it.
+candidates_opened:
+  - rules/application-shell/the-shortcut-toggles-the-palette

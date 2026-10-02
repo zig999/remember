@@ -1,0 +1,131 @@
+findings:
+  - file: src/components/ds/ChatBubble/ChatBubble.tsx
+    where: >-
+      the role/fill comment above `glassFill`, lines 143-148
+    evidence: |-
+      //  - user (right)      → plain ambient glass.
+      //  - assistant (left)  → ambient glass + a touch of the accent (principal)
+      //                        color (`--color-surface-glass-ambient-accent`).
+    cost: >-
+      The role-to-side-and-fill rule is written a second time in prose beside the code that holds it,
+      so a reader can take the comment for the place the rule is decided. Code holds the fill here
+      (`const glassFill = variant === "user" ? "ambient" : "ambient-accent"`) and the side in
+      `chatBubble({ variant })` from ChatBubble.variants.ts. The prose is a second home that
+      `--check` does not follow when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The node already holds the fact and the code implements it. The side lives
+      in ChatBubble.variants.ts, which the finding names as the second code holder.
+    node: rules/application-shell/a-bubble-takes-one-role
+  - file: src/components/ds/ChatBubble/ChatBubble.tsx
+    where: >-
+      the tool-chips slot comment, line 170, and the docblock sentence about chips above the text, line 56-58
+    evidence: |-
+      {/* Tool chips slot — chips render above the message text (spec §6). */}
+    cost: >-
+      The placement rule (chips above the text, in the order given) is restated as a comment next to
+      the JSX that holds it, citing a spec section that is not the node. A reader may treat the
+      comment as the authority, and it would not move with the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The `toolChips.map` block before `<GlassSurface>` holds the placement and the order.
+    node: rules/application-shell/a-bubble-shows-its-tool-chips-first
+  - file: src/components/ds/ChatBubble/ChatBubble.tsx
+    where: >-
+      the `ariaBusy` comment, lines 134-135
+    evidence: |-
+      // ARIA: `aria-busy='true'` only when streaming. Spec §9: removed when
+      // streaming ends so live-region semantics do not stay stuck.
+    cost: >-
+      The busy-while-streaming rule is restated in prose over the code that holds it
+      (`const ariaBusy = streaming ? "true" : undefined;` and `{streaming ? <StreamingCursorStub /> : null}`).
+      The comment claims a spec section as its authority, which is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The same applies to the docblock comment on `StreamingCursorStub`, lines 90-95,
+      which restates that the cursor is hidden from assistive technology.
+    node: rules/application-shell/a-streaming-bubble-is-busy
+  - file: src/components/ds/ChatBubble/ChatBubble.tsx
+    where: >-
+      the error-accent comment above `glassAccent`, lines 138-140
+    evidence: |-
+      // Glass accent — only `error` swaps the border; idle/streaming/stopped all
+      // share the default glass border so the bubble's tonal language stays
+      // "neutral content surface" by default.
+    cost: >-
+      The rule that an errored bubble is shown by its border accent alone is restated in prose beside
+      `const glassAccent = error ? "error" : "none";`. The comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the rule, and the bubble adds no wording on error.
+    node: rules/application-shell/an-errored-bubble-adds-no-wording
+  - file: src/components/ds/ChatBubble/ChatBubble.tsx
+    where: >-
+      the stop-notice comments, lines 49, 128-130 and 232-234, and the docblock item 4, lines 25-26
+    evidence: |-
+      // Stop-reason notice — table-driven. `stopReason='cancelled'` renders the
+      // notice; any other value (including undefined and unknown strings)
+      // renders nothing (spec §4 stopped table).
+    cost: >-
+      The only-cancelled-shows-a-notice rule and its exact copy are restated in several comments, with
+      the copy quoted again as "Resposta interrompida". The code holds both in `STOP_NOTICE_BY_REASON`
+      (`cancelled: "Resposta interrompida"`) and the `stopNotice` lookup. The comments are second homes
+      that cite a spec table instead of the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The table and the lookup in this file hold the fact.
+    node: rules/application-shell/only-a-cancelled-reply-shows-a-notice
+read:
+  - node: rules/application-shell/a-bubble-shows-its-tool-chips-first
+    held_at: >-
+      the `toolChips.map(...)` block rendered before `<GlassSurface>` and the `ToolChipStub` component, lines 60-88 and 171-186
+    evidence: |-
+      {toolChips !== undefined && toolChips.length > 0 ? ( <div data-testid="tool-chips" ...> {toolChips.map((chip, i) => ( <ToolChipStub key={`${chip.tool}:${i}`} tool={chip.tool} ok={chip.ok} /> ))}
+      ok === null ? "border-border-glass text-muted-foreground" : ok ? "border-border-accepted text-state-accepted-fg" : "border-border-error text-state-disputed-fg"
+      {tool}
+  - node: rules/application-shell/a-bubble-shows-plain-text
+    held_at: >-
+      the `<p data-testid="bubble-content">` that renders `{content}`, lines 223-229
+    evidence: |-
+      <p data-testid="bubble-content" className="whitespace-pre-wrap break-words text-xs text-foreground"> {content}
+  - node: rules/application-shell/a-bubble-state-is-resolved-in-order
+    held_at: >-
+      the `data-state` expression on the root div, lines 155-163
+    evidence: |-
+      data-state={ error ? "error" : streaming ? "streaming" : stopNotice !== undefined ? "stopped" : "idle" }
+  - node: rules/application-shell/a-bubble-takes-one-role
+    held_at: >-
+      `data-variant={variant}` and `chatBubble({ variant })` on the root div, and `glassFill` at line 149. The side is decided by the CVA in ChatBubble.variants.ts, which is outside this file.
+    evidence: |-
+      const glassFill = variant === "user" ? "ambient" : "ambient-accent";
+      data-variant={variant}
+      className={cn(chatBubble({ variant }), className)}
+  - node: rules/application-shell/a-streaming-bubble-is-busy
+    held_at: >-
+      `ariaBusy`, spread onto the root div, and `StreamingCursorStub` rendered after the content, lines 97-107, 136, 167 and 228
+    evidence: |-
+      const ariaBusy = streaming ? "true" : undefined;
+      {...(ariaBusy !== undefined ? { "aria-busy": ariaBusy } : {})}
+      {streaming ? <StreamingCursorStub /> : null}
+      <span aria-hidden="true" data-testid="streaming-cursor" ...>
+  - node: rules/application-shell/a-user-bubble-may-be-streaming
+    held_at: >-
+      nowhere in the form of a refusal. No branch rejects `variant === "user"` with `streaming`, and the cursor and `aria-busy` are rendered for any variant.
+    evidence: |-
+      const ariaBusy = streaming ? "true" : undefined;
+      {streaming ? <StreamingCursorStub /> : null}
+  - node: rules/application-shell/an-errored-bubble-adds-no-wording
+    held_at: >-
+      `glassAccent`, passed to `GlassSurface` as `accent`, line 141. No error text is rendered anywhere.
+    evidence: |-
+      const glassAccent = error ? "error" : "none";
+      <GlassSurface level="modal" accent={glassAccent}
+  - node: rules/application-shell/only-a-cancelled-reply-shows-a-notice
+    held_at: >-
+      `STOP_NOTICE_BY_REASON`, the `stopNotice` lookup and the `stop-notice` paragraph, lines 50-52, 131-132 and 235-245
+    evidence: |-
+      const STOP_NOTICE_BY_REASON: Readonly<Record<string, string>> = { cancelled: "Resposta interrompida", };
+      const stopNotice = stopReason !== undefined ? STOP_NOTICE_BY_REASON[stopReason] : undefined;
+      {stopNotice !== undefined ? ( <p data-testid="stop-notice" ...> {stopNotice}
+looked_past: >-
+  Presentation choices (glass level, radius override, `data-motion-source`, reduced-motion handling, the `▍` glyph, spacing tokens) and the `{...rest}` spread placed after `aria-busy` belong to other judgments, and the comment-only references to specs, TC ids and CLAUDE.md state no domain fact.

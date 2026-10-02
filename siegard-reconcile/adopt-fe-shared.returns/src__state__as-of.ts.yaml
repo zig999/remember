@@ -1,0 +1,36 @@
+findings:
+  - file: src/state/as-of.ts
+    where: >-
+      The header comment, lines 2 and 9-12, and the `asOf` field's doc comment on line 18.
+    evidence: |-
+      * useAsOfStore — time-travel cursor (in-memory mirror of the URL `?as_of=…`).
+       * The URL is the source of truth — this store is the in-memory cache
+       * components read. The router (`useSearch()`) syncs the URL into this store
+       * when `?as_of` changes; components only READ from this store, never write
+       * directly. Writing happens via `navigate({ search: { as_of: ... } })`.
+      /** Time-travel cursor — `null` means "now" (no `?as_of` param). */
+    cost: |-
+      The comment says the as-of date is mirrored from, and written through, the address (`?as_of`). The node says it is held in memory only and never written to the address. No code carries the URL behaviour. A grep of frontend/src for `as_of`/`asOf`/`useAsOfStore` finds no `useSearch`, no `navigate` and no router sync. `src/shell/Footer.tsx` even notes that it writes the store directly. The comment is therefore the only place the address behaviour appears, and it reads as a decision the business made. The next reader will take the as-of date to be URL-addressable and shareable, when the specification forbids exactly that.
+    kind: contradicts
+    correction: |-
+      Remove the prose that describes the URL as the source of truth and the sync and navigate write path. The comment-only route does this: removal, then /reconcile over the file. The behaviour already matches the node, so no code change is needed.
+    node: rules/application-shell/the-as-of-date-lives-in-memory
+read:
+  - node: rules/application-shell/as-of-starts-at-today
+    held_at: >-
+      The initial state of `useAsOfStore`, line 25. The `Como em: hoje` footer text is not in this file; it is in `src/shell/Footer.tsx`.
+    evidence: |-
+      export const useAsOfStore = create<AsOfState>((set) => ({
+        asOf: null,
+  - node: rules/application-shell/the-as-of-date-lives-in-memory
+    held_at: >-
+      The in-memory zustand store created at lines 24-27, with no persistence middleware and no address write. The header comment's URL claim contradicts the node, so it is filed as a finding. The node's clause that no read carries the date is not held in this file.
+    evidence: |-
+      export const useAsOfStore = create<AsOfState>((set) => ({
+        asOf: null,
+        set: (next) => set({ asOf: next }),
+      }));
+looked_past: >-
+  `src/features/curation/api/node.hooks.ts` builds a read with `search.set("as_of", params.asOf)`, which bears on the node's "no read is sent with it" clause. That file is outside the set, so I did not report it.
+candidates_opened:
+  - rules/application-shell/the-owner-picks-the-as-of-date

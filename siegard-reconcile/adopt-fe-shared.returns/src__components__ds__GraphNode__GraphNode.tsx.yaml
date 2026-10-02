@@ -1,0 +1,79 @@
+findings:
+  - file: src/components/ds/GraphNode/GraphNode.tsx
+    where: |-
+      the `TypeStyle` interface and `NODE_STYLE` map, lines 34-54 (the `icon` and `color` columns)
+    evidence: |-
+      person: { icon: User, label: "Pessoa", color: "text-node-person" },
+      ...
+      task: { icon: SquareCheck, label: "Tarefa", color: "text-node-task" },
+    cost: |-
+      Which icon and which colour token stand for each of the ten node types is a presentation rule that only this map holds. The node set says nothing of them, and a node carries only the name and the default subtitle. A reader who wants to know how a Pessoa node is told apart from an Organização node looks in the specification, finds nothing, and must read the code to learn it. The comment's pointer to `tokens.md §6.3` is not a node.
+    kind: unstated
+    correction: |-
+      Give the per-type icon and colour a home in a node, for example by extending a-graph-node-names-its-type or the state-badge domain node. Otherwise record that the mapping is left to the design system.
+  - file: src/components/ds/GraphNode/GraphNode.tsx
+    where: |-
+      the `STATE_ACCENT` map, lines 56-67, and its use in the `accent` computation, lines 80-84
+    evidence: |-
+      accepted: "none",
+      uncertain: "uncertain",
+      "low-confidence": "none",
+      disputed: "disputed",
+      superseded: "superseded",
+    cost: |-
+      The rule that only uncertain, disputed and superseded recolour a node's border, while accepted and low-confidence leave it at the default, lives only in this table. The node says a selected node shows selection "instead of the state's colour" but never says which states have a colour. A change to the attention states would have to be found in this file rather than in the specification.
+    kind: unstated
+    correction: |-
+      State which confidence states colour a graph node's border in a node, for example a-graph-node-shows-its-state-by-an-icon or the state-badge domain node.
+  - file: src/components/ds/GraphNode/GraphNode.tsx
+    where: |-
+      the doc comment on `TypeStyle.label`, line 36
+    evidence: |-
+      /** pt-BR type name (default subtitle). */
+    cost: |-
+      The comment is a second home for the fact that the pt-BR type name is the default subtitle. Code already holds that fact in `NODE_STYLE` and in `{subtitle ?? style.label}`, so the comment can disagree with the node later without any check noticing.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by `NODE_STYLE` and the `subtitle ?? style.label` expression in this file.
+    node: rules/application-shell/a-graph-node-names-its-type
+  - file: src/components/ds/GraphNode/GraphNode.tsx
+    where: |-
+      the comment after the `accent` computation, lines 85-87
+    evidence: |-
+      // Resting/default border is the GlassSurface panel's own glass edge
+      // (`border-border-glass`) — no override here. Attention states (uncertain /
+      // disputed / superseded) recolor it via `accent`; selected uses `focus`.
+    cost: |-
+      The comment restates, outside behaviour, that a selected node shows selection in its border instead of the state colour. Code holds that fact in `selected ? "focus" : ...` and in `selected && "ring-2 ring-border-focus"`, so the prose is only a second place to keep in step with the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `accent` ternary and the `selected && "ring-2 ring-border-focus"` class in this file.
+    node: rules/application-shell/a-graph-node-shows-its-state-by-an-icon
+read:
+  - node: rules/application-shell/a-graph-node-names-its-type
+    held_at: |-
+      the `NODE_STYLE` map, lines 43-54, the `aria-label` on GlassSurface, line 99, and the subtitle span, line 112. The ten-member `GraphNodeType` union is declared in GraphNode.types.ts, not in this file.
+    evidence: |-
+      person: { icon: User, label: "Pessoa", color: "text-node-person" },
+      ...
+      aria-label={`${style.label}: ${label}`}
+      ...
+      {subtitle ?? style.label}
+  - node: rules/application-shell/a-graph-node-shows-its-state-by-an-icon
+    held_at: |-
+      the conditional `{state && (<StateBadge ... iconOnly ... />)}`, lines 115-123, and the selected branch of the `accent` computation, lines 80-84
+    evidence: |-
+      const accent: GlassAccent = selected
+          ? "focus"
+          : state
+            ? STATE_ACCENT[state]
+            : "none";
+      ...
+      {state && (
+        <StateBadge
+          state={state}
+          size="sm"
+          iconOnly
+looked_past: |-
+  The Tailwind class string `text-xs font-medium font-semibold` and the header docstring's "Source: front.md §7.1 ..." citations are styling and prose, which are not facts of these nodes.
+candidates_opened: []

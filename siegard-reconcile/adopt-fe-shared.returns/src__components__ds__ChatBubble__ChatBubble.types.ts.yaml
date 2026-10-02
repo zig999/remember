@@ -1,0 +1,126 @@
+findings:
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring above ChatBubbleVariant, lines 30-33
+    evidence: |-
+      Spec §6: `user` bubbles align to the right (self-end); `assistant` bubbles
+      align to the left (self-start).
+    cost: |-
+      The rule that the role decides the side is stated in prose here while code already holds it, so a reader gets two places for one fact. When the node moves, nothing reaches this comment.
+    kind: restates
+    correction: |-
+      Remove the prose. The code that holds the fact is the `variant` map in src/components/ds/ChatBubble/ChatBubble.variants.ts (`user: "self-end items-end text-right"`, `assistant: "self-start items-start text-left"`).
+    node: rules/application-shell/a-bubble-takes-one-role
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the type ChatBubbleVariant, line 34
+    evidence: |-
+      export type ChatBubbleVariant = "user" | "assistant";
+    cost: |-
+      The two values a message role can take are declared a second time here. src/features/chat/types.ts already declares `export type ChatMessageRole = "user" | "assistant";`, and the specification's enumeration holds them in domain/chat/message-role. If a role is added, three places can disagree and nobody can tell which one was decided.
+    kind: contradicts
+    correction: |-
+      The bubble's role should take its type from the one existing declaration of the role vocabulary (ChatMessageRole) instead of listing the values again. The specification already holds the vocabulary in domain/chat/message-role.
+    node: domain/chat/message-role
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring on `content`, lines 42-45
+    evidence: |-
+      Message text. Empty string is legal — a freshly-opened streaming bubble
+      has `content=""` and grows via `streaming=true` + parent re-renders.
+    cost: |-
+      The acceptance of an empty text is stated in prose beside the code that holds it (`content: string`, which has no minimum length). The prose is a second home that the node does not reach.
+    kind: restates
+    correction: |-
+      Remove the prose. The declaration `content: string` holds the fact in this file.
+    node: rules/application-shell/a-bubble-shows-plain-text
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring on `streaming`, lines 48-53
+    evidence: |-
+      Adds
+         * `aria-busy='true'` and renders the inline streaming cursor (spec §4
+         * "streaming"). Removed when streaming ends — `aria-busy` collapses to its
+         * default (absent).
+    cost: |-
+      The busy marking is restated in prose in a file that does not implement it. The code holding it is `const ariaBusy = streaming ? "true" : undefined;` in src/components/ds/ChatBubble/ChatBubble.tsx. A change to the node leaves this comment stale.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by ChatBubble.tsx. The node is a candidate outside this file's set, and the file carries no bind to it.
+    node: rules/application-shell/a-streaming-bubble-is-busy
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the last sentences of the docstring on `streaming`, lines 52-53
+    evidence: |-
+      User bubbles MUST never have `streaming=true` (the
+         * type does not prohibit it; the ChatBubbleList enforces it).
+    cost: |-
+      The node says a bubble must not refuse a user role marked as streaming. This comment says the opposite, that a user bubble must never stream. No code holds that restriction. `streaming?: boolean` is independent of `variant`, and no ChatBubbleList exists under frontend/src. The next reader will take the comment for a business decision that contradicts the specification.
+    kind: contradicts
+    correction: |-
+      Remove the sentence. The type already conforms, because it imposes no restriction.
+    node: rules/application-shell/a-user-bubble-may-be-streaming
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring on `error`, lines 56-61
+    evidence: |-
+      Switches the underlying
+         * `GlassSurface` to `accent='error'` (red border). Does NOT swap any text
+         * content
+    cost: |-
+      The rule that an errored bubble adds no wording and shows the error only by its border accent is restated in prose here. The code that holds it is `const glassAccent = error ? "error" : "none";` in src/components/ds/ChatBubble/ChatBubble.tsx. The prose will not follow the node if the node moves.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by ChatBubble.tsx. The node is a candidate outside this file's set.
+    node: rules/application-shell/an-errored-bubble-adds-no-wording
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring on `stopReason`, lines 64-68
+    evidence: |-
+      Only `'cancelled'` renders a visible
+         * notice ("Resposta interrompida", spec §4 stopped). Any other value
+         * (`'end_turn'`, `'max_tokens'`, `'stop_sequence'`, …) renders no notice
+    cost: |-
+      The only-cancelled rule and the notice wording are repeated in prose beside the code that holds them, `STOP_NOTICE_BY_REASON` with `cancelled: "Resposta interrompida"` in src/components/ds/ChatBubble/ChatBubble.tsx. If the node's wording changes, this comment keeps the old one.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by ChatBubble.tsx. The node is a candidate outside this file's set.
+    node: rules/application-shell/only-a-cancelled-reply-shows-a-notice
+  - file: src/components/ds/ChatBubble/ChatBubble.types.ts
+    where: |-
+      the docstring on `toolChips`, lines 77-78
+    evidence: |-
+      Tool-call chips to render inline (above the message text).
+    cost: |-
+      The placement of chips above the text is stated in prose while code holds it. The code is the `tool-chips` block placed before the `GlassSurface` in src/components/ds/ChatBubble/ChatBubble.tsx. The comment is a second home that the node does not reach.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by ChatBubble.tsx.
+    node: rules/application-shell/a-bubble-shows-its-tool-chips-first
+read:
+  - node: rules/application-shell/a-bubble-shows-its-tool-chips-first
+    held_at: |-
+      the `toolChips` prop declaration, line 81, carries only the input of the rule: the ordered tool calls. One chip per call, the order, the name-only chip and the pending/ok/error colours are rendered in ChatBubble.tsx and not here.
+    evidence: |-
+      toolChips?: ReadonlyArray<ToolCallData>;
+  - node: rules/application-shell/a-bubble-shows-plain-text
+    held_at: |-
+      the `content` prop declaration, line 46, which accepts any string including an empty one. Plain rendering with line breaks kept is in ChatBubble.tsx and not in this file.
+    evidence: |-
+      content: string;
+  - node: rules/application-shell/a-bubble-takes-one-role
+    held_at: |-
+      the `variant` prop, line 41, required and typed by ChatBubbleVariant (line 34). It takes exactly one role. The side and fill that the role decides are realized in ChatBubble.variants.ts and ChatBubble.tsx.
+    evidence: |-
+      variant: ChatBubbleVariant;
+  - node: rules/application-shell/a-user-bubble-may-be-streaming
+    held_at: |-
+      the `streaming` prop, line 54, which is independent of `variant` and so does not refuse a user bubble marked as streaming. The comment above it says the opposite, and that is reported as a finding.
+    evidence: |-
+      streaming?: boolean;
+looked_past: |-
+  The docstring text about GlassSurface composition, entrance motion, `animate` and BR-02, the TC-xx task references, the file header's out-of-scope list, and the cross-feature import note carry no domain fact of the nodes and are not this judgment's.
+candidates_opened:
+  - rules/application-shell/only-a-cancelled-reply-shows-a-notice
+  - rules/application-shell/a-streaming-bubble-is-busy
+  - rules/application-shell/an-errored-bubble-adds-no-wording

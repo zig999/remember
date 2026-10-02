@@ -1,0 +1,55 @@
+findings:
+  - file: src/components/ui/form/form.tsx
+    where: |-
+      the header docblock, lines 8-10 (the useFormField() bullet)
+    evidence: |-
+      * - useFormField() joins both contexts + RHF state; THROWS if used outside a
+      *     FormField (the misuse is silent otherwise — aria wiring would point at
+      *     undefined ids).
+    cost: |-
+      The rule that a field's wiring read outside a form field raises is stated twice in this file, once as prose and once as the guard at lines 73-75. If the node moves, the prose keeps saying the old rule and nothing reads it. A later reader may take the docblock for the place the rule was decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the fact: the `if (!fieldContext) { throw new Error(...) }` guard in useFormField().
+    node: rules/application-shell/a-field-outside-a-form-is-a-developer-error
+  - file: src/components/ui/form/form.tsx
+    where: |-
+      the header docblock, lines 11-12 (the FormControl bullet)
+    evidence: |-
+      * - FormControl (Slot) injects id / aria-invalid / aria-describedby into the
+      *     wrapped input so label, description and message are correctly associated.
+    cost: |-
+      The rule that an invalid field is described by its help text and its error message is restated in prose beside the `aria-describedby` and `aria-invalid` props in FormControl. The two can drift apart without anyone noticing, and the prose gives a reader a second place to look for what the node decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the fact: the `aria-describedby` and `aria-invalid` props of the Slot in FormControl.
+    node: rules/application-shell/an-invalid-field-is-described
+read:
+  - node: domain/application-shell/application-shell
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares only form wiring (`FormFieldContext`, `FormItemContext`, `useFormField`, `FormControl`, `FormMessage`). Nothing in it declares or reads the aggregate's attributes (health, curation_pending, as_of, palette_open, address, reason) or its operations (open-address, toggle-palette, choose-as-of, show-failure).
+  - node: rules/application-shell/a-field-outside-a-form-is-a-developer-error
+    held_at: |-
+      useFormField(), lines 73-75
+    evidence: |-
+      if (!fieldContext) {
+          throw new Error("useFormField deve ser usado dentro de <FormField>");
+        }
+  - node: rules/application-shell/an-error-message-replaces-other-text
+    held_at: |-
+      FormMessage, lines 132-133
+    evidence: |-
+      const body = error ? String(error.message ?? "") : children;
+        if (!body) return null;
+  - node: rules/application-shell/an-invalid-field-is-described
+    held_at: |-
+      FormControl, lines 104-111
+    evidence: |-
+      aria-describedby={
+              error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId
+            }
+            aria-invalid={!!error}
+looked_past: |-
+  The comment at line 137 ("reveals (fade + small rise) when the error appears (front.md §9)") sits beside the `animate-message-in` class. It describes a motion style that no node holds, and I treated it as surface styling and as prose, so it is not a finding for this pass.

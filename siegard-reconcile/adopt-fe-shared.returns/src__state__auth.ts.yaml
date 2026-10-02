@@ -1,0 +1,82 @@
+findings:
+  - file: src/state/auth.ts
+    where: >-
+      Header docblock, lines 11-14, with the comment on AUTH_TOKEN_STORAGE_KEY at line 50 and the comment inside the catch of writeToken at line 101
+    evidence: |-
+      * Storage policy: in-memory Zustand store, mirrored to `sessionStorage` key
+      * `remember.auth.token`. NOT persisted to `localStorage` (prevents leaking
+      * across tabs/contexts the user did not actively start — see front.back.md
+      * §2 rationale).
+      ...
+      /* fail soft — token stays in memory only */
+    cost: >-
+      The storage key, the session-storage mirroring and the memory-only fallback are stated in prose as well as held by code. The prose points at front.back.md §2 as the authority. A reader who trusts the comment will look there instead of in the node. The rationale about leaking across tabs belongs in the decision log, not in the source.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in AUTH_TOKEN_STORAGE_KEY, readInitialToken and writeToken, all in this file. The node is bound to this file by the trace.
+    node: rules/application-shell/the-token-is-mirrored-to-session-storage
+  - file: src/state/auth.ts
+    where: >-
+      Docblock of isFresh, lines 43-46, the comment on EXPIRY_MARGIN_SECONDS at line 53, and the comment at line 121 inside isFresh
+    evidence: |-
+      * Returns true if the current token is present AND its decoded `exp` is
+      * more than 30 seconds in the future. front.back.md BR-04.
+      ...
+      /** Safety margin before declaring the token expired (BR-04). */
+      ...
+      // Without exp we conservatively trust the token (BFF will reject via 401).
+    cost: >-
+      The 30-second margin and the "no readable expiry counts as fresh" rule are stated in comments citing BR-04. The code also holds them in isFresh. The next reader finds the rule in two places and does not know that a node in the specification holds it too. The node sits outside this file's node set, so the specification's own check will not reach a comment that drifts from it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in `EXPIRY_MARGIN_SECONDS` and `isFresh()` in this file.
+    node: rules/application-shell/a-token-is-fresh-with-thirty-seconds-to-spare
+  - file: src/state/auth.ts
+    where: >-
+      Docblock of decodeJwtClaims, lines 56-60
+    evidence: |-
+      * Decode the payload of a JWT without verifying the signature (verification
+      * happens server-side via JWKS — front.back.md §6). Returns null on any
+      * parse failure; callers treat null as "no claims available".
+    cost: >-
+      The no-signature-check decoding rule is stated in prose with a pointer to front.back.md §6. The code holds it in decodeJwtClaims. The pointer sends a reader to a document that is not the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in `decodeJwtClaims` and in the `setToken` and initial-state paths of the store, both in this file.
+    node: rules/application-shell/setting-a-token-decodes-its-claims
+read:
+  - node: rules/application-shell/clearing-the-token-forgets-it
+    held_at: >-
+      The clear action of the store (lines 114-117), with writeToken(null) (lines 95-103)
+    evidence: |-
+      clear: () => {
+        writeToken(null);
+        set({ accessToken: null, claims: null });
+      },
+      ... if (token === null) sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  - node: rules/application-shell/setting-a-token-decodes-its-claims
+    held_at: >-
+      decodeJwtClaims (lines 61-84), called by setToken at line 112 and when the initial state is built at line 109
+    evidence: |-
+      if (parts.length !== 3) return null;
+      ...
+      if (typeof parsed["sub"] === "string") (claims as { sub?: string }).sub = parsed["sub"] as string;
+      if (typeof parsed["exp"] === "number") (claims as { exp?: number }).exp = parsed["exp"] as number;
+      if (typeof parsed["name"] === "string") ...
+      if (typeof parsed["email"] === "string") ...
+  - node: rules/application-shell/the-token-is-mirrored-to-session-storage
+    held_at: >-
+      AUTH_TOKEN_STORAGE_KEY (line 51), readInitialToken (lines 86-93), writeToken (lines 95-103) and the store's initial state (lines 105-109)
+    evidence: |-
+      export const AUTH_TOKEN_STORAGE_KEY = "remember.auth.token";
+      ...
+      const initialToken = readInitialToken();
+      ...
+      try {
+        if (token === null) sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        else sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+      } catch { /* fail soft — token stays in memory only */ }
+looked_past: >-
+  The comments at lines 7-9 and 16-18 cite the redirect to /sign-in and the boot state machine, which concern other files and nodes (the guard and the failure router) and are another judgment's; the base64url and Buffer fallback in decodeJwtClaims is implementation mechanics, not a domain fact.
+candidates_opened:
+  - rules/application-shell/a-token-is-fresh-with-thirty-seconds-to-spare

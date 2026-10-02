@@ -1,0 +1,87 @@
+findings:
+  - file: src/shell/api/use-shell-status.ts
+    where: |-
+      getJson(), lines 22-28, the template literal inside fetch
+    evidence: |-
+      const res = await fetch(`${VITE_BFF_URL}${path}`, { headers });
+    cost: |-
+      The address join is written a second time here, beside the request helper that the node constrains, which the header comment names as bypassed ("Direct fetch (NOT lib/http)"). This copy concatenates unconditionally and has no branch for a path that starts with http:// or https://. The two joins agree only while every caller passes a relative path. If the node moves, the helper follows it, and nothing reaches this copy.
+    kind: contradicts
+    correction: |-
+      The request goes through the one place that holds the join rule. Alternatively, a node states that these two reads are exempt from it. A bind cannot close this, because code never reads the specification.
+    node: rules/application-shell/a-request-goes-to-the-back-end-address
+  - file: src/shell/api/use-shell-status.ts
+    where: |-
+      header docblock, lines 6-9
+    evidence: |-
+      `/health` is public; the curation queue needs the Neon Auth
+       * JWT (read from the auth store).
+    cost: |-
+      The facts that health is read without a token and that the queue needs the access token are stated again in prose. Code holds both facts in this file, in `getJson("/health")` with no token argument and in `enabled: token != null`. The comment is a second home for facts the nodes hold, and it can drift from them unnoticed.
+    kind: restates
+    correction: |-
+      Remove the prose. The code and the nodes already hold the facts.
+    node: contracts/application-shell/bff-shell-reads
+  - file: src/shell/api/use-shell-status.ts
+    where: |-
+      header docblock, lines 10-13, and the one-line comment above useActiveRun
+    evidence: |-
+      `useActiveRun`
+       * returns null until a runs-list read exists; the footer simply hides the
+       * segment (Phase 2b scope note).
+    cost: |-
+      The prose says why the active-ingestion segment is never shown, a fact the node holds. Code holds it too, in `useActiveRun` returning `null`. The comment also carries a phase note that no node states, and it will go stale once a runs-list read exists.
+    kind: restates
+    correction: |-
+      Remove the prose. The code and the node already hold the rule.
+    node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+read:
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: |-
+      getJson(), useHealth() and useCurationCount(), lines 22-55
+    evidence: |-
+      queryFn: () => getJson("/health"),
+      queryFn: () => getJson("/api/v1/curation/queue?limit=1", token),
+      return res.json().catch(() => null);
+      return d?.total ?? d?.result?.total ?? 0;
+  - node: rules/application-shell/a-request-goes-to-the-back-end-address
+    held_at: |-
+      getJson(), line 26, which holds only the join. See the contradicts finding for the missing http(s) branch.
+    evidence: |-
+      const res = await fetch(`${VITE_BFF_URL}${path}`, { headers });
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: |-
+      REFETCH_MS and the options of both useQuery calls, lines 20-51
+    evidence: |-
+      const REFETCH_MS = 20_000;
+      refetchInterval: REFETCH_MS,
+      retry: false,
+  - node: rules/application-shell/health-is-judged-by-the-database-field
+    held_at: |-
+      useHealth(), lines 38-40
+    evidence: |-
+      if (q.data == null) return "checking";
+      return (d.database ?? d.result?.database) === "ok" ? "ok" : "down";
+  - node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+    held_at: |-
+      useActiveRun(), lines 58-60
+    evidence: |-
+      export function useActiveRun(): { label: string } | null {
+        return null;
+      }
+  - node: rules/application-shell/the-as-of-date-lives-in-memory
+    held_at: |-
+      nowhere. This file only holds the absence of an as-of parameter on its two reads. The in-memory storage lives in src/state/as-of.ts, which is outside this file set.
+    evidence: |-
+      queryFn: () => getJson("/health"),
+      queryFn: () => getJson("/api/v1/curation/queue?limit=1", token),
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: |-
+      useCurationCount(), lines 44-55
+    evidence: |-
+      queryFn: () => getJson("/api/v1/curation/queue?limit=1", token),
+      enabled: token != null,
+      return d?.total ?? d?.result?.total ?? 0;
+looked_past: |-
+  The comment above useCurationCount says "(entity_match + disputed)", and that composition of the pending total appears only in prose, with no code or emitted text carrying it. Under the comment rule that is prose for the removal route, not a finding.
+candidates_opened: []

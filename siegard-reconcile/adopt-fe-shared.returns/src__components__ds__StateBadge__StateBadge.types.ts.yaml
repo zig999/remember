@@ -1,0 +1,86 @@
+findings:
+  - file: src/components/ds/StateBadge/StateBadge.types.ts
+    where: >-
+      the docblock on lines 2-9, and the comment above `state` on line 22
+    evidence: |-
+      * `ConfidenceState` is the SINGLE source of truth for the five-state vocabulary
+      * (remember-modelagem-v7.md §3.5 / §6.6). Every other module that needs the type
+      * — features, hooks, BFF response adapters — MUST import it from here.
+      ...
+      /** Required — one of the five vocabulary values. */
+    cost: >-
+      The comments restate the five-state fact and also claim that this file is its single source of truth. A reader who
+      believes the claim treats this file as the place the vocabulary was decided. The vocabulary is also held by the
+      enumeration node domain/graph-explorer/confidence-state, so the comments act as a second authority outside any
+      behavior. The code in this file already holds the fact, so the pair still conforms. What is owed is the
+      comments' removal.
+    kind: restates
+    correction: >-
+      Remove the docblock and the comment above `state`. The `ConfidenceState` union on lines 12-17 keeps holding the
+      fact.
+    node: rules/application-shell/a-state-badge-has-five-states-with-labels
+  - file: src/components/ds/StateBadge/StateBadge.types.ts
+    where: >-
+      the comment above `label?`, line 42
+    evidence: |-
+      /** Override the pt-BR label rendered next to the icon. */
+      label?: string;
+    cost: >-
+      The comment restates that a caller may override the label, which the node holds. The optional `label?: string`
+      member declares it in code, so the comment is a second home for the fact. Its removal is owed.
+    kind: restates
+    correction: >-
+      Remove the comment. The `label?: string` member keeps holding the override.
+    node: rules/application-shell/a-state-badge-has-five-states-with-labels
+  - file: src/components/ds/StateBadge/StateBadge.types.ts
+    where: >-
+      the `StateBadgeSize` type, line 19, and the `size?` prop, line 34
+    evidence: |-
+      export type StateBadgeSize = "sm" | "md";
+      ...
+      size?: StateBadgeSize;
+    cost: >-
+      The file declares a two-value size vocabulary, `sm` and `md`. The state-badge aggregate lists only `state` and
+      `icon_only` as attributes, so no node holds this vocabulary. It is code with no node behind it, and the next
+      reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the size variants a home in domain/application-shell/state-badge, or decide that
+      they are surface only.
+    node: domain/application-shell/state-badge
+  - file: src/components/ds/StateBadge/StateBadge.types.ts
+    where: >-
+      the `animate?` prop, line 31
+    evidence: |-
+      animate?: boolean;
+    cost: >-
+      The file declares an `animate` switch on the badge. The comment above it describes a pulse for `uncertain` and
+      says `prefers-reduced-motion` wins. The state-badge aggregate carries no such attribute, and no rule holds the
+      behavior. The switch is a decision about the badge that lives only in code.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the `animate` option a node, or decide that it is surface only.
+    node: domain/application-shell/state-badge
+read:
+  - node: rules/application-shell/a-state-badge-has-five-states-with-labels
+    held_at: >-
+      the `ConfidenceState` union (lines 12-17) holds the five states, and `label?: string` on `StateBadgeProps`
+      (line 43) holds the caller's label override. The visible labels Aceito, Incerto, Baixa confiança, Em disputa and
+      Superado are not declared in this file.
+    evidence: |-
+      export type ConfidenceState =
+        | "accepted"
+        | "uncertain"
+        | "low-confidence"
+        | "disputed"
+        | "superseded";
+      ...
+      label?: string;
+looked_past: >-
+  The `animate` comment's claims about the `uncertain` pulse and about `prefers-reduced-motion`, and the `iconOnly`
+  comment's claim that the full label is still exposed through `aria-label`, appear only as prose here. They are
+  behavior for StateBadge.tsx to hold and for rules/application-shell/a-state-badge-is-always-named to govern.
+candidates_opened:
+  - domain/graph-explorer/confidence-state
+  - domain/application-shell/state-badge
+  - rules/application-shell/a-state-badge-is-always-named

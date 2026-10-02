@@ -1,0 +1,55 @@
+findings:
+  - file: src/router/__root.tsx
+    where: >-
+      the header docblock, lines 7 and 17-18, beside the AppErrorBoundary mount at lines 47-49
+    evidence: |-
+      * - front.md §5.1 (single <AppErrorBoundary> wraps the root)
+       * The boundary wraps only the route `<Outlet/>` so a render error preserves
+       * the ambient backdrop and the toaster (front.md §5.1).
+    cost: >-
+      The docblock says in prose that a render error under the root is caught by one boundary, a fact the render-failure rule holds. The code that does it, `<AppErrorBoundary><Outlet /></AppErrorBoundary>`, is in this same file. The prose is a second home that no running system emits. When the rule moves, the comment still reads as if it were the decision.
+    kind: restates
+    correction: >-
+      Remove the passage from the docblock. The code at lines 47-49 already holds the mount, and the rule is held by the node.
+    node: rules/application-shell/a-render-failure-replaces-the-screen
+  - file: src/router/__root.tsx
+    where: >-
+      the comment inside NotFoundComponent, lines 61-63, beside NotFoundFallback at lines 67-79
+    evidence: |-
+      // The default not-found surface; the named `/not-found` route renders the
+      // same component via NotFoundPage so both deep-link and unknown-path
+      // patterns produce the same in-frame fallback.
+    cost: >-
+      The comment restates that the not-found address and an unmatched address show the same notice. The unknown-address rule holds this, and `notFoundComponent: NotFoundComponent` plus the NotFoundFallback markup in this file carry it as code. The comment also asserts a second route (`NotFoundPage`) that this file does not hold. A reader would trust it as the place where the two addresses are said to agree.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is already in code and in the node.
+    node: rules/application-shell/an-unknown-address-says-page-not-found
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: >-
+      NotFoundFallback, lines 73-76, for the show-page-state refusal "Página não encontrada." This file holds neither the shell, the failure toasts, the render-failure notice nor the placeholder wording.
+    evidence: |-
+      <h1 className="text-lg font-semibold tracking-tight">Página não encontrada.</h1>
+      <p className="text-body text-body">
+        O endereço solicitado não existe ou foi removido.
+      </p>
+  - node: rules/application-shell/a-render-failure-replaces-the-screen
+    held_at: >-
+      the `<AppErrorBoundary>` mount around `<Outlet />`, lines 47-49. The "Algo deu errado." notice and the Recarregar action are not in this file; they are presumably in AppErrorBoundary, which is outside the file set.
+    evidence: |-
+      <AppErrorBoundary>
+        <Outlet />
+      </AppErrorBoundary>
+  - node: rules/application-shell/an-unknown-address-says-page-not-found
+    held_at: >-
+      `notFoundComponent: NotFoundComponent` on the root route, lines 38-41, and the text in NotFoundFallback, lines 73-76. The root component mounts no guard or shell, so the unmatched address renders without them.
+    evidence: |-
+      export const Route = createRootRoute({
+        component: RootComponent,
+        notFoundComponent: NotFoundComponent,
+      });
+      <h1 className="text-lg font-semibold tracking-tight">Página não encontrada.</h1>
+      O endereço solicitado não existe ou foi removido.
+looked_past: >-
+  The docblock's deviation note, which says the guard and AppShell moved to protectedLayoutRoute, and the AppToaster glass-styling comment are prose only. Neither states a fact that code in this file holds; the first is a record of departure from front.md, and the second concerns toaster styling.

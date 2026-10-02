@@ -1,0 +1,79 @@
+findings:
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      the header docstring, line 7, and the comment above the keydown effect, line 44
+    evidence: |-
+      * - Global keybind: ⌘K (mac) / Ctrl+K toggles; Esc closes (Dialog default).
+      // Global ⌘K / Ctrl+K toggle.
+    cost: |-
+      The shortcut rule is written a second time in prose. The `useEffect` keydown handler already holds it, so the two can drift apart. A reader may then take the comment, not the node, as where the shortcut was decided.
+    kind: restates
+    correction: |-
+      Remove the docstring line and the comment. The fact is already held by the node and by the keydown handler, which the node's bind covers.
+    node: rules/application-shell/the-shortcut-toggles-the-palette
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      the header docstring, line 8
+    evidence: |-
+      * - Actions: navigate to the five areas. (Opening the as_of time picker from
+    cost: |-
+      The docstring restates that the palette offers five destinations. The `AREAS` array and the `CommandGroup heading="Ir para"` already hold that, so the prose is a second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the docstring. The `AREAS` array holds the fact in this file.
+    node: rules/application-shell/the-palette-offers-five-destinations
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      the comment above `run`, line 56
+    evidence: |-
+      // Close the palette, then run the action.
+    cost: |-
+      The close-then-navigate order is written a second time in prose. The `run` function body already holds it, so a later edit to one can leave the other saying something different.
+    kind: restates
+    correction: |-
+      Remove the comment. The `run` body holds the fact in this file.
+    node: rules/application-shell/choosing-a-destination-closes-the-palette-first
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      the `CommandInput` placeholder, line 64
+    evidence: |-
+      <CommandInput placeholder="Buscar áreas e ações…" />
+    cost: |-
+      This is text the running system shows the owner, and no node holds its wording. It claims the palette searches "ações" as well as areas, but the node offers only the Ir para group of destinations. The wording lives only in this file, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: |-
+      The placeholder wording needs a node. The palette node `rules/application-shell/the-palette-offers-five-destinations` is the likeliest home, or a sibling rule beside it.
+    node: rules/application-shell/the-palette-offers-five-destinations
+read:
+  - node: rules/application-shell/choosing-a-destination-closes-the-palette-first
+    held_at: |-
+      the `run` function and its use in the `onSelect` of each CommandItem, lines 57-60 and 72
+    evidence: |-
+      function run(action: () => void) {
+          setOpen(false);
+          action();
+        }
+      onSelect={() => run(() => void navigate({ to: a.to }))}
+  - node: rules/application-shell/the-palette-offers-five-destinations
+    held_at: |-
+      the `AREAS` array, lines 30-36, and the `CommandGroup` with its `CommandEmpty`, lines 66-78
+    evidence: |-
+      { to: "/graph", label: "Grafo", icon: Network },
+        { to: "/search", label: "Buscar", icon: Search },
+        { to: "/ingest", label: "Ingerir", icon: Upload },
+        { to: "/curation", label: "Curar", icon: Scale },
+        { to: "/history", label: "Histórico", icon: History },
+      <CommandEmpty>Nada encontrado.</CommandEmpty>
+      <CommandGroup heading="Ir para">
+      value={a.label}
+  - node: rules/application-shell/the-shortcut-toggles-the-palette
+    held_at: |-
+      the keydown handler in the `useEffect`, lines 45-54
+    evidence: |-
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            e.preventDefault();
+            toggle();
+          }
+      window.addEventListener("keydown", onKey);
+looked_past: |-
+  The docstring's claims that Esc closes by the Dialog default and that the as_of time picker will be added later appear only in prose, with no code or emitted text behind them. I am not reporting them as findings, and the comment route removes that prose.

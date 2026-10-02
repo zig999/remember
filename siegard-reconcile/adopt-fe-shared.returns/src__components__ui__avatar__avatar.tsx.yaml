@@ -1,0 +1,38 @@
+findings:
+  - file: src/components/ui/avatar/avatar.tsx
+    where: |-
+      line 11, the docstring above initials()
+    evidence: |-
+      /** First letter of first + last word; single word -> first 2 letters; empty -> "?". */
+    cost: |-
+      The initials rule is written a second time in prose beside the code that holds it. When the node moves, the docstring is not bound to follow it, so a reader can take the comment for the decided rule.
+    kind: restates
+    correction: |-
+      Remove the docstring. The rule stays held by the body of initials() in this same file, and the node binds it.
+    node: rules/application-shell/an-avatar-is-named-by-the-full-name
+  - file: src/components/ui/avatar/avatar.tsx
+    where: |-
+      lines 19-27, SWATCHES and swatch(), applied in Avatar() at line 50
+    evidence: |-
+      export const SWATCHES = ["bg-primary", "bg-accent", "bg-data"] as const;
+      ...
+      for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
+      return SWATCHES[Math.abs(h) % SWATCHES.length]!;
+    cost: |-
+      An avatar's colour is derived from its name by a string hash over a three-colour palette. No node holds that rule, so it lives only in this code. The next reader looks in the specification for what colours an avatar takes and for whether one name always gets one colour, and finds nothing. The file's own header calls this determinism "the load-bearing behavior".
+    kind: unstated
+    correction: |-
+      The analysis would have to give a node the rule that an avatar's colour is a deterministic function of its name, and say how many colours the palette holds. The node an-avatar-is-named-by-the-full-name states only the name, the initials and the blank-name case.
+read:
+  - node: rules/application-shell/an-avatar-is-named-by-the-full-name
+    held_at: |-
+      initials() lines 12-17, and the aria-label attribute in Avatar() line 49
+    evidence: |-
+      if (parts.length === 0) return "?";
+      if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+      return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase();
+      ...
+      aria-label={name}
+looked_past: |-
+  The size variants (sm, md, lg), the hover scale and transition classes, and the token names in the palette are presentational styling and not a domain fact, so they belong to a code-review or surface judgment.
+candidates_opened: []

@@ -1,0 +1,23 @@
+findings:
+  - file: src/components/ui/command/command.tsx
+    where: >-
+      CommandDialog, the default of the `label` parameter (line 117), rendered as the sr-only DialogTitle (line 125)
+    evidence: |-
+      label = "Paleta de comandos",
+      ...
+      <DialogTitle className="sr-only">{label}</DialogTitle>
+    cost: |-
+      The accessible name a screen reader announces for the open command palette is a string only this file holds. src/shell/CommandPalette.tsx calls `<CommandDialog open={open} onOpenChange={setOpen}>` without a label, so the default is what is announced. The specification names the palette toggle "Abrir paleta de comandos (⌘K)" and names the other shell regions, but holds no name for the palette dialog. The next reader looks in the specification for what the palette is called, finds nothing, and the wording lives only in this UI primitive.
+    kind: unstated
+    correction: >-
+      Give the palette dialog's accessible name a home in the specification, either in rules/application-shell/the-shell-regions-have-names or in a node of its own, so that the string in this file agrees with a node.
+    node: rules/application-shell/the-shell-regions-have-names
+read:
+  - node: domain/application-shell/application-shell
+    held_at: nowhere
+    evidence: |-
+      The node's attributes (`palette_open`, `address`, `health`) and operations (`toggle-palette`, `open-address`) are not declared in this file. The file only passes the dialog state through: `{...(open !== undefined ? { open } : {})}` and `{...(onOpenChange ? { onOpenChange } : {})}`. It wraps cmdk in the shared `Dialog` as a styled primitive, and the palette's open state and shortcut live elsewhere.
+looked_past: >-
+  The file's two doc comments (the header block citing "layout.md §5, z4" and the global ⌘K, and the "glass-modal entrance" note) are prose that no node needs, and the rest is styling class strings, which are another judgment's. The ⌘K behavior itself is held in src/shell/CommandPalette.tsx, outside this file set.
+candidates_opened:
+  - rules/application-shell/the-shell-regions-have-names

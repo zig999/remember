@@ -1,0 +1,80 @@
+findings:
+  - file: src/lib/tokens.ts
+    where: |-
+      the `linkType` export, lines 81-97 (section comment "color: LinkType catalog (13)")
+    evidence: |-
+      export const linkType = Object.freeze({
+        "participates-in": "oklch(70% 0.14 200)",
+        "member-of": "oklch(68% 0.14 220)",
+        "holds-role": "oklch(70% 0.14 280)",
+        "responsible-for": "oklch(70% 0.16 25)",
+        ...
+        sponsors: "oklch(72% 0.13 220)",
+      } as const);
+      export type LinkTypeToken = keyof typeof linkType;
+    cost: |-
+      The thirteen link type names are a vocabulary that rules/knowledge-base/catalog-link-types already holds. Here they are declared again as keys and exported as the type `LinkTypeToken`, and spelled in kebab-case where the catalog writes participates_in, member_of, holds_role. The day the catalog gains or renames a link type, this file still carries the old list. Nothing links the two, so nobody can tell which spelling the business decided. A change to the catalog does not reach this file, because the catalog is not bound to it.
+    kind: contradicts
+    correction: |-
+      The node that holds the vocabulary has to be bound to this file, or the colour mapping has to take its keys from a place the catalog governs. The code cannot read the specification, so the bind is what closes this.
+    node: rules/knowledge-base/catalog-link-types
+  - file: src/lib/tokens.ts
+    where: |-
+      the `nodeType` export, lines 66-79 (section comment "NodeType catalog (10)")
+    evidence: |-
+      export const nodeType = Object.freeze({
+        person: "oklch(74% 0.150 300)",
+        organization: "oklch(68% 0.130 250)",
+        project: "oklch(74% 0.120 190)",
+        event: "oklch(72% 0.170 35)",
+        role: "oklch(72% 0.180 325)",
+        category: "oklch(70% 0.100 130)",
+        concept: "oklch(76% 0.130 88)",
+        location: "oklch(72% 0.120 155)",
+        document: "oklch(70% 0.040 260)",
+        task: "oklch(70% 0.170 22)",
+      } as const);
+    cost: |-
+      The ten node type names are held by rules/knowledge-base/catalog-node-types. Here they are declared a second time as the keys of `NodeTypeToken`, in a file that node does not answer for. If the catalog changes, this list does not follow, and nothing flags the difference.
+    kind: contradicts
+    correction: |-
+      The catalog node has to be bound to this file, or the keys have to be derived from a vocabulary the catalog governs.
+    node: rules/knowledge-base/catalog-node-types
+  - file: src/lib/tokens.ts
+    where: |-
+      the values of `linkType`, `nodeType`, `state`, `stateFg`, `borderColor`, `color`, and the other categories in the file (lines 27-231)
+    evidence: |-
+      "participates-in": "oklch(70% 0.14 200)",
+      "related-to": "oklch(60% 0.02 250)",
+      accepted: "oklch(72% 0.160 155)",
+      uncertain: "oklch(76% 0.150 82)",
+      "low-confidence": "oklch(58% 0.025 260)",
+      disputed: "oklch(70% 0.180 45)",
+      superseded: "oklch(46% 0.018 260)",
+    cost: |-
+      The colour assigned to each link type, node type and confidence state, and the scales for spacing, text, radius, shadow, motion duration and z-index, are values no node in the specification holds. The graph-explorer rules say that a link follows its link type's colour and that a weak state overrides it. They give no colour for any type or state. The header comment names docs/specs/front/design-system/tokens.md as the "Canonical source", which is outside the specification root. So these values live only in this file, a reader looking in the specification finds no decision, and the code has become the place where the decision sits.
+    kind: unstated
+    correction: |-
+      An analysis would have to decide whether these values are domain facts that need a node, or surface with no node, and then give them a home. Nothing in the source can close this.
+  - file: src/lib/tokens.ts
+    where: |-
+      the file header comment (lines 1-21), and the section comments "NodeType catalog (10)" (line 66) and "LinkType catalog (13)" (line 81)
+    evidence: |-
+      * Canonical source: docs/specs/front/design-system/tokens.md §2 (v1.0.2),
+      /* ---------- color: NodeType catalog (10) ---------- */
+      /* ---------- color: LinkType catalog (13) ---------- */
+    cost: |-
+      These comments state that the catalogs hold ten and thirteen entries, and name a document outside the specification as authoritative. The same counts are held by the `nodeType` and `linkType` objects in this file and by the catalog nodes. The comments are a second home that no running system emits. The "Canonical source" line also points a reader to a document that the specification root does not contain.
+    kind: restates
+    correction: |-
+      Remove the comment text. The code holds the counts and the catalogs hold the rule.
+    node: rules/knowledge-base/catalog-link-types
+read:
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: |-
+      The file declares no shape for a link type (no name, label, inverse_name, is_temporal or version). It only keys a colour table by link type name: `export const linkType = Object.freeze({ "participates-in": "oklch(70% 0.14 200)", ... sponsors: "oklch(72% 0.13 220)" } as const);`
+looked_past: |-
+  The `cssVar` helper, the freezing of the objects and the choice of OKLCH notation are code style and tooling choices, so I did not judge them in this pass.
+candidates_opened:
+  - domain/knowledge-base/link-type

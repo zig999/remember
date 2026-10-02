@@ -1,0 +1,36 @@
+findings:
+  - file: src/components/ds/ConversationMenu/ConversationMenu.types.ts
+    where: |-
+      ConversationMenuProps.activeConversationId, the docblock on lines 20-23
+    evidence: |-
+      * (the trigger then shows the "Nova conversa" fallback per spec §3).
+    cost: |-
+      The text "Nova conversa" for a trigger with no active conversation is also written in a comment here, beside the code that holds it. The fallback is held in `ConversationMenu.tsx` as `triggerFallback: "Nova conversa"` and the `triggerLabel` branch on `activeConversationId === null`. If the node's wording changes, this comment keeps the old text. A reader of the types file then sees a second statement of the fact and cannot tell which one was decided.
+    kind: restates
+    correction: |-
+      Remove the sentence from the docblock. The code in `src/components/ds/ConversationMenu/ConversationMenu.tsx` already holds the fact, and the trigger node binds it. The caller should treat this as the comment route, then `/reconcile` over this file.
+    node: rules/application-shell/the-menu-trigger-names-the-active-conversation
+  - file: src/components/ds/ConversationMenu/ConversationMenu.types.ts
+    where: |-
+      ConversationMenuProps.activeTitle, the docblock on lines 26-31
+    evidence: |-
+      * Title of the active conversation for the trigger. Null falls back to
+      * "Conversa sem título" (spec §3 — "Falls back to 'Conversa sem título' if
+      * null"). When `activeConversationId` is also null the trigger shows
+      * "Nova conversa" instead.
+    cost: |-
+      The title fallback and the "Nova conversa" precedence rule are restated in a comment. The code holds both in `ConversationMenu.tsx`: `activeTitle ?? STRINGS.titleFallback` inside the `activeConversationId === null` branch. Two homes for one fact means a later change to the node reaches only the code, and the comment goes stale. The same comment also cites a docs/specs spec as the source, which points a reader to a document that is not the node.
+    kind: restates
+    correction: |-
+      Remove the sentences that state the fallbacks. The code in `src/components/ds/ConversationMenu/ConversationMenu.tsx` holds the fact, and the trigger node binds it.
+    node: rules/application-shell/the-menu-trigger-names-the-active-conversation
+read:
+  - node: rules/application-shell/a-row-shows-its-title-and-archived-mark
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file declares only the props type. `conversations: ReadonlyArray<Conversation>;` takes the row element's shape from `import type { Conversation } from "@/features/chat/types";`, so the title and archived instant are declared there. The "Conversa sem título" text appears here only in a comment. The behavior is held in `ConversationMenu.tsx` (`titleFallback: "Conversa sem título"`, `archivedSuffix: "(arquivada)"`, `archivedBadge: "Arquivada"`). This file has no code for the row fallback, the archived test, the badge or the suffix.
+looked_past: |-
+  The header and docblocks cite `docs/specs/front/components/ConversationMenu.component.spec.md` and describe component policy (pure UI, no IO in callbacks, ref forwarding to the trigger button). This is prose that states no domain fact the code lacks, so I did not report it. The one comment about the callbacks' wiring (`onSelect` and the others) is a comment-only fact and I did not file it.
+candidates_opened:
+  - rules/application-shell/the-menu-trigger-names-the-active-conversation

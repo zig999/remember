@@ -1,0 +1,37 @@
+findings:
+  - file: src/lib/report-error.ts
+    where: |-
+      The file-header docstring, lines 15-21 ("Behaviour this wave"), and the inline comment at line 32 inside reportError().
+    evidence: |-
+      * - In dev (`import.meta.env.DEV === true`): `console.error` the error and
+      *    context.
+      *  - In production: no-op (the endpoint does not exist yet).
+      *
+      * No network call is made in either mode — wiring the BFF endpoint is a
+      * later wave.
+
+      // Production: stay silent until the BFF endpoint ships.
+    cost: |-
+      The prose restates a second time the rule the node holds, that a reported error is written to the console only in development and makes no network request. The code in this file already holds it, in the `if (!import.meta.env.DEV) { return; }` guard, the single `console.error` call, and the absence of any network call. The comments add a time horizon ("this wave", "until the BFF endpoint ships", "a later wave"). A reader may take it as a decision about when the rule changes, but no node states one. When the node moves, nothing binds this prose to it, so the two can drift without anyone noticing.
+    kind: restates
+    correction: |-
+      Remove the docstring and the inline comment. The fact is held by the node and implemented by the code in this file, so the prose owes only its removal. Keep the `eslint-disable-next-line no-console` directive, which a named tool consumes.
+    node: rules/application-shell/a-reported-error-stays-in-the-console
+
+read:
+  - node: rules/application-shell/a-reported-error-stays-in-the-console
+    held_at: |-
+      The body of reportError(), lines 30-42, which holds both halves of the rule. The `import.meta.env.DEV` guard holds the dev-only part. The single `console.error` call holds the console write. No network call appears anywhere in the file.
+    evidence: |-
+      if (!import.meta.env.DEV) {
+          return;
+        }
+        console.error("[report-error]", {
+          error,
+          source: context.source,
+          queryKey: context.queryKey,
+          extra: context.extra,
+        });
+
+looked_past: |-
+  The docstring cites front.back.md §7 and §8 and names a BFF endpoint, `/api/v1/system/client-error`, that no code in this file carries. That is prose only, and its route is removal rather than a finding.

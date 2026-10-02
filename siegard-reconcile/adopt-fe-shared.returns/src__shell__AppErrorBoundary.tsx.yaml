@@ -1,0 +1,57 @@
+findings:
+  - file: src/shell/AppErrorBoundary.tsx
+    where: |-
+      the header comment, lines 1-19, bullet "All thrown errors are forwarded to `reportError` (dev: console, prod: stub — front.back.md §7 item 6)."
+    evidence: |-
+      * - All thrown errors are forwarded to `reportError` (dev: console, prod:
+      *    stub — front.back.md §7 item 6).
+    cost: |-
+      The comment restates the report rule, but the running code already holds it in `componentDidCatch`. The comment is a second home for the rule. A reader may take the comment, or the cited front.back.md section, as where the rule is decided. The comment also states a dev/prod behaviour of `reportError`. That behaviour lives in another file and is not what the rule says.
+    kind: restates
+    correction: |-
+      Remove the comment. The code that holds the fact is `reportError(error, { source: "AppErrorBoundary", extra: { componentStack: info.componentStack ?? null } })`, together with the `role="alert"` and `aria-live="assertive"` attributes on the fallback element. All of it is in this file.
+    node: rules/application-shell/a-render-failure-is-reported-and-announced
+  - file: src/shell/AppErrorBoundary.tsx
+    where: |-
+      the header comment, lines 1-19, bullets "Catches render-time errors in the workspace; preserves the 3-region frame (header + footer stay visible ...)" and "Fallback: in-frame message + Reload action."
+    evidence: |-
+      *  - Catches render-time errors in the workspace; preserves the 3-region
+      *    frame (header + footer stay visible because they live OUTSIDE the
+      *    boundary's children — see __root.tsx composition).
+      *  - Fallback: in-frame message + Reload action.
+    cost: |-
+      The comment restates the replace-the-screen rule in different words. It says header and footer stay visible and the message is "in-frame". The node says the failure notice replaces the whole screen. The code in this file renders `min-h-screen` with a `Recarregar` button wired to `window.location.reload()`, so it agrees with the node and the comment is the part that is out of line. A reader who trusts the comment will expect a frame the node does not promise. Whether the header and footer actually stay visible depends on the mount point in `__root.tsx`, which is outside this file set and was not read.
+    kind: restates
+    correction: |-
+      Remove the comment. The code that holds the fact is the fallback `div` with `className="flex min-h-screen ..."`, the heading "Algo deu errado.", the paragraph "A página não pôde ser renderizada. Recarregue para tentar novamente.", and the `Recarregar` button with `onClick={this.handleReload}`. All of it is in this file.
+    node: rules/application-shell/a-render-failure-replaces-the-screen
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the fallback JSX returned by render(), lines 59-78, for the show-page-state refusal on a render failure
+    evidence: |-
+      <h1 className="text-lg font-semibold tracking-tight">Algo deu errado.</h1>
+      <p className="text-body text-body">
+        A página não pôde ser renderizada. Recarregue para tentar novamente.
+      </p>
+      ... Recarregar
+  - node: rules/application-shell/a-render-failure-is-reported-and-announced
+    held_at: |-
+      componentDidCatch (lines 45-50) for the report, and the fallback root element (lines 60-65) for the announcement
+    evidence: |-
+      reportError(error, {
+        source: "AppErrorBoundary",
+        extra: { componentStack: info.componentStack ?? null },
+      });
+      <div role="alert" aria-live="assertive" ...
+  - node: rules/application-shell/a-render-failure-replaces-the-screen
+    held_at: |-
+      render() (lines 56-81) and handleReload (lines 52-54)
+    evidence: |-
+      if (this.state.hasError) {
+        ...
+        className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-foreground"
+      private readonly handleReload = (): void => {
+        if (typeof window !== "undefined") window.location.reload();
+looked_past: |-
+  The optional `fallback` prop (`if (this.props.fallback !== undefined) return this.props.fallback;`) lets a caller swap the failure notice for another. That is an extension point and not a domain fact, and which fallback the root mounts is decided in `__root.tsx`, which is outside this file set. I report it here and make no finding of it.

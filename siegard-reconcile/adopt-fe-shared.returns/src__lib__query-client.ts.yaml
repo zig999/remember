@@ -1,0 +1,211 @@
+findings:
+  - file: src/lib/query-client.ts
+    where: >-
+      the module header comment (lines 4-12), the doc comments at lines 38 and 42, and the inline comment
+      at line 150
+    evidence: |-
+      * - front.md §4.1 (TanStack Query defaults: retry=1, refetchOnWindowFocus,
+      *    staleTime per data class)
+      *  - front.back.md BR-08 (stale-time policy by data class — stable 5 min,
+      *    volatile 0; volatile hooks override the global default)
+      /** Stable-data staleTime (catalog, immutable detail). front.md §4.1 + BR-08. */
+      refetchOnWindowFocus: false, // stable default; volatile hooks opt in
+    cost: >-
+      The five-minute freshness, the 0 override and the no-refetch-on-focus rule are each said twice in this
+      file, once by `STABLE_STALE_MS`, `VOLATILE_STALE_MS` and `refetchOnWindowFocus: false` and once by prose.
+      The comments cite front.md and front.back.md as their source, so a reader may take them for the place
+      the rule is decided. When the node moves, nothing reaches the comments.
+    kind: restates
+    correction: >-
+      Remove the prose. The code at `STABLE_STALE_MS = 5 * 60 * 1000`, `VOLATILE_STALE_MS = 0` and the
+      `queries` defaults in `createQueryClient` holds the fact, and the node holds it as the specification.
+    node: rules/application-shell/a-read-stays-fresh-five-minutes-by-default
+  - file: src/lib/query-client.ts
+    where: >-
+      the module header comment (lines 4-6), restating the retry default
+    evidence: |-
+      * - front.md §4.1 (TanStack Query defaults: retry=1, refetchOnWindowFocus,
+    cost: >-
+      The retry-once rule is also stated in prose that cites front.md as its source, next to code
+      (`retry: 1` for queries, `retry: 0` for mutations) that already holds it. A reader may treat the
+      comment as the place the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the prose. `retry: 1` and `retry: 0` in `defaultOptions` hold the fact.
+    node: rules/application-shell/a-read-is-retried-once
+  - file: src/lib/query-client.ts
+    where: >-
+      the module header comment (lines 13-16) and the comment at line 162 inside `queryCache.onError`
+    evidence: |-
+      * The global `QueryCache.onError` runs the pure `routeError(...)` mapper and
+      * executes the resulting `ErrorAction`. Side effects (toast, redirect,
+      * boundary, set-error) are kept in this file so feature hooks never need to
+      * handle envelope errors themselves (BR-17).
+      // Non-envelope error — log and toast danger as a safety net.
+    cost: >-
+      The rule that every failure goes to the central routing, with a non-envelope failure reported and
+      shown as a danger toast, is held by `onError` in both caches and also narrated in prose citing BR-17.
+      The prose is a second home that nothing keeps in step with the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The `onError` handlers on `queryCache` and `mutationCache`, with `reportError(err)`
+      and `toast.error("Algo deu errado. Tente novamente.")`, hold the fact.
+    node: rules/application-shell/every-failure-goes-to-the-router
+  - file: src/lib/query-client.ts
+    where: >-
+      the module header (lines 18-20) and the doc comment at line 180
+    evidence: |-
+      * Note: the QueryClient lives at module scope so the instance is stable
+      * across HMR reloads of consumers — `QueryClientProvider` in `main.tsx` is
+      * the single mount point (BR-12).
+      /** Module-scope singleton consumed by `main.tsx`. BR-12. */
+    cost: >-
+      The single-client rule is stated in prose citing BR-12, while `export const queryClient: QueryClient =
+      createQueryClient();` at module scope already holds it. The prose is a second home that no tool
+      re-checks when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The module-scope `queryClient` constant holds the fact.
+    node: rules/application-shell/one-client-serves-reads-and-writes
+  - file: src/lib/query-client.ts
+    where: >-
+      the comment inside `case "toast-and-navigate"` (lines 61-65)
+    evidence: |-
+      // TC-11: composite action used by the chat conversation 404 path.
+      // The toast informs the operator and the navigation drops the stale
+      // `?conversation=<id>` so the workspace stops querying a ghost id.
+    cost: >-
+      The reaction to a missing conversation (toast, then navigate with an empty search and no reload) is
+      narrated here as well as held by the branch below it, `void router.navigate({ to: action.to, search:
+      {} as never })`. The prose cites TC-11, which does not point at the node that holds the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The `toast-and-navigate` branch holds the toast and the router navigation. The
+      code that maps RESOURCE_NOT_FOUND to this action is in src/lib/error-routing.ts.
+    node: rules/application-shell/a-missing-conversation-returns-to-chat
+  - file: src/lib/query-client.ts
+    where: >-
+      the comment inside `case "redirect"` (lines 71-75)
+    evidence: |-
+      // AUTH_* codes: clear the in-memory bearer + sessionStorage before
+      // sending the user to /sign-in so a refresh cannot revive the stale
+      // token (front.back.md §2 + TC-11 routing rules).
+    cost: >-
+      The rule that an authentication failure clears the stored token and sends the owner to sign-in is
+      narrated in prose. The branch it sits in already holds it with `useAuthStore.getState().clear()`
+      and `window.location.assign(action.to)`. The comment names `sessionStorage`, and a reader may take
+      that as a decided fact, but no code in this file touches it.
+    kind: restates
+    correction: >-
+      Remove the prose. The `redirect` branch holds the fact. The rule's node is outside this file's set,
+      so the bind should reach it.
+    node: rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: >-
+      the non-envelope branch of both caches' `onError`, lines 163-164 and 173-174. The rest of the contract
+      (its wordings and the shell) is held in other files.
+    evidence: |-
+      reportError(err);
+      toast.error("Algo deu errado. Tente novamente.");
+  - node: domain/application-shell/owner-session
+    held_at: >-
+      nowhere. This file only calls `clear()` on the store in `case "redirect"`. The attributes
+      access_token, subject, expires_at, name and email are not declared in this file.
+    evidence: |-
+      useAuthStore.getState().clear();
+  - node: rules/application-shell/a-conversation-resource-is-recognised-by-its-key
+    held_at: >-
+      nowhere. This file imports `isConversationResourceKey` from ./error-routing and passes it a query key or
+      mutation key. The recognition rule itself is not declared here.
+    evidence: |-
+      return { isConversationResource: isConversationResourceKey(query.queryKey) };
+  - node: rules/application-shell/a-forbidden-failure-reads-access-denied
+    held_at: >-
+      the `boundary` branch of `applyErrorAction`, lines 85-91, which shows the message as a danger toast.
+      The mapping from AUTH_FORBIDDEN to that action and its text is held elsewhere.
+    evidence: |-
+      case "boundary":
+      ...
+      toast.error(action.message);
+      return;
+  - node: rules/application-shell/a-gone-resource-reads-removed-for-compliance
+    held_at: >-
+      the `inline-gone` branch, lines 97-101, which shows no toast. The mapping from RESOURCE_GONE and its
+      wording are not in this file.
+    evidence: |-
+      case "inline-empty":
+      case "inline-gone":
+      ...
+      return;
+  - node: rules/application-shell/a-missing-conversation-returns-to-chat
+    held_at: >-
+      the `toast-and-navigate` branch, lines 60-69
+    evidence: |-
+      void router.navigate({ to: action.to, search: {} as never });
+  - node: rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state
+    held_at: >-
+      the `inline-empty` branch, lines 97-101, which shows no toast. The server-message and fallback wording
+      is not in this file.
+    evidence: |-
+      case "inline-empty":
+      case "inline-gone":
+      ...
+      return;
+  - node: rules/application-shell/a-read-is-retried-once
+    held_at: >-
+      `defaultOptions` in `createQueryClient`, lines 146-155
+    evidence: |-
+      queries: {
+        retry: 1,
+      ...
+      mutations: {
+        retry: 0,
+      },
+  - node: rules/application-shell/a-read-stays-fresh-five-minutes-by-default
+    held_at: >-
+      `STABLE_STALE_MS`, `VOLATILE_STALE_MS` and the `queries` defaults, lines 39, 42 and 149-150
+    evidence: |-
+      export const STABLE_STALE_MS = 5 * 60 * 1000;
+      export const VOLATILE_STALE_MS = 0;
+      staleTime: STABLE_STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/application-shell/a-toast-keeps-its-tone
+    held_at: >-
+      the `toast` branch of `applyErrorAction`, lines 56-59
+    evidence: |-
+      if (action.tone === "danger") toast.error(action.message);
+      else toast.warning(action.message);
+  - node: rules/application-shell/an-invalid-format-is-a-form-error
+    held_at: >-
+      the `set-error` branch, lines 92-96, which shows no toast. The mapping from VALIDATION_INVALID_FORMAT,
+      the message wording and the passing on of details are in src/lib/error-routing.ts.
+    evidence: |-
+      case "set-error":
+      ...
+      return;
+  - node: rules/application-shell/every-failure-goes-to-the-router
+    held_at: >-
+      the `onError` handlers of `queryCache` and `mutationCache`, lines 157-175
+    evidence: |-
+      if (err instanceof EnvelopeError) {
+        applyErrorAction(routeError(err, contextFromQuery(query)));
+        return;
+      }
+      reportError(err);
+      toast.error("Algo deu errado. Tente novamente.");
+  - node: rules/application-shell/one-client-serves-reads-and-writes
+    held_at: >-
+      `createQueryClient` with both `queryCache` and `mutationCache`, and the singleton on line 181
+    evidence: |-
+      export const queryClient: QueryClient = createQueryClient();
+looked_past: >-
+  The comments at lines 50-52 and 86-89 claim that `redirect` and `boundary` are surfaced by re-throwing to the
+  router loader or the boundary, while the code only clears the store and assigns the location or shows a toast.
+  Prose alone states that, and no code carries it, so it is a comment-route matter and not a finding here.
+  The comment at line 42 also names "search results, run status" as volatile data, and only prose states that.
+candidates_opened:
+  - rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+  - rules/application-shell/a-failed-refresh-ends-the-session
+  - rules/application-shell/failure-routing-lives-in-one-function
+  - domain/application-shell/failure-action

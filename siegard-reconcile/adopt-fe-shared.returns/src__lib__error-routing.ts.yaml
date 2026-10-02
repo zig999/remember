@@ -1,0 +1,177 @@
+findings:
+  - file: src/lib/error-routing.ts
+    where: |-
+      the file's leading block comment, lines 1-13, above the import
+    evidence: |-
+      * error-routing — the SINGLE place that maps BFF envelope error codes to
+       * concrete UI behaviour (front.md §5, front.back.md BR-17, EV-05).
+       *
+       * Feature hooks MUST NOT inline `if (err.code === "...")` logic for any of
+       * the codes mapped here.
+    cost: |-
+      The one-function rule is stated a second time in prose beside the code that holds it. If the node moves, nothing reads this block, so a reader can take the comment for the decided rule. What the block adds is a prohibition on feature hooks, and no code enforces that.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. The code that holds the fact is `routeError`, which matches exact codes in the `switch` and then `startsWith("BUSINESS_")` before `startsWith("SYSTEM_")`.
+    node: rules/application-shell/failure-routing-lives-in-one-function
+  - file: src/lib/error-routing.ts
+    where: |-
+      the comments on the `toast-and-navigate` member of `ErrorAction` (lines 24-29), on `ErrorRoutingContext` (lines 38-45) and inside the `RESOURCE_NOT_FOUND` case (lines 99-101)
+    evidence: |-
+      `RESOURCE_NOT_FOUND` on a conversation query
+         * must surface a warning toast AND drop the URL back to `/chat`
+         * (TC-11 / chat.feature.spec.md §6).
+    cost: |-
+      The conversation-404 rule is restated three times in comments, each citing a feature spec or a TC id. Those are other homes for the fact than the node, so a reader can take one of them for the decision.
+    kind: restates
+    correction: |-
+      Remove the three comments through the comment route. The code that holds the fact is the `context?.isConversationResource === true` branch returning `kind: "toast-and-navigate"`, `tone: "warning"`, `MSG.conversationNotFound` and `to: "/chat"`.
+    node: rules/application-shell/a-missing-conversation-returns-to-chat
+  - file: src/lib/error-routing.ts
+    where: |-
+      the comment above `case "AUTH_UNAUTHORIZED"`, lines 79-82
+    evidence: |-
+      // All three AUTH expiry / invalid codes funnel the operator to /sign-in.
+          // TC-11: AUTH_TOKEN_EXPIRED and AUTH_TOKEN_INVALID are session-loss codes
+          // emitted by the BFF JWT middleware; behaviour is identical to a fresh 401
+    cost: |-
+      The grouping of the three AUTH codes into one session-loss outcome is restated in prose. It also cites a TC id and a front spec section as authority, so a reader may look there instead of at the node.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. The three stacked `case` labels returning `{ kind: "redirect", to: "/sign-in?reason=session_expired" }` hold the fact.
+    node: rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+  - file: src/lib/error-routing.ts
+    where: |-
+      the comment inside `case "SYSTEM_ABORTED"`, line 119
+    evidence: |-
+      // Caller-driven cancel (unmount, navigation) — never user-facing.
+    cost: |-
+      The silent-abort outcome is restated with a reason ("unmount, navigation") that no node gives. The comment is a second home for part of the rule.
+    kind: restates
+    correction: |-
+      Remove the comment through the comment route. `return { kind: "silent" };` holds the fact.
+    node: rules/application-shell/a-network-failure-reads-no-connection
+  - file: src/lib/error-routing.ts
+    where: |-
+      the docstring of `routeError`, lines 67-70, and the comment in the `default` branch, line 129
+    evidence: |-
+      Route a single error code → action. Pure function. Unknown codes default
+       * to a danger toast (fail loud — Golden Rule 12).
+    cost: |-
+      The fallback for any other code is restated in prose and justified by a Golden Rule rather than by the node. Someone changing the fallback would find two places that claim to say it.
+    kind: restates
+    correction: |-
+      Remove both comments through the comment route. The final `return { kind: "toast", tone: "danger", message: fallbackMessage ?? MSG.system };` holds the fact.
+    node: rules/application-shell/any-other-code-shows-a-danger-toast
+  - file: src/lib/error-routing.ts
+    where: |-
+      the docstring of `isConversationResourceKey`, lines 134-145, and the inline comment at line 151
+    evidence: |-
+      The list
+       * key `["conversations", "list", …]` deliberately does NOT match — listing
+       * never produces a 404 of one specific conversation; only detail/child
+       * queries should redirect on RESOURCE_NOT_FOUND.
+    cost: |-
+      The key-recognition rule is restated in prose with a rationale ("listing never produces a 404") that no node holds. It also cites `chat/api/keys.ts` and a feature spec as its source.
+    kind: restates
+    correction: |-
+      Remove the docstring and the inline comment through the comment route. The length check, the `"conversations"` comparison, the `typeof second !== "string"` guard, the `"list"` exclusion and `second.length > 0` hold the fact.
+    node: rules/application-shell/a-conversation-resource-is-recognised-by-its-key
+read:
+  - node: constraints/failures-answer-one-envelope
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file only reads `code`, `message` and `details` from a received error: `err: EnvelopeError | { code: string; message?: string; details?: unknown }`. It declares no envelope and produces no failure answer.
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the `show-failure` operation only, in `routeError` (lines 71-132). The `show-shell` and `show-page-state` operations are not in this file.
+    evidence: |-
+      Every wording the contract names for `show-failure` is declared in `const MSG`, for example `accessDenied: "Acesso negado."`, `validationInvalid: "Há campos inválidos no formulário."`, `notFound: "Nenhum resultado encontrado."`, `gone: "Esta fonte foi removida por conformidade."`, `business: "Operação não pôde ser concluída."`, `system: "Algo deu errado. Tente novamente."` and `offline: "Sem conexão."`. The 401 session-expired failure is `sessionExpired: "Sua sessão expirou. Faça login novamente."`, and nothing in this file raises it.
+  - node: domain/application-shell/application-shell
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares none of the aggregate's attributes (`health`, `curation_pending`, `as_of`, `palette_open`, `address`, `reason`). It only returns an `ErrorAction` for the `show-failure` operation.
+  - node: domain/application-shell/failure-action
+    held_at: |-
+      the `ErrorAction` union, lines 22-36
+    evidence: |-
+      `| { kind: "redirect"; to: string } | { kind: "toast-and-navigate"; ... } | { kind: "boundary"; message: string } | { kind: "set-error"; ... } | { kind: "inline-empty"; message: string } | { kind: "inline-gone"; message: string } | { kind: "toast"; ... } | { kind: "silent" }`. These are the eight values the enumeration lists.
+  - node: rules/application-shell/a-business-failure-shows-its-message
+    held_at: |-
+      the `BUSINESS_` branch of the `default` case, line 123
+    evidence: |-
+      `if (code.startsWith("BUSINESS_")) { return { kind: "toast", tone: "warning", message: fallbackMessage ?? MSG.business }; }`. `fallbackMessage` is null when the message is empty.
+  - node: rules/application-shell/a-conversation-resource-is-recognised-by-its-key
+    held_at: |-
+      `isConversationResourceKey`, lines 146-154. The other half of the rule, a write without a key never counting as a conversation's, is handled by the caller and not here.
+    evidence: |-
+      `if (queryKey.length < 2) return false; if (queryKey[0] !== "conversations") return false; ... if (typeof second !== "string") return false; if (second === "list") return false; return second.length > 0;`
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file has no refresh handling, token storage or `AUTH_SESSION_EXPIRED`. `MSG.sessionExpired` is declared and never used in `routeError`.
+  - node: rules/application-shell/a-forbidden-failure-reads-access-denied
+    held_at: |-
+      `case "AUTH_FORBIDDEN"`, lines 88-89. The danger tone is not carried by the returned action.
+    evidence: |-
+      `case "AUTH_FORBIDDEN": return { kind: "boundary", message: MSG.accessDenied };`. The action has no `tone` field. Showing it as a danger toast depends on whichever code executes the action, which is outside this file.
+  - node: rules/application-shell/a-gone-resource-reads-removed-for-compliance
+    held_at: |-
+      `case "RESOURCE_GONE"`, lines 112-113
+    evidence: |-
+      `case "RESOURCE_GONE": return { kind: "inline-gone", message: MSG.gone };`. The server's message is not read.
+  - node: rules/application-shell/a-missing-conversation-returns-to-chat
+    held_at: |-
+      the `context?.isConversationResource === true` branch inside `case "RESOURCE_NOT_FOUND"`, lines 102-109. The empty search and the no-reload navigation are left to the executor and are not in this file.
+    evidence: |-
+      `return { kind: "toast-and-navigate", tone: "warning", message: MSG.conversationNotFound, to: "/chat" };`
+  - node: rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state
+    held_at: |-
+      the final `return` of `case "RESOURCE_NOT_FOUND"`, line 110
+    evidence: |-
+      `return { kind: "inline-empty", message: fallbackMessage ?? MSG.notFound };`. It carries no toast.
+  - node: rules/application-shell/a-network-failure-reads-no-connection
+    held_at: |-
+      `case "SYSTEM_NETWORK"` and `case "SYSTEM_ABORTED"`, lines 115-120
+    evidence: |-
+      `case "SYSTEM_NETWORK": return { kind: "toast", tone: "warning", message: MSG.offline }; case "SYSTEM_ABORTED": return { kind: "silent" };`
+  - node: rules/application-shell/a-toast-keeps-its-tone
+    held_at: |-
+      nowhere. This file only declares the tone vocabulary and attaches a tone to each toast action. How a tone is rendered is not decided here.
+    evidence: |-
+      `export type ToastTone = "warning" | "danger";` and `{ kind: "toast"; tone: ToastTone; message: string }`. The file never calls an error or warning toast.
+  - node: rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+    held_at: |-
+      the three stacked `case` labels, lines 83-86. Clearing the stored token is not in this file.
+    evidence: |-
+      `case "AUTH_UNAUTHORIZED": case "AUTH_TOKEN_EXPIRED": case "AUTH_TOKEN_INVALID": return { kind: "redirect", to: "/sign-in?reason=session_expired" };`
+  - node: rules/application-shell/an-invalid-format-is-a-form-error
+    held_at: |-
+      `case "VALIDATION_INVALID_FORMAT"`, lines 91-96
+    evidence: |-
+      `kind: "set-error", message: fallbackMessage ?? MSG.validationInvalid, ...("details" in err && err.details !== undefined ? { details: err.details } : {})`. It returns no toast.
+  - node: rules/application-shell/any-other-code-shows-a-danger-toast
+    held_at: |-
+      the last `return` of the `default` branch, line 130
+    evidence: |-
+      `return { kind: "toast", tone: "danger", message: fallbackMessage ?? MSG.system };`
+  - node: rules/application-shell/any-other-system-failure-hides-its-message
+    held_at: |-
+      the `SYSTEM_` branch of the `default` case, lines 126-128
+    evidence: |-
+      `if (code.startsWith("SYSTEM_")) { return { kind: "toast", tone: "danger", message: MSG.system }; }`. The server's message is not read.
+  - node: rules/application-shell/failure-routing-lives-in-one-function
+    held_at: |-
+      `routeError`, lines 71-132
+    evidence: |-
+      `switch (code) { case "AUTH_UNAUTHORIZED": ... case "RESOURCE_GONE": ... default: if (code.startsWith("BUSINESS_")) {...} if (code.startsWith("SYSTEM_")) {...} }`. Exact codes are matched first, then `BUSINESS_` before `SYSTEM_`.
+  - node: rules/application-shell/session-expired-failure-carries-no-details
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file never builds the session-expired failure. `MSG.sessionExpired` is declared and has no use inside `routeError`.
+looked_past: |-
+  The unused `MSG.sessionExpired` constant and the `ToastTone` JSDoc ("Where the consequence should be visible.") are code-quality and comment-hygiene matters, so I did not report them.

@@ -1,0 +1,60 @@
+findings:
+  - file: src/components/ds/StateBadge/StateBadge.tsx
+    where: |-
+      decideTransition(), lines 125-137, and the variant selection in the component body, lines 206-241
+    evidence: |-
+      if (prev === "uncertain" && next === "accepted") return "promote";
+      if (next === "superseded") return "supersede";
+      ...
+      } else if (state === "uncertain" && motionAllowed) {
+        variants = pulseUncertain(false);
+        animateProp = "visible";
+    cost: |-
+      The badge runs an ambient pulse on `uncertain` and one-shot promote, supersede and merge animations. It also gates all motion on `animate` and on `useReducedMotion()`. The code is the only place that says which state changes are animated and that `uncertain` pulses. A reader looking in the specification for how a confidence change is shown finds neither rule. The two nodes in this set hold only the five labels and the accessible name.
+    kind: unstated
+    correction: |-
+      The analysis would have to decide whether these state-change animations are behavior the specification states or surface it leaves free. If they are behavior, they need a node, likely under domain/application-shell/state-badge.
+  - file: src/components/ds/StateBadge/StateBadge.tsx
+    where: |-
+      the header docstring, line 13, and the block comment at line 41 and the docstring at lines 42-45 above STATE_LABELS
+    evidence: |-
+      *  - §9   WCAG 2.2 AA: aria-label always present, icon aria-hidden, motion gated by useReducedMotion().
+    cost: |-
+      The docstring restates the fact that the badge is always named and its icon hidden from assistive technology. The same fact is held by code at the `aria-label` attribute and by `<IconCmp size={iconSize} aria-hidden="true" />`. If the node moves, the prose keeps saying the old fact and `--check` does not reach it.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is already held by the code in this file, so nothing needs to change in the code.
+    node: rules/application-shell/a-state-badge-is-always-named
+  - file: src/components/ds/StateBadge/StateBadge.tsx
+    where: |-
+      the comment at line 167 and the "canonical pt-BR labels (§6)" comment at line 41
+    evidence: |-
+      // Resolve label: prop wins; otherwise the per-state pt-BR default (§6).
+    cost: |-
+      The comment restates the label override and the per-state default labels, which are held by code at `const resolvedLabel = label ?? STATE_LABELS[state];` and the `STATE_LABELS` table. A second statement of the fact outside behavior can drift from the node without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the prose. The code in this file already holds the fact.
+    node: rules/application-shell/a-state-badge-has-five-states-with-labels
+read:
+  - node: rules/application-shell/a-state-badge-has-five-states-with-labels
+    held_at: |-
+      the STATE_LABELS table (lines 46-52) and the label resolution in the StateBadge body (line 168)
+    evidence: |-
+      accepted: "Aceito",
+        uncertain: "Incerto",
+        "low-confidence": "Baixa confiança",
+        disputed: "Em disputa",
+        superseded: "Superado",
+      ...
+      const resolvedLabel = label ?? STATE_LABELS[state];
+  - node: rules/application-shell/a-state-badge-is-always-named
+    held_at: |-
+      the aria-label attribute on the motion span (line 247), the label render at line 262, and the icon at line 261
+    evidence: |-
+      aria-label={`Estado de confiança: ${resolvedLabel}`}
+      ...
+      <IconCmp size={iconSize} aria-hidden="true" />
+      {!iconOnly && <span>{resolvedLabel}</span>}
+looked_past: |-
+  The icon choice per state, the sm and md size classes, the data-state, data-size and data-motion-variant attributes, and the ref-merging code are surface or code-review matters, not domain facts.

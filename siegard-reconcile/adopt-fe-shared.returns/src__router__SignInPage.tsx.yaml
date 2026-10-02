@@ -1,0 +1,69 @@
+findings:
+  - file: src/router/SignInPage.tsx
+    where: >-
+      the header docblock, lines 13-14, and the useMemo comment, lines 38-39
+    evidence: |-
+      `sessionExpired` is derived from `?reason=session_expired` (the BR-04 guard
+      redirects there when `isFresh()` rejects).
+      // `useMemo` so re-renders during the loading state do not re-parse the URL
+    cost: >-
+      The expiry-notice rule is stated a second time in prose. If the node changes, this
+      comment still reads as the rule and nothing flags it. The code already holds the fact
+      in readSessionExpired(), so the prose is only a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in readSessionExpired(), and the file-to-node
+      link belongs in the trace.
+    node: rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+  - file: src/router/SignInPage.tsx
+    where: >-
+      the header docblock, lines 13-14, the clause "the BR-04 guard redirects there when `isFresh()` rejects"
+    evidence: >-
+      the BR-04 guard
+      redirects there when `isFresh()` rejects
+    cost: >-
+      The comment restates the guard's behaviour, which is not implemented in this file. A
+      reader would take the comment as the place that behaviour is described. The guard is
+      in routes.tsx, which holds `search: { reason: "session_expired" }`, and the guard
+      node is a different file's.
+    kind: restates
+    correction: >-
+      Remove the clause. The guard's behaviour is held in src/router/routes.tsx.
+    node: rules/application-shell/the-guard-needs-a-fresh-token
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: nowhere
+    evidence: >-
+      The file emits no toast, failure wording, shell chrome or page-state text. It
+      only returns `<SignInPanel onSubmit={signIn} isSubmitting={isLoading} error={error} sessionExpired={sessionExpired} />`.
+  - node: rules/application-shell/chat-and-curation-keep-one-search-key
+    held_at: nowhere
+    evidence: >-
+      The file reads only `params.get("reason")`. It has no handling of the `conversation`
+      or `item` search keys.
+  - node: rules/application-shell/sign-in-hands-the-attempt-to-its-panel
+    held_at: >-
+      the JSX returned by SignInPage, lines 43-48
+    evidence: |-
+      const { signIn, isLoading, error } = useSignIn();
+      <SignInPanel
+        onSubmit={signIn}
+        isSubmitting={isLoading}
+        error={error}
+  - node: rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+    held_at: >-
+      readSessionExpired(), lines 26-34, and the useMemo call at line 40
+    evidence: |-
+      const params = new URLSearchParams(window.location.search);
+      return params.get("reason") === "session_expired";
+      } catch {
+        return false;
+      const sessionExpired = useMemo(readSessionExpired, []);
+  - node: rules/application-shell/the-guard-needs-a-fresh-token
+    held_at: nowhere
+    evidence: >-
+      This file has no token check or redirect. It only mentions the guard in a comment
+      ("the BR-04 guard redirects there when `isFresh()` rejects"). The redirect is held
+      in src/router/routes.tsx, which carries `search: { reason: "session_expired" }`.
+looked_past: >-
+  The header docblock cites docs/specs/front/features/sign-in.feature.spec.md and temp/login-screen-plan.md and explains the choice of window.location over useSearch, which is design rationale, not a domain fact, so I left it alone.

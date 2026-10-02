@@ -1,0 +1,124 @@
+findings:
+  - file: src/shell/Footer.tsx
+    where: |-
+      the file's docblock (lines 10-12), the FooterProps comment on curationPending (line 33) and the JSX comment above the curation Link (line 112)
+    evidence: |-
+      Hidden when there is nothing to show
+       * (curation == 0, no active run), per the spec ("some quando zero").
+      /** Curation queue total (entity_match + disputed). Hidden when 0. */
+      {/* Curation pending — hidden when zero */}
+      {curationPending > 0 && (
+    cost: |-
+      Three comments state the hide-when-zero rule that the `curationPending > 0 &&` branch already carries. If the node changes, for example the threshold or the label, these comments keep the old rule, and `--check` never reaches comments. The node does not hold the "(entity_match + disputed)" composition, which is addressed in looked_past.
+    kind: restates
+    correction: |-
+      Remove the comments. The code in this file holds the fact. The comments are prose, so the route is the comment route, followed by /reconcile over the file.
+    node: rules/application-shell/the-footer-shows-pending-curation
+  - file: src/shell/Footer.tsx
+    where: |-
+      the FooterProps comment on health, line 30
+    evidence: |-
+      /** System health (BFF /health). Defaults to "checking" until wired (2b). */
+      health = "checking",
+    cost: |-
+      The comment states the starting state `verificando…` as a second home of what the node holds. The default parameter `health = "checking"` and the HEALTH table hold it, so the comment can only drift from the code.
+    kind: restates
+    correction: |-
+      Remove the comment. The default parameter and the HEALTH table hold the fact.
+    node: rules/application-shell/the-footer-shows-one-of-three-health-states
+  - file: src/shell/Footer.tsx
+    where: |-
+      the FooterProps comment on activeRun (line 34) and the JSX comment above the active-run Link (line 122)
+    evidence: |-
+      /** Active ingestion run, if any. Hidden when null. */
+      {/* Active run — hidden when idle */}
+      {activeRun && (
+        <Link
+          to="/history"
+    cost: |-
+      The comments restate the active-ingestion segment rule that the `activeRun &&` branch and `to="/history"` already carry. A reader who edits the node would look at the comments and find a second statement of it.
+    kind: restates
+    correction: |-
+      Remove the comments. The branch and the Link target hold the fact.
+    node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+  - file: src/shell/Footer.tsx
+    where: |-
+      the helper paragraph inside PopoverContent, line 88-90
+    evidence: |-
+      <p className="mt-xs text-xs text-muted-foreground">
+        Veja o que era verdade numa data (as_of).
+      </p>
+    cost: |-
+      This text is shown to the owner, and no node holds it. Neither the as-of-date rules nor the shell-screen contract mentions it, and a search of the specification found no node with it. The popover title "Recorte temporal" is held and this sentence is not. Its wording, and the field name `as_of` shown to the owner, live only in the component, where the next reader will not look for them.
+    kind: unstated
+    correction: |-
+      The analysis gives the helper sentence a home, for example in rules/application-shell/the-owner-picks-the-as-of-date or in the show-shell answer of contracts/application-shell/shell-screen. Alternatively, it is decided not to be part of the footer.
+    node: rules/application-shell/the-owner-picks-the-as-of-date
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the Footer function's JSX (lines 59-132); only the footer part of show-shell is carried here
+    evidence: |-
+      role="contentinfo"
+      aria-label="Rodapé"
+      ... Como em: {formatAsOf(asOf)}
+      ... {curationPending} pendentes
+  - node: rules/application-shell/as-of-starts-at-today
+    held_at: |-
+      formatAsOf, line 45-47. The empty start itself comes from the store in another file.
+    evidence: |-
+      return asOf ? asOf.toLocaleDateString("pt-BR") : "hoje";
+      <Clock className="size-3" aria-hidden="true" /> Como em: {formatAsOf(asOf)}
+  - node: rules/application-shell/health-is-judged-by-the-database-field
+    held_at: nowhere
+    evidence: |-
+      This file only receives `health` as a prop typed `HealthStatus = "ok" | "down" | "checking"` and maps it to labels. The derivation from the database field is not in this file.
+  - node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+    held_at: |-
+      the `activeRun &&` branch, lines 123-130. Whether a run is ever passed is decided by the caller, not by this file.
+    evidence: |-
+      {activeRun && (
+        <Link
+          to="/history"
+  - node: rules/application-shell/the-as-of-date-lives-in-memory
+    held_at: |-
+      lines 55-56 and the onChange and onClick handlers, lines 96-98 and 104. Footer reads and writes only through the store.
+    evidence: |-
+      const asOf = useAsOfStore((s) => s.asOf);
+      const setAsOf = useAsOfStore((s) => s.set);
+      onClick={() => setAsOf(null)}
+  - node: rules/application-shell/the-footer-shows-one-of-three-health-states
+    held_at: |-
+      the HEALTH table, lines 38-43, and the default parameter, line 51
+    evidence: |-
+      ok: { dot: "bg-state-accepted", label: "online" },
+      down: { dot: "bg-destructive", label: "banco inacessível" },
+      checking: { dot: "bg-muted-foreground", label: "verificando…" },
+      health = "checking",
+  - node: rules/application-shell/the-footer-shows-pending-curation
+    held_at: |-
+      the conditional Link, lines 113-120
+    evidence: |-
+      {curationPending > 0 && (
+        <Link
+          to="/curation"
+      ... {curationPending} pendentes
+  - node: rules/application-shell/the-owner-picks-the-as-of-date
+    held_at: |-
+      the Popover with the date Input and the Voltar para hoje Button, lines 77-109
+    evidence: |-
+      <p className="text-xs font-medium font-semibold text-foreground">Recorte temporal</p>
+      type="date"
+      onChange={(e) =>
+        setAsOf(e.target.value ? new Date(e.target.value) : null)
+      }
+      Voltar para hoje
+  - node: rules/application-shell/the-shell-regions-have-names
+    held_at: |-
+      the GlassSurface props, lines 62-63, and the date Input, line 93. The footer half of the node is held here and the header half is outside this file.
+    evidence: |-
+      role="contentinfo"
+      aria-label="Rodapé"
+      aria-label="Data do recorte"
+looked_past: |-
+  Comments state facts that no code in this file holds, and prose alone is not a finding: "(entity_match + disputed)" as the composition of the curation total, the claim that the canonical as_of write is `navigate({ search: { as_of } })` with the URL as source of truth, which runs against the in-memory node, and the "Phase 2a/2b" notes that the live hooks are not yet wired. The code also uses `GlassSurface` from `@/components/ds/GlassSurface`, a matter for the comment route and for the code-review judgment, not this pass.
