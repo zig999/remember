@@ -1,0 +1,68 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the items mapping and the returned object of listAcceptedFragmentsService, lines 43-56 and 74-79. This covers only the list-accepted-fragments success answer. The other operations, and every refusal, are not in this file.
+    evidence: >-
+      fragment_id: row.fragment_id, text: row.fragment_text, confidence: Number(row.fragment_confidence), llm_run_id: row.fragment_llm_run_id, created_at: row.fragment_created_at.toISOString(), source: { raw_information_id: row.raw_information_id, chunk_index: row.chunk_index, source_type: toSourceType(row.source_type), received_at: row.received_at.toISOString(), document_title: row.document_title } ... return { total, limit: input.limit, offset: input.offset, items, }
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file only reads one field of the chunk, `chunk_index: row.chunk_index`, from a repository row. It declares no shape for the chunk.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file only passes values along from a repository row (`row.source_type`, `row.received_at`, `row.document_title`). It declares no shape for raw information.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file is a listing service and contains no chat configuration, for example `const llmRunId = input.llm_run_id ?? null;`.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file is a listing service and contains no directed-ingestion setting, for example `const rawInformationId = input.raw_information_id ?? null;`.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file is a listing service and contains no distillation or summary setting, for example `const total = await countAcceptedFragments(client, llmRunId, rawInformationId);`.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time-zone value. It only calls `.toISOString()` on dates.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model and holds no model default.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file applies no status filter. It delegates to `selectAcceptedFragments(client, llmRunId, rawInformationId, input.limit, input.offset)`, and the filtering lives in the repository file, which is not in this set.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      `readonly llm_run_id?: string; readonly raw_information_id?: string;` are both optional, and the service never checks that at least one is present. `input.llm_run_id ?? null` and `input.raw_information_id ?? null` pass both through, so the refusal is not held here.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The service maps one item per row (`rows.map((row) => ({`) and does no deduplication or lowest-index chunk selection. That would live in `selectAcceptedFragments`, in another file.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      `rows.map(...)` preserves whatever order the repository returns, and the file states no ordering of its own.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file contains no compliance-status condition. It only calls `countAcceptedFragments(client, llmRunId, rawInformationId)` and `selectAcceptedFragments(...)`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      `ListAcceptedFragmentsInput` is a typed input interface and the service validates no parameter names. Any refusal happens upstream of this file.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      The file concerns accepted-fragment listing and contains no provenance reads.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file concerns accepted-fragment listing and contains no graph reads or provenance entries.
+looked_past: >-
+  The log line carries the literal route "GET /api/v1/fragments/accepted" and the event name "query_retrieval_list_accepted_fragments_ok". No node in the specification states HTTP paths, so I treated them as emitted log text and not as a domain fact.

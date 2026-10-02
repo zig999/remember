@@ -1,0 +1,75 @@
+findings: []
+read:
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only emits events: `yield { type: "tool_result", tool: toolName, ok: toolEnvelope.ok, ... }` and `yield { type: "iteration_end", iteration, assistant_content: iterationBlocks.slice(), tool_results: toolResultBlocks.slice() }`. It writes no tool call of a conversation and names no assistant message, so recording happens elsewhere.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only consumes a setting: `if (env.CHAT_ENABLED === false) { throw new ChatDisabledError(); }`. The default value is declared with the environment configuration, not in this file.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion switch or default appears in the file. The nearest construct is `invocationContext`, which only forwards `source_excerpt` and `pointer` to tool handlers.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no title distillation, rolling summary or switch for either. The agent loop only streams model calls and runs tools.
+  - node: rules/chat/owner-time-zone-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No time zone or `America/Sao_Paulo` appears in the file.
+  - node: rules/chat/utility-model-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file uses only the turn's own model, `model: ctx.input.model`. It never names a utility model or `claude-haiku-4-5`.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. It is the chat agent loop (`runTurnGenerator`, `raceToolHandler`, `buildToolDescriptors`).
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing and no LLM-run or raw-information filter.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment listing and no lowest-index raw chunk attribution.
+  - node: rules/knowledge-base/listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ordering of fragments by reception time, creation time or identifier.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment listing and no compliance-status filter.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file defines no listing and no query parameters. Its only input schema handling is `toolInputSchemaFromZod`, which converts a tool's Zod schema to JSON Schema.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no provenance reading or ordering.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read and no provenance entries.
+looked_past: >-
+  The file states several chat-turn facts, all held by nodes outside this pack and not listed as candidates, so none is `unstated` and none is a finding against this set. They are the 4096 output ceiling (rules/chat/turn-model-call-token-ceiling), "unknown tool name" and "tool timeout" (rules/chat/tool-failure-answers-assistant), `disable_parallel_tool_use` (the at-most-one-tool-per-model-call node), the stop-reason mapping with its end_turn fallback, and the provider-unavailable and internal-error texts. Their binding to this file is for another batch to judge.
+candidates_opened: []

@@ -1,0 +1,103 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getProvenanceByLinkService, getProvenanceByAttributeService and
+      getProvenanceByFragmentService, with finalise and groupChain, for the three provenance
+      operations only
+    evidence: >-
+      `if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);`
+      `if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(fragmentId, fragment.status); }`
+      `throw new RawInformationDeletedError(tombstone.raw_information_id, tombstone.performed_at);`
+      `throw new EmptyProvenanceError(anchorKind, anchorId);`
+      The chunk mapping carries id, chunk_index, offset_start, offset_end, excerpt, locator and raw_information
+      with source_type, received_at, metadata and original_input. The fragment mapping carries id, text,
+      confidence and status. Authentication, the other operations, and the HTTP status and code mapping of the
+      errors are not in this file.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the chunk. It only reads fields of ProvenanceChainRow, for example
+      `chunk_index: c.chunk_index,`, and maps them into the response. The shape is declared in the repository
+      and DTO files.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the raw information. It only forwards its fields, for example
+      `raw_information: { id: c.raw_information_id, source_type: toSourceType(c.source_type), ... }`.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file is a provenance read service and has no chat or configuration default. The only rule-like
+      branches are `if (tombstone !== null)` and `if (rows.length === 0)`.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no chat or directed-ingestion logic. It reads `chainByLink`, `chainByAttribute` and
+      `chainByFragment`.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no title distillation or rolling-summary logic. It only groups provenance chain rows in
+      `groupChain`.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file states no time zone. The only time handling is `received_at: c.received_at.toISOString()`.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. It makes no model call and has no utility-model default.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. The accepted check applies to a single fragment's provenance
+      read, `if (fragment.status !== "accepted")`, which is a different rule
+      (provenance-requires-accepted-fragment).
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing and no LLM-run or raw-information filter. Its parameters are
+      `linkId`, `attributeId` and `fragmentId`.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The file does not list fragments. `groupChain` groups chain rows per fragment for a provenance read and
+      keeps every chunk of the fragment: `entry.chunks.push(row)`. There is no lowest-index attribution.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The file orders no listing. `groupChain` keeps the order of its input and has no sort by reception time,
+      creation time or fragment id.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no listing. It refuses a provenance read when a tombstone exists,
+      `if (tombstone !== null) { ... throw new RawInformationDeletedError(`, which is a read refusal and not
+      an exclusion from a listing.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no query-parameter validation and no accepted-fragment listing. Its signatures take
+      `(client, id, logger)` only.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      The file imposes no ordering. `groupChain` takes `rows` as given, uses Map insertion order
+      (`byFragment.set(row.fragment_id, ...)`), and has no sort. Any recording order is set by the repository
+      query, which is outside this file set and was not read.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The node governs graph reads (read-link, read-node, traverse), which show provenance regardless of
+      compliance status. This file is the dedicated provenance read, and it does the opposite by design:
+      `if (tombstone !== null) { ... throw new RawInformationDeletedError(`. No graph read is implemented
+      here.
+looked_past: >-
+  The log lines and the route string `GET /api/v1/provenance/${anchorKind}s/:id` and the event names such as
+  "query_retrieval_provenance_tombstone" are emitted observability text that states no node fact, so I did not
+  judge them; the error codes and HTTP statuses for the thrown errors live in errors.ts and
+  provenance.repository.ts, which are outside this file set.
+candidates_opened:
+  - rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - rules/knowledge-base/empty-provenance-chain-refused
+  - rules/knowledge-base/provenance-requires-accepted-fragment
