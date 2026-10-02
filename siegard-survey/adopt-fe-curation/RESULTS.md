@@ -35,3 +35,7 @@ Início: 2026-10-02T10:56:XX-03:00 (ver /tmp; registrado no telemetry)
 2. Duplicações no código aparecem como `contradicts` (duas cópias da política da fila; `ReviewQueueKind` declarada em dois arquivos; `OkEnvelope` duplicado): são achados de qualidade que o sistema de nós expõe sem querer, e a rota é `/analyse` ou `/plan-work`, não o rebind.
 3. A instrução compartilhada em arquivo (`/tmp/judge-instructions.md`) reduziu cada prompt de juiz a 4 linhas e eliminou cercas.
 4. Um juiz marcou como `contradicts` um nó cujo código concorda ("a bind is missing"): o juiz confundiu atribuição de arquivo com contradição; o fold bloqueou o nó e o relatório deve dizer isso à parte.
+
+## Correção das contagens (conferida contra o record e os retornos)
+- `restates`: 106 (não 8; a leitura inicial truncou o frontmatter no primeiro `---` do texto). `unstated`: 26. `contradicts`: 15 achados sobre 12 nós. `unheld`: 1 — `domain/knowledge-base/item-kind`: dois juízes responderam `nowhere`, porque o `ItemKind` do frontend declara os valores `link | attribute`, que são os de `domain/knowledge-base/assertion-kind`, não os `node | link | fragment` de `item-kind` — erro de atribuição da análise (linha de vocabulário 167 de logic.md e 91 de correction-provenance.md aterrissadas em `item-kind`); rota: `/analyse`.
+- Além do `unheld`, o fold anotou que `types.ts` ficou sem vínculo com `assertion-kind` (nó que nenhum arquivo do conjunto sustenta).
