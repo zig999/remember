@@ -8,6 +8,8 @@ attributes:
   type: decimal
 - name: change_hint
   type: change-hint
+- name: value
+  type: string
 - name: valid_from
   type: date
 - name: valid_to
@@ -32,6 +34,7 @@ relationships:
 
 What a language model or the owner puts forward within an LLM run for the knowledge base to take: a fragment, a node, a link or an attribute.
 A fragment proposal cites the raw chunks it was read from; a link or attribute proposal cites the information fragments it rests on and may claim validity dates.
+An attribute proposal carries its value as text, whatever the value type of its attribute key.
 
 ## Responsibility
 
