@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the doc comment above CHAT_PROMPT_MARKER_V1 (lines 17-27) and the file header comment (lines 1-12)
+    evidence: >-
+      "Opaque system-prompt marker token (BR-20). Planted at the head of the
+      system prompt body so the output guard can detect leakage."
+    cost: >-
+      The prose says in a second place that the marker opens the prompt. The code already does this, as the first element of the array returned by system(). If the rule moves, a reader can take the comment for the decision and miss the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact (`CHAT_PROMPT_MARKER_V1` as the first element of the `system()` array), and the node binds it.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the FERRAMENTAS section of the string returned by system(), lines 77-79
+    evidence: >-
+      "Use as ferramentas SOMENTE quando elas adicionarem informacao que voce",
+      "ainda nao tem. Cada chamada e auditada e tem orcamento de tempo."
+    cost: >-
+      The prompt tells the model to call tools only when they add information it lacks. No node holds that instruction (a search of the full-text projection found none). The behavior lives only in the prompt copy, so a reader looking in the specification for how the assistant is told to economise on tool calls finds nothing.
+    kind: unstated
+    correction: >-
+      Analysis should give the instruction a node among the chat prompt version rules. The statement about audited calls and the time budget is already held by the tool-call recording and tool-time nodes.
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      principle 3 of the string returned by system(), lines 57-60
+    evidence: >-
+      "Se voce precisa de um id, RESOLVA o nome chamando `search` ou `list_nodes`
+      antes de chamar qualquer ferramenta que exige id (`get_node`,
+      `traverse`, `get_history_*`, `get_provenance_*`)."
+    cost: >-
+      The node rules/chat/chat-prompt-v1-cites-sources holds only that the v1 prompt tells the assistant never to invent identifiers. The instruction to resolve a name through search or list_nodes first, and the list of tools that need an id, are held by no node. The prompt copy is the only place they are decided.
+    kind: unstated
+    correction: >-
+      Analysis should state the name-to-identity resolution instruction. It could widen rules/chat/chat-prompt-v1-cites-sources or become a node of its own.
+    node: rules/chat/chat-prompt-v1-cites-sources
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      the constant CHAT_PROMPT_MARKER_V1 (line 28) and its use as the first element of the array joined and returned by system() (line 45)
+    evidence: >-
+      export const CHAT_PROMPT_MARKER_V1 = "__REMEMBER_CHAT_SYS_MARKER_V1__" as const;
+      ... return [ CHAT_PROMPT_MARKER_V1, "", "Voce e um assistente de consulta ao grafo de conhecimento Remember.", ...
+looked_past: >-
+  The other prompt lines (pt-BR answers, documents as data, source citation, the two time axes, uncertainty, withholding internals, concise answers) state facts that nodes outside this pack hold and that this prompt states truly, so they are no finding.

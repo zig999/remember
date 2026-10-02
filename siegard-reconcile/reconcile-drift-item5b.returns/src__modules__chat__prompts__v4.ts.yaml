@@ -1,0 +1,39 @@
+findings:
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      The header comment (lines 8 and 27-28) and the JSDoc on `system()` (lines 154-156), which speak of the marker token and of the v1 body
+    evidence: >-
+      "// Marker token is REUSED VERBATIM from v1 (BR-20 stable across versions)." and "(persona, language pt-BR, citation policy, output-stripping discipline, marker token — all preserved per BR-18 v4)"
+    cost: >-
+      The fact that every prompt version begins with the one system-prompt marker is stated a second time in prose that no running system emits. The code holds it twice over: `const v1Body = v1System();` is the first element of the joined array, and `export { CHAT_PROMPT_MARKER_V1 } from "./v1.js";` re-exports the token. A reader who finds the comment may take it as the place the rule lives, and the comment will not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code in this file, and the marker text in the v1 file the re-export names, already hold the fact.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      The header comment (lines 5-6 and 12-14) and the JSDoc on `system()` (lines 156-158), which describe how the ontology block is rendered
+    evidence: >-
+      "//   - Block 4A iterates the catalog Maps in INSERTION ORDER — same contract" and "ontology-aware blocks: 4A (rendered from `catalog`, delegated to v3's `renderOntologyBlock` for byte parity)"
+    cost: >-
+      This is prose about how the catalog is presented, and the node states it differently. The comment says insertion order. rules/chat/chat-prompt-presents-catalog says "in ascending order", and its decision log says "The ontology block sorts the values." Nothing running emits the comment. The code that holds the fact is `const block4A = renderOntologyBlock(catalog);`, which calls the function in v3.ts. A reader who trusts the comment learns an ordering the node does not state.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The catalog presentation is held by the `renderOntologyBlock(catalog)` call here and by the function in the v3 file it delegates to.
+    node: rules/chat/chat-prompt-presents-catalog
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      `system()` in v4.ts (line 172), where the returned array starts with the v1 body, and the marker re-export at line 41. The marker text itself is not declared in this file.
+    evidence: >-
+      "const v1Body = v1System();" then "return [ v1Body, block4A, BLOCK_4B_SEARCH_DISCIPLINE, BLOCK_4C_DIRECTED_INGESTION, ].join(\"\\n\");" and "export { CHAT_PROMPT_MARKER_V1 } from \"./v1.js\";"
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      `system()` in v4.ts, the call that renders block 4A from the catalog. The ordering and rendering are held in `renderOntologyBlock` in the v3 file, not in this file.
+    evidence: >-
+      "import { renderOntologyBlock } from \"./v3.js\";" and "const block4A = renderOntologyBlock(catalog);"
+looked_past: >-
+  The prompt text this file emits (blocks 4B and 4C) agrees with chat-prompt nodes this file is not bound to, such as search-one-name, search-is-lexical-and, v4-pins-known-entity, v4-asks-start-date, v4-closed-values and v4-one-ingestion-per-command, so it is behavior in agreement and no finding. The remaining header comments (the references to chat.back.md BR numbers and the cache-control invariant) restate nothing in this pack's two nodes.
+candidates_opened:
+  - rules/chat/chat-prompt-carries-marker
+  - rules/chat/chat-prompt-presents-catalog
