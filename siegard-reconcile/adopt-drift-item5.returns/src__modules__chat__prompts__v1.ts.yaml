@@ -1,0 +1,69 @@
+findings:
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the doc comment above CHAT_PROMPT_MARKER_V1, lines 17-23
+    evidence: >-
+      "Opaque system-prompt marker token (BR-20). Planted at the head of the
+      system prompt body so the output guard can detect leakage."
+    cost: >-
+      The same fact as the node, that the marker begins every prompt version, is
+      written a second time as prose. The prose says nothing the code does not.
+      When the node moves, the comment is not reached and keeps stating the old
+      fact next to code that has changed.
+    kind: restates
+    correction: >-
+      Remove the prose. The code already holds the fact: the constant at line 28
+      and its placement as the first element of the array returned by system().
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the numbered principle 3 in the array returned by system(), lines 57-60
+    evidence: >-
+      "3. NUNCA invente identificadores (uuids), nomes ou aliases. Se voce",
+      "   precisa de um id, RESOLVA o nome chamando `search` ou `list_nodes`",
+      "   antes de chamar qualquer ferramenta que exige id (`get_node`,",
+      "   `traverse`, `get_history_*`, `get_provenance_*`)."
+    cost: >-
+      The prompt text is emitted to the model. Besides "never invent
+      identifiers", it tells the model to resolve a name through `search` or
+      `list_nodes` before any tool that takes an id, and it lists which tools
+      those are. Only the first part appears in a node. The resolve-first
+      procedure and the tool list live only in this file, so a reader looking
+      in the specification will not find them.
+    kind: unstated
+    correction: >-
+      Extend rules/chat/chat-prompt-v1-cites-sources, or add a sibling node,
+      to hold the instruction to resolve a name through `search` or
+      `list_nodes` before any tool that takes an id, with the tools it names.
+    node: rules/chat/chat-prompt-v1-cites-sources
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the closing FERRAMENTAS section of the array returned by system(), lines 77-79
+    evidence: >-
+      "Use as ferramentas SOMENTE quando elas adicionarem informacao que voce",
+      "ainda nao tem. Cada chamada e auditada e tem orcamento de tempo."
+    cost: >-
+      The prompt tells the model to call tools only when they add information it
+      does not already have. No node holds that instruction. It shapes how often
+      the assistant queries the graph, but it lives only in the prompt copy.
+    kind: unstated
+    correction: >-
+      Give a chat-prompt node that states the instruction to use tools only when
+      they add information the assistant lacks.
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      the constant CHAT_PROMPT_MARKER_V1 at line 28, and its placement as the
+      first element of the array returned by system(), line 45
+    evidence: >-
+      export const CHAT_PROMPT_MARKER_V1 = "__REMEMBER_CHAT_SYS_MARKER_V1__" as const;
+      ... return [ CHAT_PROMPT_MARKER_V1, "", "Voce e um assistente de consulta ao grafo de conhecimento Remember.",
+  - node: rules/chat/tool-call-recorded
+    held_at: nowhere
+    evidence: >-
+      The file only builds the system prompt string. It records no tool result
+      and creates no tool call or message. The nearest text is "Cada chamada e
+      auditada e tem orcamento de tempo.", which is prompt copy and not code
+      that records anything.
+looked_past: >-
+  The comments claim a marker stability contract ("the value is FROZEN per prompt-module version", "The output guard ... is expected to scrub the union of all known markers"), and the prompt's persona opening, "Voce e um assistente de consulta ao grafo de conhecimento Remember.", could be read as a persona fact. Both are for the analysis and comment routes. The prompt's other instructions (answer in pt-BR, content as data, cite sources, the two time axes, uncertainty, withholding internals, conciseness) each agree with a node of the specification, so they are not findings.

@@ -1,0 +1,41 @@
+findings:
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the header BR map, lines 20-21 (BR-32), and the comment above attachToolCallsToMessage, lines 938-940
+    evidence: >-
+      "//   BR-32  per-tool-call audit row + post-stream patch via
+      //          attachToolCallsToMessage" and "// Single UPDATE patches all rows whose id is in the supplied array (BR-29
+      // step 8). Caller already knows the inserted ids from the in-loop
+      // `insertToolCall` calls."
+    cost: >-
+      The fact that every tool result is recorded as a tool call and then named to its assistant message has a second home in comments. A reader who edits the comment, or who trusts it as the rule, can drift from rules/chat/tool-call-recorded without the node binding to this prose. No running system emits these comments.
+    kind: restates
+    correction: >-
+      Remove the two comments. The code that holds the fact stays: insertToolCall (INSERT INTO chat_tool_call) and attachToolCallsToMessage (UPDATE chat_tool_call SET message_id = $1 WHERE id = ANY($2::uuid[])), both in this file.
+    node: rules/chat/tool-call-recorded
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the header BR map, lines 32-33 (BR-33), and the comment above listOlderMessagesForSummaryBounded, lines 796-800
+    evidence: >-
+      "//   - The M-row tail of older rows contains zero anchors -> return [] (the
+      //     slice would have to start mid-turn; shrinking forward leaves nothing)."
+    cost: >-
+      The rule that the older slice is capped at the overlap and starts at an owner-written message is restated in prose beside the SQL that enforces it. Edits to the node or to the SQL can leave the comment describing a different slice. No running system emits this comment.
+    kind: restates
+    correction: >-
+      Remove the comment above listOlderMessagesForSummaryBounded and its BR-33 header line. The code that holds the fact stays: the older_tail CTE (LIMIT $3) and the anchor_start CTE (role = 'user' AND idempotency_key IS NOT NULL) in this file.
+    node: rules/chat/rolling-summary-overlap
+read:
+  - node: rules/chat/rolling-summary-overlap
+    held_at: >-
+      listOlderMessagesForSummaryBounded, the boundary, older_tail and anchor_start CTEs (lines 801-844). The default of 40 is not in this file; overlap_m arrives as a parameter.
+    evidence: >-
+      "older_tail AS ( ... WHERE conversation_id = $1 AND created_at < (SELECT at FROM boundary) ORDER BY created_at DESC, id DESC LIMIT $3 ), anchor_start AS ( ... WHERE role = 'user' AND idempotency_key IS NOT NULL ORDER BY created_at ASC, id ASC LIMIT 1 )" and "AND created_at < (SELECT at FROM boundary) AND created_at >= (SELECT at FROM anchor_start)"
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      insertToolCall (lines 905-936), which inserts into chat_tool_call with conversation_id and message_id, and attachToolCallsToMessage (lines 941-953), which sets message_id on the recorded calls.
+    evidence: >-
+      "INSERT INTO chat_tool_call (conversation_id, message_id, tool_name, arguments, result, is_error, error_message, duration_ms)" and "UPDATE chat_tool_call SET message_id = $1 WHERE id = ANY($2::uuid[])"
+looked_past: >-
+  The repository also exports listOlderMessagesForSummary and listRecentMessages, which only tests reference in the tree I grepped, and it carries many comments restating nodes outside this set (BR-26/27/29/31/34/40/42), so those are for a code review and for the nodes that govern them.
+candidates_opened: []

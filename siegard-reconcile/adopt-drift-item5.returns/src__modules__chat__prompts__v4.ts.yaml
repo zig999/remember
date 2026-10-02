@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment line 8 and the re-export docblock at lines 37-40, above line 41
+    evidence: >-
+      "// Marker token is REUSED VERBATIM from v1 (BR-20 stable across versions)." and
+      " * Re-export of v1's marker token. BR-20 keeps the marker STABLE across prompt
+      * versions so the output guard never needs a per-version code path."
+    cost: >-
+      The marker rule is stated a second time as prose in this file, alongside the node. When the
+      node moves, the comment keeps saying the old thing, and a reader may take it for where the
+      rule was decided. The code that holds it is the `v1Body` placed first in system() here, and
+      the literal in v1.ts.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The marker fact stays held by
+      `export { CHAT_PROMPT_MARKER_V1 } from "./v1.js"` and by `v1Body` leading the `system()` join,
+      with the literal `CHAT_PROMPT_MARKER_V1 = "__REMEMBER_CHAT_SYS_MARKER_V1__"` in
+      src/modules/chat/prompts/v1.ts.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment lines 5-6 and 12-14, and the system() docblock at lines 154-159
+    evidence: >-
+      "//   - Block 4A ONTOLOGY — PRESERVED VERBATIM from v3 (deterministic catalog
+      //     rendering — same byte-stability + cache-control invariant)." and
+      "//   - Block 4A iterates the catalog Maps in INSERTION ORDER — same contract
+      //     as v3 (delegates to v3's `renderOntologyBlock`)."
+    cost: >-
+      The fact that the prompt presents the catalog in a fixed order is restated as prose here. If
+      the node or v3.ts changes it, this comment goes stale without any check reaching it. The
+      rendering code lives in src/modules/chat/prompts/v3.ts as `renderOntologyBlock`, so the
+      comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code already holds the fact: system() calls
+      `renderOntologyBlock(catalog)` and joins it as block 4A, and the rendering sits in v3.ts.
+    node: rules/chat/chat-prompt-presents-catalog
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      the `export { CHAT_PROMPT_MARKER_V1 } from "./v1.js"` re-export (line 41) and the `system()`
+      join (lines 177-182), where the v1 body carrying the marker comes first. The literal itself
+      is declared in v1.ts.
+    evidence: >-
+      return [
+        v1Body,
+        block4A,
+        BLOCK_4B_SEARCH_DISCIPLINE,
+        BLOCK_4C_DIRECTED_INGESTION,
+      ].join("\n");
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      the `system()` function (lines 172-183), which builds block 4A from the catalog and places it
+      second in the prompt. The ordered rendering of node types, link types with their permitted
+      pairs, and attribute keys with their closed values is in v3.ts's `renderOntologyBlock`.
+    evidence: >-
+      const block4A = renderOntologyBlock(catalog);
+  - node: rules/chat/tool-call-recorded
+    held_at: nowhere
+    evidence: >-
+      The file only composes prompt strings, as in `export function system(catalog: CatalogSnapshot): string`.
+      It has no tool result, tool call record or assistant message of a model call.
+looked_past: >-
+  The prompt text this file emits (blocks 4B and 4C) states facts held by chat-prompt nodes outside this
+  file's set, for example rules/chat/chat-prompt-v4-directed-ingestion-writes,
+  rules/chat/chat-prompt-v4-asks-start-date and rules/chat/chat-prompt-v4-one-ingestion-per-command,
+  and it agrees with them. The comments about cache-control byte stability and the BR-/chat.back.md
+  citations state no node's fact and are another judgment's.
+candidates_opened:
+  - rules/chat/chat-prompt-v4-directed-ingestion-writes
+  - rules/chat/chat-prompt-v4-closed-values
+  - rules/chat/directed-item-status

@@ -1,0 +1,31 @@
+findings:
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      the JSDoc on `CHAT_SUMMARY_OVERLAP_M` in `DistillationEnv` (lines 108-114), and step 2 of the `maybeRefreshSummary` docstring (lines 154-159)
+    evidence: >-
+      "BR-33 v2.9 step 2 — hard cap on the number of `chat_message` rows the
+      fold pulls into the `bounded_overlap_slice` per refresh. Cut on REAL-turn
+      boundaries by the repository slicer (`listOlderMessagesForSummaryBounded`).
+      Default 40 in `env.ts`."
+      and "The repository cuts the start on a REAL-turn anchor; the slice is Anthropic-valid by construction."
+    cost: >-
+      The cap, the default of 40 and the owner-message start anchor are stated in prose in this file. The code that holds them is elsewhere: `LIMIT $3` and the `anchor_start` CTE in `backend/src/modules/chat/repository/chat.repository.ts`, and `CHAT_SUMMARY_OVERLAP_M: z.coerce.number().int().min(1).default(40)` in `backend/src/config/env.ts`. The comment is a second home for a fact the node already holds. When the default or the anchor rule moves, this prose can stay behind and say the old value.
+    kind: restates
+    correction: >-
+      Remove the prose. The file only forwards `env.CHAT_SUMMARY_OVERLAP_M` to `repo.listOlderMessagesForSummaryBounded`, so it never held the fact. The node's real homes are chat.repository.ts and env.ts.
+    node: rules/chat/rolling-summary-overlap
+read:
+  - node: rules/chat/rolling-summary-overlap
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file forwards the value without stating the cap, the 40 default or the anchor: `repo.listOlderMessagesForSummaryBounded(client, conversationId, env.CHAT_RECENT_WINDOW, env.CHAT_SUMMARY_OVERLAP_M)`. The `CHAT_SUMMARY_OVERLAP_M: number` member of `DistillationEnv` only types a field passed along. The rule itself is code in chat.repository.ts (`LIMIT $3`, `anchor_start ... role = 'user' AND idempotency_key IS NOT NULL`) and env.ts (`.default(40)`). Here it appears only in comments.
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never records a tool call. It makes two utility-model calls, `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, ... stream: false })`, and its only writes are `repo.updateSummaryRolling` and `repo.setTitleIfNull`. A search for tool_call, toolCall and ToolCall in the file found nothing.
+looked_past: >-
+  This file's code also holds facts that nodes outside my set already hold: 2000-character summary cap, 600-token summary ceiling, 64-token title ceiling, 80-character title cap, and no-overwrite title write. Its docstring says `max_tokens: 512` while the code uses 600. The log event names and fields are operational diagnostics, not domain facts, and no node holds them. All of these are other judgments' to make.
+candidates_opened:
+  - rules/chat/rolling-summary-overlap

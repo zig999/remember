@@ -1,0 +1,92 @@
+findings:
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      renderOntologyBlock, lines 144-184: the loops over catalog.nodeTypeByName, catalog.linkTypeByName and catalog.attributeKeyById, and the rule-pair list built from catalog.linkTypeRules. The comment block at lines 22-31 states the choice.
+    evidence: >-
+      for (const nodeType of catalog.nodeTypeByName.values()) {
+      ... for (const linkType of catalog.linkTypeByName.values()) {
+      ... for (const attr of catalog.attributeKeyById.values()) {
+      Only the closed values are sorted: `[...domain].sort().join(" | ")`.
+      The header comment says: "The dynamic ontology block iterates the catalog Maps in INSERTION ORDER ... Sorting alphabetically would be safer in principle, but would also be a deviation from the existing graph-normalizer's iteration discipline".
+    cost: >-
+      The node says the catalog is presented in ascending order. The prompt lists node types, link types, attribute keys and each link type's node-type pairs in the order the SQL rows came back. The assistant therefore sees an order that depends on database row order, not the order the business decided. Anyone reading the node would expect sorted output and would not find the deliberate exception, which is recorded only in a source comment.
+    kind: contradicts
+    correction: >-
+      Either the renderer orders node types, link types, attribute keys and rule pairs ascending, as the node states, or the node is changed through analysis to say the order is the catalog's load order. The source cannot settle which was decided.
+    node: rules/chat/chat-prompt-presents-catalog
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 3 (lines 110-112), the prompt text sent to the model.
+    evidence: >-
+      "3. Cite a fonte: o campo `raw_information_id` retornado por",
+      "   `get_ingestion_status` identifica o documento ingerido — mencione-o",
+      "   ao dono.",
+    cost: >-
+      The v3 prompt tells the assistant to name the ingested document's raw information identity to the owner. The only node for this is rules/chat/chat-prompt-v4-cites-ingested-document, and its statement is limited to v4. A reader checking what v3 tells the assistant will not find this instruction in the specification.
+    kind: unstated
+    correction: >-
+      Analysis should give the v3 citation instruction a node, or widen the v4 node to cover v3.
+    node: rules/chat/chat-prompt-v4-cites-ingested-document
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 1 (lines 93-95), the prompt text sent to the model.
+    evidence: >-
+      "1. Chame `get_ingestion_status` UMA UNICA VEZ para confirmar que a",
+      "   ingestao alcancou `status: \"completed\"`. Se ainda estiver em",
+      "   `running`, informe e PARE — nao tente descrever o que foi ingerido.",
+    cost: >-
+      The nodes found cover only the v2 rule, which tells the assistant to report the status once and not ask again within the turn. They do not hold the v3 rule that a run still `running` must be reported and the assistant must stop without describing what was ingested. That behavior of the v3 prompt is not in the specification.
+    kind: unstated
+    correction: >-
+      Analysis should give the v3 instruction to stop and not describe a run that has not completed a node, nearest to rules/chat/chat-prompt-v2-no-status-polling and rules/chat/chat-prompt-affected-nodes-first.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, step 4 (lines 113-116), the prompt text sent to the model.
+    evidence: >-
+      "4. NUNCA apresente a primeira linha de um `list_nodes` sem filtro como",
+      "   resposta para \"o que foi ingerido\" — essa linha pode pertencer a",
+      "   um documento completamente nao relacionado. Em caso de duvida,",
+      "   recuse a resposta e replaneje pelos passos 2.a / 2.b.",
+    cost: >-
+      The "never present the first row of an unfiltered listing as what was ingested" part is held by rules/chat/chat-prompt-unfiltered-listing-is-not-ingested. The added instruction to refuse the answer and re-plan through the lookup steps when in doubt is held by no node. It is a behavior the assistant is told to follow that exists only in this prompt text.
+    kind: unstated
+    correction: >-
+      Analysis should state the refuse-and-replan instruction in a node, or the prompt should drop it.
+    node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      system(), lines 203-212. The v3 prompt is built with the v2 body as its first element, and the file re-exports the marker constant from v1 at line 55. The marker text itself is declared in v1.ts, not here.
+    evidence: >-
+      return [
+        v2Body,
+        block4A,
+        BLOCK_4B_SEARCH_DISCIPLINE,
+        BLOCK_4C_POST_INGESTION_PLAYBOOK,
+      ].join("\n");
+      and `export { CHAT_PROMPT_MARKER_V1 } from "./v1.js";`. Whether v2's output starts with the marker cannot be seen from this file.
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      renderOntologyBlock, lines 141-187. It presents node types, link types with their source -> target pairs, and attribute keys with a closed-values suffix, with the values sorted. The ordering of the other lists is not ascending, so a finding of kind contradicts is filed.
+    evidence: >-
+      parts.push(`- ${linkType.name}: ${linkType.description}${pairSuffix}`);
+      ` [dominio fechado: ${[...domain].sort().join(" | ")}]`
+      The node, link type and attribute key lists iterate `.values()` of Maps in insertion order.
+  - node: rules/chat/tool-call-recorded
+    held_at: nowhere
+    evidence: >-
+      The file builds a system prompt string only: `export function system(catalog: CatalogSnapshot): string`. It records no tool call and touches no conversation, message or turn.
+looked_past: >-
+  The comment blocks cite BR-18 v3, BR-20 and the chat.back.md sections, and restate that the marker is stable across versions. That is prose whose facts are held by the nodes and code elsewhere, so it is the comment route's concern, not this judgment's.
+candidates_opened:
+  - rules/chat/chat-prompt-v4-cites-ingested-document
+  - rules/chat/chat-prompt-v2-no-status-polling
+  - rules/chat/chat-prompt-v2-ingestion-returns-running
+  - rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+  - rules/chat/chat-prompt-affected-nodes-first
+  - rules/chat/chat-prompt-search-is-lexical-and
+  - rules/chat/chat-prompt-search-one-name
+  - rules/chat/chat-prompt-list-by-node-type
+  - rules/chat/chat-prompt-discovery-listings
+  - rules/chat/chat-prompt-fallback-lists-by-node-type
+  - rules/chat/chat-prompt-version-known

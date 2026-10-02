@@ -1,0 +1,105 @@
+findings:
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitChatBootLog, lines 1222-1297 (the chat.boot, chat.recent_window_resolved, chat.deprecated_env and chat.owner_tz_resolved log records)
+    evidence: >-
+      deps.logger.info({ event: "chat.boot", chat_ingest_enabled: ingestFlagOn, tool_count: toolCount }, "chat module routes registered");
+      and  if (process.env.CHAT_SUMMARY_AFTER_TURNS !== undefined) { deps.logger.info({ event: "chat.deprecated_env", name: "CHAT_SUMMARY_AFTER_TURNS", reason: "retired_as_gate_v2_9" }, "chat deprecated env var detected (BR-33 v2.9 — retired as gate)")
+    cost: >-
+      The event names, the fields, the rule that tool_count is 0 when the query portion is incomplete, and the deprecation of CHAT_SUMMARY_AFTER_TURNS all live only in this function. A person who greps the specification for the boot signal or the deprecated variable finds nothing, and so cannot tell whether the records are decided or incidental. The specification does give logged events a node elsewhere, for example constraints/curation-write-failure-logged.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether the chat boot records are a fact of the business. If so, they need a node, such as a chat constraint beside constraints/curation-write-failure-logged.
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitTurnLog, lines 1558-1586 (the chat.turn record and its chat_turn_total counter)
+    evidence: >-
+      const aborted = args.stopReason === "cancelled" || args.stopReason === "turn_timeout";
+      ... event: "chat.turn", actor: "owner" as const, ... counter: { name: "chat_turn_total", labels: { stop_reason: args.stopReason }, value: 1 }
+    cost: >-
+      This function alone holds the record's name and fields, the counter name and its label, and the rule that a turn counts as aborted exactly when its stop reason is cancelled or turn_timeout. No node holds any of it, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether the per-turn record and its counter are a fact of the business. If so, they need a node under the chat rules or constraints.
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      the comment above the empty-body check in PATCH /:id, lines 379-394
+    evidence: >-
+      // BR-36 step 1: empty body -> 422 VALIDATION_REQUIRED_FIELD.
+    cost: >-
+      The comment restates the update-conversation refusal, which the node already holds and the code already implements at the next statement. It is a second home outside behavior and carries a back-spec rule number the specification does not use.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact at the return reply.code(422) branch that follows it.
+    node: contracts/chat/conversations
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      the comment opening the sendMessage handler, lines 583-586
+    evidence: >-
+      // ---- (1) Idempotency-Key header — checked FIRST per spec (BR-26 has
+      //          precedence over conversation lookup). Missing -> 422
+      //          VALIDATION_REQUIRED_FIELD; non-UUID -> 422
+      //          VALIDATION_INVALID_FORMAT.
+    cost: >-
+      The comment restates the order of checks on a sent message, which rules/chat/send-message-check-order holds, and the two header refusals, which the contract holds. The code holds both in the same handler, so the comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the order in this handler's statement sequence, steps (1) to (8).
+    node: rules/chat/send-message-check-order
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      the comment at the recovery branch of sendMessage, lines 692-694
+    evidence: >-
+      // Recovery path — the original turn died before persisting the
+      // assistant row. Reuse the existing user row, skip insert (would
+      // collide on UNIQUE PARTIAL), and run the loop.
+    cost: >-
+      The comment restates idempotent-recovery: run the turn again on the recorded message without recording a second one. The code holds it through `if (existingUserRow === null)` guarding insertUserMessage, so the comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact in this file at the existingUserRow === null guard before insertUserMessage.
+    node: rules/chat/idempotent-recovery
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      the doc comment of handleIdempotentReplay, lines 1109-1115
+    evidence: >-
+      * UC-07 — emit `llm_start{1}` + `text_delta(<full stored text>)` + `done`
+      * frames and close the stream. No Anthropic call; no new rows.
+    cost: >-
+      The comment restates idempotent-replay: stream the recorded answer again without calling the model or recording anything. The function body holds it, since it writes frames and never calls chatService or an insert, so the comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the doc comment. The code holds the fact in handleIdempotentReplay itself.
+    node: rules/chat/idempotent-replay
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      the doc comment of userRowMatches, lines 1449-1454
+    evidence: >-
+      * Comparison rules (BR-27 — "(content, model) comparison" paragraph):
+      *   - `content`: unwrap the single-text-block jsonb shape and compare strings.
+      *   - `model`: literal column value, treating NULL == NULL.
+    cost: >-
+      The comment restates idempotency-match: a resent message matches only when its text and model equal the recorded ones. The function body holds it, since `storedText !== incomingContent` and `storedModel === incomingModel` decide the result, so the comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the doc comment. The code holds the fact in userRowMatches.
+    node: rules/chat/idempotency-match
+read:
+  - node: rules/chat/conversation-request-check-order
+    held_at: >-
+      The guard at the top of each of the eight handlers other than sendMessage, in the order kill switch, then parse of the identity, body or query, then lookup of the conversation. These are POST /, GET /, GET /:id, PATCH /:id, DELETE /:id, GET /:id/messages, GET /:id/usage, GET/PUT /:id/graph and POST /:id/cancel. sendMessage is held by a different node (see looked_past).
+    evidence: >-
+      if (killSwitchTripped(deps.env)) { return sendKillSwitch(reply); }
+      const { id } = ConversationIdParam.parse(request.params ?? {});
+      const query = ListMessagesQuery.parse(request.query ?? {});
+      // BR-22 before query.
+      const exists = await withReadOnly(deps.pool, (client) => chatRepo.getConversationById(client, id));
+      if (exists === null) { return sendNotFound(reply, id); }
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      The tool_result branch of the drain loop in sendMessage, steps (14) and (16). It records each tool result through chatRepo.insertToolCall and attaches the pending ids to the iteration's assistant row on iteration_end, or to the closing assistant row.
+    evidence: >-
+      if (evt.type === "tool_result") { ... chatRepo.insertToolCall(client, { conversation_id: id, message_id: null, tool_name: evt.tool, ... }) ... pendingToolCallIds.push(row.id);
+      and  await chatRepo.attachToolCallsToMessage(client, [...pendingToolCallIds], assistant.id);
+looked_past: >-
+  sendMessage checks the idempotency key, identity and content before the disabled chat, which rules/chat/send-message-check-order holds, with a decision log recording the owner's choice that the source is the truth. That is why I filed no finding against conversation-request-check-order for it. I also left out the error-level chat.catalog_unresolved log beside the 404 refusal, which belongs to constraints/expected-refusals-not-logged-as-errors, and the prose that restates nothing in the specification.
