@@ -7,12 +7,14 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 17 | 131 | 1 | 0 |
+| ingest-workspace | supporting | 3 | 55 | 3 | 4 |
 | knowledge-base | core | 75 | 401 | 5 | 10 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
 
 - chat/conversation — 3 entity(ies) inside, 5 attribute(s) on the root
+- ingest-workspace/ingest-session — 0 entity(ies) inside, 8 attribute(s) on the root
 - knowledge-base/attribute-key — 0 entity(ies) inside, 8 attribute(s) on the root
 - knowledge-base/compliance-deletion — 0 entity(ies) inside, 3 attribute(s) on the root
 - knowledge-base/curation-action — 0 entity(ies) inside, 6 attribute(s) on the root
@@ -73,4 +75,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-246 decision(s) disclosed, 2 location(s) retired in the decision logs.
+250 decision(s) disclosed, 2 location(s) retired in the decision logs.

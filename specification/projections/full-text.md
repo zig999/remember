@@ -688,6 +688,139 @@ entries:
   why: The owner decided the source's behavior is the truth, and rules/chat/replay-reports-failure already states the same end.
 ---
 
+=== contracts/ingest-workspace/bff-ingestion
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/ingestion
+operations:
+- send-ingestion-request
+- ingest-raw-information
+- run-extraction
+- retry-llm-run
+- read-llm-run
+answers:
+- operation: send-ingestion-request
+  accepted: "the 2xx JSON body of the answer is the answer itself and is never unwrapped from { ok, result }, and a 204 answer gives no value"
+  refusals:
+  - rule: "rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is aborted by a signal of its caller."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/ingest-workspace/unrefreshable-session-ends-at-sign-in"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer is not 2xx and its body carries an error object with a string code."
+    answer: "that status with the code, the details and, when it is a string, the message of the error object, otherwise a message for the status"
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is not 2xx, is below status 500 and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+- operation: ingest-raw-information
+  accepted: "POST /api/v1/ingest/raw-information with the JSON body of source_type, content, model, prompt_version and an optional metadata sent as given and checked by nothing in the client, whose answer is read as outcome, raw_information_id, content_hash, chunk_count, chunks, llm_run_id, idempotency_key and an optional list of affected nodes, each with id, node_type and canonical_name"
+- operation: run-extraction
+  accepted: "POST /api/v1/ingest/llm-runs/{llm_run_id}/run with the JSON body {}, whose answer is read as an LLM run"
+- operation: retry-llm-run
+  accepted: "POST /api/v1/ingest/llm-runs/{llm_run_id}/retry with the JSON body { reason } when a reason is given and {} otherwise, with no bound on the reason, whose answer is read as an LLM run and starts no extraction"
+- operation: read-llm-run
+  accepted: "GET /api/v1/ingest/llm-runs/{llm_run_id}, whose answer is read as an LLM run with its identity, model, prompt version, status, started_at, finished_at, attempts, raw information identity, idempotency key, run summary of nine counts and an optional list of affected nodes, the status passed on as received"
+  refusals:
+  - when: The started_at or a non-null finished_at of the answer cannot be parsed as a date.
+    answer: 'a failure with no code reading "Invalid ISO date string: <value>"'
+---
+
+## Description
+
+The requests the ingest screen makes to the back end and how it reads the answers.
+The upstream publishes what each answer carries, and this contract states only how the screen sends and reads it.
+
+=== contracts/ingest-workspace/bff-ingestion.log
+---
+entries:
+- field: answers
+  unstated: The material does not say how much of the back end's answers the screen's own contract restates, since the ingestion contract already publishes them.
+  decided: The consumed contract states only how the screen sends each request and reads each answer, and the failures the client itself reports, never the fields the upstream publishes.
+  why: A field stated in both contracts is held twice with nothing to keep the two in agreement.
+---
+
+=== contracts/ingest-workspace/bff-traversal
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/retrieval
+operations:
+- traverse-node
+answers:
+- operation: traverse-node
+  accepted: "GET /api/v1/nodes/{id}/traverse?depth=1&direction=both read through the { ok, result } envelope, whose result is read as starting_node_id, nodes each with id, node_type, canonical_name and status, and links each with id, source_node_id, target_node_id, link_type, link_type_label, is_temporal, is_in_effect, status and flags"
+  refusals:
+  - rule: "rules/ingest-workspace/failed-traversal-leaves-the-graph-as-it-was"
+    answer: "the graph is left as it was and the assembly reports an error"
+---
+
+## Description
+
+The traversal request the ingest screen makes for each affected node to assemble the graph of an ingestion.
+
+=== contracts/ingest-workspace/ingest-screen
+---
+type: api
+direction: published
+operations:
+- choose-source-type
+- load-file
+- submit-ingest
+- show-progress
+- show-outcome
+- show-known-content
+- show-failure
+answers:
+- operation: choose-source-type
+  accepted: "the owner chooses among PDF, E-mail, Ata, Chat, Artigo, Transcrição and Outro, which stand for the source types pdf, email, ata, chat, artigo, transcricao and outro"
+- operation: load-file
+  accepted: "the whole text of the file replaces the content and the rejection message is cleared"
+  refusals:
+  - rule: "rules/ingest-workspace/only-text-files-are-accepted"
+    answer: "an inline alert reading \"Formato não suportado: envie um arquivo .txt (ou cole o texto abaixo).\" and no content loaded"
+- operation: submit-ingest
+  accepted: the screen moves to sending and the document is recorded as a source
+  refusals:
+  - rule: "rules/ingest-workspace/ingest-requires-content"
+    answer: "a validation message reading \"Cole ou arraste o conteúdo do documento antes de ingerir.\" and nothing sent"
+  - rule: "rules/ingest-workspace/ingest-requires-source-type"
+    answer: "a validation message reading \"Selecione o tipo de fonte antes de ingerir.\" and nothing sent"
+- operation: show-progress
+  accepted: "sending shows \"Enviando documento…\", extracting shows \"Extraindo conhecimento… (pode levar alguns minutos)\", polling shows \"Verificando extração…\" and revealing shows \"Compondo o grafo…\""
+- operation: show-outcome
+  accepted: "after a new source is extracted and while revealing or complete, the notice \"Extração concluída\" with the counts labelled Aceitos, Consolidados, Aguardando revisão, Incertos, Em conflito, Rejeitados and Erros, and \"Alguns nós aguardam revisão. Acesse Curadoria para detalhes.\" when the needs-review count is above zero, with the action to ingest another document; the already-ingested path shows no outcome and so no such action"
+- operation: show-known-content
+  accepted: "\"Documento já ingerido\" and \"Este conteúdo já foi processado anteriormente. O grafo abaixo mostra os nós extraídos.\", with the actions to view the existing graph and to ingest another document"
+- operation: show-failure
+  accepted: "\"Erro na ingestão\" with the failure's message, or \"Algo deu errado. Tente novamente.\" when it has none, always with the action to ingest another document and with \"Tentar novamente\" only for a retryable code"
+  refusals:
+  - rule: "rules/ingest-workspace/polled-failed-run-ends-in-run-failed"
+    answer: "the failure RUN_FAILED reading \"A extração falhou. Reabra a execução para tentar novamente.\", which can be retried"
+  - rule: "rules/ingest-workspace/failure-outside-an-envelope-shows-the-unknown-code"
+    answer: "the failure SYSTEM_UNKNOWN reading the failure's own message, or \"Erro desconhecido.\" when it has none, which cannot be retried"
+---
+
+## Description
+
+What the owner reads and can do on the ingest screen.
+The graph of the ingestion, or the detail of one node, fills the other half of the screen.
+
+=== contracts/ingest-workspace/ingest-screen.log
+---
+entries:
+- field: answers
+  unstated: The material does not say which boundary holds the notices and messages of the ingest screen.
+  decided: The ingest screen is a published api whose caller is the owner, and every notice or message that tells the owner what happened or was refused is an answer of it.
+  why: A notice changes what the owner learns, while a control label, a heading or a placeholder keeps the control doing what it did.
+---
+
 === contracts/knowledge-base/access
 ---
 type: api
@@ -2229,6 +2362,112 @@ entries:
   decided: value-object
   why: 'A turn is never stored or read as itself: what persists of it is its messages and tool calls.'
 ---
+
+=== domain/ingest-workspace/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The ingest workspace holds the screen where the owner hands a document to the knowledge base and follows its ingestion to the graph it produced.
+
+## Responsibility
+
+It guides the owner from a typed or dropped document to a recorded source, an extraction and a graph, and tells the owner what went wrong when a step fails.
+
+=== domain/ingest-workspace/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether the ingest screen is where the business differs or a solved problem.
+  decided: supporting
+  why: The screen only carries a document to the knowledge base the business differs on, so it serves the core without being it.
+---
+
+=== domain/ingest-workspace/ingest-failure
+---
+type: value-object
+attributes:
+- name: code
+  type: string
+  required: true
+- name: message
+  type: string
+  required: true
+---
+
+## Description
+
+The code and the message the owner is shown when a step of the ingestion fails.
+
+## Responsibility
+
+It lets the owner tell a failure worth retrying from one that is not.
+
+=== domain/ingest-workspace/ingest-phase
+---
+type: enumeration
+values:
+- idle
+- ready
+- sending
+- noop
+- extracting
+- polling
+- revealing
+- complete
+- error
+---
+
+## Description
+
+The steps the screen shows an ingestion in.
+
+## Responsibility
+
+It names the one step the owner is told about at any moment.
+
+=== domain/ingest-workspace/ingest-session
+---
+type: aggregate-root
+attributes:
+- name: content
+  type: string
+  required: true
+- name: source_type
+  type: domain/knowledge-base/source-type
+- name: phase
+  type: ingest-phase
+  required: true
+- name: llm_run_id
+  type: string
+- name: affected_node_ids
+  type: string
+  many: true
+- name: summary
+  type: domain/knowledge-base/run-summary
+- name: failure
+  type: ingest-failure
+- name: validation_message
+  type: string
+operations:
+- submit-ingest
+- record-source
+- run-extraction
+- poll-run
+- retry-run
+- assemble-graph
+- reset-session
+---
+
+## Description
+
+One ingestion the owner follows on the screen, from the document typed or dropped to the graph it produced.
+
+## Responsibility
+
+It keeps what the owner submitted, the phase the ingestion is in, the run it opened and the failure shown, so the screen shows one consistent state.
 
 === domain/knowledge-base/_context
 ---
@@ -6414,6 +6653,696 @@ type: invariant
 statement: The model that distills a conversation's title or refolds its rolling summary is claude-haiku-4-5 where none is configured.
 constrains:
 - domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/another-document-clears-the-session
+---
+type: invariant
+statement: "Ingesting another document MUST clear the content, the source type, the selected node, the run identity, the affected nodes, the summary, the failure and the validation message and return the screen to idle."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembled-link-carries-only-what-the-bff-states
+---
+type: invariant
+statement: "An assembled link MUST be temporal only when the BFF says it is, carry in-effect only when the BFF gives it and carry a state only when the BFF gives its status."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembled-link-is-kept-once-by-identity
+---
+type: invariant
+statement: "A link reached by several traversals MUST enter the graph once by its identity, the later copy replacing the earlier."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembled-neighbour-state-comes-from-its-status
+---
+type: invariant
+statement: "The state of an assembled neighbour MUST be derived from its node status when it has one, and an affected node MUST carry none."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembled-node-is-labelled-by-its-canonical-name
+---
+type: invariant
+statement: "An assembled node MUST be labelled with its canonical name and carry its node type."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembled-node-keeps-the-entry-it-got-first
+---
+type: invariant
+statement: "A node reached by several traversals MUST keep the entry it got first, and a traversal entry MUST NOT replace an affected node."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembly-of-no-nodes-is-an-empty-ready-graph
+---
+type: invariant
+statement: "Graph assembly with no affected nodes MUST replace the graph with an empty one that is ready."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembly-replaces-the-graph-only-when-every-traversal-succeeds
+---
+type: invariant
+statement: "Graph assembly MUST replace the graph, not add to it, only once every traversal has succeeded, and then move the graph to revealing."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/assembly-traverses-each-affected-node
+---
+type: invariant
+statement: "Graph assembly MUST request, in parallel and only while enabled, one traversal of depth one in both directions for each affected node."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+---
+type: invariant
+statement: "An extraction failure MUST count as a connection drop when it is a failure envelope whose status is neither 409 nor 422 and whose code is not SYSTEM_LLM_PROVIDER_UNAVAILABLE, AUTH_SESSION_EXPIRED or SYSTEM_ABORTED."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope.log
+---
+entries:
+- field: statement
+  unstated: The material lists the codes that end in the error phase and says any other failure envelope that is not a conflict is silently polled, which includes codes the same screen lists as retryable.
+  decided: A failure envelope counts as a connection drop unless its status is 409 or 422 or its code is one of the three named, whatever else it carries.
+  why: The code treats the three named codes and the two statuses as the only exceptions, so the exceptions are what the rule names.
+---
+
+=== rules/ingest-workspace/connection-drop-polls-the-run
+---
+type: invariant
+statement: "An extraction failure that counts as a connection drop MUST start polling the run instead of showing a failure."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/content-is-checked-before-source-type
+---
+type: invariant
+statement: "An ingest submitted with neither content nor a source type MUST be refused for its missing content."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/disabled-file-area-ignores-input
+---
+type: invariant
+statement: "A disabled file area MUST ignore a click, a keypress and a drop."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/editing-changes-the-phase-only-in-idle-and-ready
+---
+type: invariant
+statement: "Editing the ingest form MUST change the phase only while the phase is idle or ready."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/existing-graph-is-assembled-on-request
+---
+type: invariant
+statement: "In the noop phase the owner's request to view the existing graph MUST assemble the graph over the kept affected nodes and move the screen to revealing."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/extraction-answer-moves-to-revealing
+---
+type: invariant
+statement: "An extraction answer MUST keep the run summary and any affected nodes and move the screen to revealing."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/extraction-has-no-client-cutoff
+---
+type: invariant
+statement: "Running extraction MUST wait for as long as the BFF keeps the connection open."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/failed-traversal-leaves-the-graph-as-it-was
+---
+type: invariant
+statement: "A failed traversal MUST leave the graph as it was and be reported as an error."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/failure-envelope-shows-its-own-code-and-message
+---
+type: invariant
+statement: "A failure envelope MUST be shown with its own code and message."
+constrains:
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/failure-outside-an-envelope-is-no-connection-drop
+---
+type: invariant
+statement: "A failure that is not a failure envelope MUST NOT count as a connection drop."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/failure-outside-an-envelope-shows-the-unknown-code
+---
+type: invariant
+statement: "A failure that is not a failure envelope MUST be shown with the code SYSTEM_UNKNOWN."
+constrains:
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/fields-are-editable-outside-a-run
+---
+type: invariant
+statement: "The content and source type fields MUST be editable only in the idle, ready and error phases."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/file-area-shows-only-in-idle-and-ready
+---
+type: invariant
+statement: "The file area MUST show only in the idle and ready phases."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/file-read-replaces-the-content
+---
+type: invariant
+statement: "A file read successfully MUST replace the whole content and clear the rejection message."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/first-unauthorized-answer-refreshes-the-token-once
+---
+type: invariant
+statement: "The first unauthorized answer to an ingestion request MUST obtain a new access token from the identity provider, store it and resend the request once with it."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/form-is-ready-with-content-and-source-type
+---
+type: invariant
+statement: "The ingest form MUST be ready exactly when its content holds at least one character and a source type is selected."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/ingest-requires-content
+---
+type: invariant
+statement: "An ingest MUST NOT be submitted while its content is empty."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/ingest-requires-source-type
+---
+type: invariant
+statement: "An ingest MUST NOT be submitted while no source type is selected."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/ingestion-request-carries-the-access-token
+---
+type: invariant
+statement: "An ingestion request MUST carry the owner's access token as a bearer when the application holds one and no Authorization header otherwise."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+---
+type: invariant
+statement: "An ingestion request other than running extraction MUST fail after thirty seconds without an answer."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/known-content-waits-for-the-owner
+---
+type: invariant
+statement: "A source recorded as already ingested MUST move the screen to the noop phase without starting an extraction."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/new-source-starts-extraction-at-once
+---
+type: invariant
+statement: "A newly created source MUST start its extraction at once."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/noop-keeps-the-affected-nodes
+---
+type: invariant
+statement: "The noop phase MUST keep the affected nodes of the recording answer, or none when the answer has none."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/only-extraction-failures-count-as-connection-drops
+---
+type: invariant
+statement: "A failure of recording the source or of retrying the run MUST end in the error phase."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/only-text-files-are-accepted
+---
+type: invariant
+statement: "A file MUST be accepted only when its type is text/plain or another text type or its name ends in .txt in any letter case."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/only-the-first-file-is-used
+---
+type: invariant
+statement: "Of several files dropped or picked together, only the first MUST be used."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/outcome-shows-the-seven-counts-in-order
+---
+type: invariant
+statement: "The outcome MUST show the accepted, consolidated, needs-review, uncertain, disputed, rejected and error counts of the run summary, in that order, and no others."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/polled-completed-run-moves-to-revealing
+---
+type: invariant
+statement: "A polled run that completed MUST stop the polling, keep its summary and any affected nodes and move the screen to revealing."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/polled-failed-run-ends-in-run-failed
+---
+type: invariant
+statement: "A polled run that failed MUST stop the polling and move the screen to the error phase with the code RUN_FAILED."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/polled-running-run-keeps-the-screen-waiting
+---
+type: invariant
+statement: "A polled run that has neither completed nor failed MUST keep the screen in the polling phase."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/recorded-source-keeps-the-run-identity
+---
+type: invariant
+statement: "A recorded source MUST keep the identity of its run whatever the outcome."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/rejection-stays-until-a-file-is-read
+---
+type: invariant
+statement: "A file rejection message MUST stay until a file is read successfully."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/resent-request-never-refreshes-again
+---
+type: invariant
+statement: "A resent ingestion request MUST NOT start a second token refresh."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+---
+type: invariant
+statement: "A failure MUST offer a retry only when its code is SYSTEM_LLM_PROVIDER_UNAVAILABLE, SYSTEM_INTERNAL_ERROR, SYSTEM_UPSTREAM, SYSTEM_TIMEOUT, SYSTEM_NETWORK or RUN_FAILED."
+constrains:
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/retry-with-a-run-retries-then-extracts
+---
+type: invariant
+statement: "A retry with a run identity held MUST clear the failure, retry the run and, when the retry is answered, start extraction on the same run again."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/retry-without-a-run-submits-again
+---
+type: invariant
+statement: "A retry with no run identity held MUST submit the form again."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/revealing-completes-when-the-graph-is-ready
+---
+type: invariant
+statement: "The revealing phase MUST become complete only when the graph reports ready."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/review-count-points-to-curation
+---
+type: invariant
+statement: "The outcome MUST point the owner to the curation screen when the needs-review count is above zero."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/run-is-polled-every-five-seconds
+---
+type: invariant
+statement: "A run MUST be read every five seconds until the last run read has completed or failed."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/run-is-read-only-with-an-identity-and-the-gate
+---
+type: invariant
+statement: "A run MUST be read only when its identity is not empty and its reading is enabled."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/selected-node-detail-replaces-the-graph
+---
+type: invariant
+statement: "The detail of a selected node MUST replace the graph until it is closed, without changing the phase."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/submission-clears-earlier-messages
+---
+type: invariant
+statement: "A submission that passes both checks MUST clear the validation message and the earlier failure before the phase moves to sending."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-failure
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/submit-control-shows-in-idle-ready-and-sending
+---
+type: invariant
+statement: "The submit control MUST show only in the idle, ready and sending phases and MUST be disabled while sending."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/submit-needs-the-ready-phase
+---
+type: invariant
+statement: "An ingest MUST be submitted only in the ready phase with a ready form."
+constrains:
+- domain/ingest-workspace/ingest-session
+- domain/ingest-workspace/ingest-phase
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/unrefreshable-session-ends-at-sign-in
+---
+type: invariant
+statement: "When no new access token can be obtained the application MUST clear the stored token and replace the address with /sign-in?reason=session_expired."
+constrains:
+- domain/ingest-workspace/ingest-session
 ---
 
 ## Description
@@ -12875,6 +13804,73 @@ constrains:
 ## Description
 
 None.
+
+=== scenarios/ingest-workspace/conflicting-extraction-shows-the-failure
+---
+subject: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+given:
+- "the extraction of a new source is running"
+- "the back end answers 409"
+when:
+- "the extraction call fails"
+then:
+- "the screen moves to the error phase"
+- "the failure shows the code and the message of the answer"
+---
+
+## Description
+
+A refusal for a conflict is a real answer, so it is shown.
+
+=== scenarios/ingest-workspace/expired-token-is-refreshed-once-and-resent
+---
+subject: rules/ingest-workspace/first-unauthorized-answer-refreshes-the-token-once
+given:
+- "the owner's access token expired"
+- "the identity provider can issue a new one"
+when:
+- "an ingestion request is answered 401"
+then:
+- "a new access token is stored"
+- "the same request is sent again once with the new token as its bearer"
+---
+
+## Description
+
+An expired token costs the owner nothing when the identity provider can issue a new one.
+
+=== scenarios/ingest-workspace/internal-error-during-extraction-polls-the-run
+---
+subject: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+given:
+- "the extraction of a new source is running"
+- "the back end answers 500 with the code SYSTEM_INTERNAL_ERROR"
+when:
+- "the extraction call fails"
+then:
+- "no failure is shown"
+- "the screen moves to polling and shows \"Verificando extração…\""
+---
+
+## Description
+
+An internal error of the back end is treated as a lost connection, so the screen watches the run instead of failing.
+
+=== scenarios/ingest-workspace/whitespace-only-content-is-ready
+---
+subject: rules/ingest-workspace/form-is-ready-with-content-and-source-type
+given:
+- "the content holds only spaces and a source type is selected"
+when:
+- "the form is read"
+then:
+- "the form is ready"
+- "the phase is ready"
+---
+
+## Description
+
+Content made only of spaces is content, so the form is ready.
 
 === scenarios/knowledge-base/email-without-blank-line-is-one-block
 ---
