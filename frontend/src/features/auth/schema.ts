@@ -1,9 +1,7 @@
 /**
  * Auth — Zod v4 schemas (sign-in.feature.spec.md §5).
  *
- * Field names (`login`, `senha`) match the visible UI labels (Login, Senha).
- * `login` is the Stack Auth credential email per D3 — the field is an email
- * input with `z.email()` validation. Custom error messages are user-facing
+ * Custom error messages are user-facing
  * pt-BR strings; the project ships single-locale (CLAUDE.md `i18n: false`).
  *
  * Zod v4 contract:

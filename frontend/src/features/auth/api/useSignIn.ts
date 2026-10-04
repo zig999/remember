@@ -11,24 +11,7 @@
  *      session cookie on success.
  *   2. `fetchAccessToken()` — GET /token; returns the JWT EdDSA bearer.
  *
- * Step 2 is sequential — never invoked if step 1 fails (the spec's BR
- * "credentials:'include' must already have set the session cookie before we
- * ask for a token"). This is also reflected in error classification: a step-1
- * failure surfaces as a credential error; a step-2 failure (rare — server
- * configuration issue) surfaces as `unknown`.
- *
- * Success ordering (BR-04):
- *   stepCount: setToken BEFORE navigate — the protected layout guard reads
- *   `isFresh()` synchronously on navigation; setting the token after
- *   `navigate()` would bounce the operator back to /sign-in.
- *
- * Error classification:
- *   AuthError("INVALID_EMAIL_OR_PASSWORD") → { type: "credential" }
- *   AuthError("NETWORK")                   → { type: "network" }
- *   AuthError("NO_SESSION" | "NO_TOKEN")   → { type: "session" }
- *   any other thrown value                 → { type: "unknown" }
- *
- *   The `SignInError` discriminant union (credential | network | session |
+ * The `SignInError` discriminant union (credential | network | session |
  *   unknown) lets `SignInForm` render the spec §6 user-visible message map.
  */
 import { useCallback, useState } from "react";
@@ -72,13 +55,7 @@ function readRedirectParam(): string | null {
 /**
  * FL-AUTH-03 safe-redirect validation.
  *
- * A value is "safe" only if it is a same-origin RELATIVE path:
- *   - starts with `/`
- *   - does NOT start with `//` (protocol-relative URLs are off-origin)
- *   - does NOT contain `://`     (any embedded scheme is off-origin)
- *   - does NOT contain `\`        (defensive — IE/Edge legacy parsers)
- *
- * Anything else falls back to `/chat`. We never `URL`-construct the candidate
+ * We never `URL`-construct the candidate
  * with an arbitrary base because that would silently normalize `//evil.com`
  * into `https://evil.com`.
  */
@@ -108,18 +85,11 @@ export function classifySignInError(reason: unknown): SignInError {
         return { type: "network" };
       case "NO_SESSION":
       case "NO_TOKEN":
-        // The credential check passed (or this is step 2) but we couldn't
-        // mint a JWT — surface as a "session" error per spec §6 so the
-        // operator retries. Distinct from `credential` because the
-        // remediation differs (it is NOT "fix your password") and distinct
-        // from `unknown` so the user sees the session-specific message.
         return { type: "session" };
       default:
         return { type: "unknown" };
     }
   }
-  // Native fetch failure that escaped neon-auth.ts (defensive) — also
-  // anything else we didn't anticipate.
   if (reason instanceof TypeError) return { type: "network" };
   if (typeof reason === "object" && reason !== null) {
     const msg = (reason as { message?: unknown }).message;
@@ -156,8 +126,6 @@ export function useSignIn(): UseSignInReturn {
         // by contract (the cookie MUST already exist).
         const jwt = await fetchAccessToken();
 
-        // BR-04 ordering: setToken before navigate so the protected layout
-        // guard sees a fresh token when it runs.
         useAuthStore.getState().setToken(jwt);
 
         const redirectParam = readRedirectParam();

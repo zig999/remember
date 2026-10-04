@@ -13,23 +13,6 @@
  *    its surface (UI kit + providers + page handlers) was an order of
  *    magnitude larger than what we need.
  *
- * Two-step contract (proven 2026-06-21 — see plan §0):
- *  1. POST {base}/sign-in/email  with credentials:'include'
- *      → 200: HttpOnly session cookie `__Secure-neon-auth.session_token` set
- *        (SameSite=None; Secure; Partitioned; Max-Age 7d). The response body
- *        token is an OPAQUE session token — NOT the JWT — and we discard it.
- *      → 401 INVALID_EMAIL_OR_PASSWORD: bad credentials.
- *      → 400 MISSING_ORIGIN: only in non-browser callers (curl); browsers send
- *        Origin automatically.
- *  2. GET  {base}/token          with credentials:'include'
- *      → 200 { token: "<JWT EdDSA, exp=iat+900s>" } — this is the access token
- *        the BFF validates via JWKS.
- *      → 401: session cookie absent or expired.
- *
- * Step 2 reads the cookie set by step 1. Both calls MUST use
- * `credentials: 'include'` — the cookie is third-party-ish (different origin
- * from the SPA) and would be dropped otherwise.
- *
  * Silent refresh (DC, see `lib/http.ts`):
  *  - The session cookie lives 7 days; the JWT only 15 minutes. When the BFF
  *    returns 401, `lib/http.ts` calls `fetchAccessToken()` once to mint a new
@@ -48,15 +31,6 @@ import { getEnv } from "@/lib/env";
  * Tagged auth-layer error. `code` is one of the strings below — pick by tag,
  * never by message (messages may be locale-specific and we don't parse them
  * for control flow).
- *
- * Known codes:
- *  - INVALID_EMAIL_OR_PASSWORD : Better Auth 401 from /sign-in/email.
- *  - NO_SESSION                : 401 from /token (cookie absent/expired).
- *  - NO_TOKEN                  : /token responded 200 but body lacked a
- *                                `token` field — treated as failure (we cannot
- *                                enter the protected layout without a JWT).
- *  - NETWORK                   : fetch rejected (offline, CORS, DNS, abort).
- *  - UNKNOWN                   : any non-2xx without a recognised code.
  */
 export class AuthError extends Error {
   override readonly name = "AuthError";
@@ -121,11 +95,6 @@ async function safeFetch(url: string, init: RequestInit): Promise<Response> {
  *
  * On success the browser silently stores the session cookie; we return `void`
  * because the body's token is opaque (not the JWT — see header).
- *
- * Throws `AuthError`:
- *  - "INVALID_EMAIL_OR_PASSWORD" on 401 with the matching `code`.
- *  - "NETWORK" on fetch-level failures (see safeFetch).
- *  - "UNKNOWN" on any other non-2xx.
  */
 export async function signInWithEmail(email: string, password: string): Promise<void> {
   const url = `${base()}/sign-in/email`;
@@ -159,12 +128,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
 /**
  * Step 2 — JWT minting from the active session cookie.
  *
- * Returns the JWT string. Throws `AuthError`:
- *  - "NO_SESSION" on 401 (cookie absent or expired).
- *  - "NO_TOKEN" on 200 with a missing/empty `token` field — we treat this as
- *    a failure because the protected layout guard requires a JWT.
- *  - "NETWORK" on fetch-level failures.
- *  - "UNKNOWN" on any other non-2xx.
+ * Returns the JWT string.
  */
 export async function fetchAccessToken(): Promise<string> {
   const url = `${base()}/token`;
