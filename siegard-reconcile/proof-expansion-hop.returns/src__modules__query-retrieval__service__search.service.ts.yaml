@@ -1,0 +1,15 @@
+read:
+  - node: rules/knowledge-base/expansion-hop
+    held_at: |-
+      collectExpandedLinks, the loop over traversal.links, where each reached link is recorded with the hop that traverseNodes assigned it. buildExpandedLinkItems then copies that hop into the item's hop field through toExpandedLinkItem.
+    evidence: |-
+      for (const link of traversal.links) {
+        keepBestPath(reached, {
+          link,
+          hop: link.hop,
+          score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,
+        });
+      }
+      and in toExpandedLinkItem: `const { link, hop, score } = candidate;` ... `score, hop,`. The count itself is made in traverseNodes, in backend/src/modules/knowledge-graph/service/traversal.service.ts: `for (let hop = 1; hop <= input.depth; hop += 1) {` ... `const score = Math.pow(TRAVERSAL_DECAY, hop);`. That count starts at 1 for links next to the matched node and adds one per link along the path. This file keeps that value and invents no other count. Matched nodes themselves are items with `hop: 0`, which is not a link hop.
+looked_past: |-
+  The file also states the 200-per-layer cap, the 0.4 low-confidence flag threshold, the score, recording time and id ordering, the decay score of expanded links, and the keep-best-path choice. These are facts of other nodes (for example rules/knowledge-base/search-layer-candidate-cap, search-ranking, item-flags, expansion-decay), not of the one node bound to this file, and I did not judge them here.
