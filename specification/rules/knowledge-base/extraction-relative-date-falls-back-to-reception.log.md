@@ -12,4 +12,8 @@ entries:
   unstated: Which basis the v4 prompt asks for on the reception fallback
   decided: None is stated by the node; the earlier wording naming received is withdrawn
   why: Naming received here would contradict the rule that no proposal states it.
+- field: statement
+  unstated: The material creates prompt version v5 without saying whether it keeps the v4 fallback of relative dates to the reception time.
+  decided: Under prompt version v4 and later.
+  why: v5 is v4 plus the alias and document-context instructions; dropping the v4 fallback would make the new default regress on dates.
 ---

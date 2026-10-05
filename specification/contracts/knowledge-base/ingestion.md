@@ -43,7 +43,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: read-llm-run
-  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
+  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, its document context status and document context when it holds them, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
   refusals:
   - &id003
     when: The named LLM run is not a well-formed identifier.
@@ -61,7 +61,7 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - *id002
 - operation: run-extraction
-  accepted: 'HTTP 200 carrying the completed run: the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
+  accepted: 'HTTP 200 carrying the completed run: the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, its document context status and document context when it holds them, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
   refusals:
   - *id001
   - when: The request carries a body with any field.
@@ -73,7 +73,7 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run, HTTP 500 over REST
   - rule: rules/knowledge-base/prompt-version-known
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run, HTTP 500 over REST
-  - when: The language model provider fails.
+  - when: The language model provider fails while a chunk is read.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run, HTTP 502 over REST
 - operation: retry-llm-run
   accepted: HTTP 200 carrying the run, running again, with its summary
@@ -108,7 +108,7 @@ answers:
     when: A proposal fails for a cause no other refusal names, other than an unreachable store.
     answer: 'error code SYSTEM_INTERNAL_ERROR carrying no details, HTTP 500 over REST with the message "Internal server error.", and over MCP the message "Internal error in MCP handler."'
 - operation: propose-node
-  accepted: '`{ ok: true, result }` carrying the node''s identity and its resolution matched_existing, created_new or needs_review'
+  accepted: '`{ ok: true, result }` carrying the node''s identity, its resolution matched_existing, created_new or needs_review, and each proposed alias that was not admitted, with the reason ALIAS_NOT_IN_SOURCE'
   refusals:
   - *id003
   - *id004
@@ -202,7 +202,7 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - rule: rules/knowledge-base/prompt-version-known
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
-  - when: The language model provider fails.
+  - when: The language model provider fails while a chunk is read.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run
   - when: Persisting the document before extraction fails for a cause other than an unreachable store.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the document before extraction.", carrying no run

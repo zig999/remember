@@ -22,6 +22,10 @@ attributes:
 - name: idempotency_key
   type: string
   required: true
+- name: document_context
+  type: document-context
+- name: document_context_status
+  type: document-context-status
 - name: summary
   type: run-summary
 relationships:

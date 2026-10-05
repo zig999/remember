@@ -19,6 +19,10 @@ attributes:
 - name: flags
   type: assertion-flag
   many: true
+- name: match
+  type: node-match
+- name: similarity
+  type: decimal
 relationships:
 - target: information-fragment
   type: association

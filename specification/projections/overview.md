@@ -12,7 +12,7 @@ Derived by spec.py from the specification files; never edited.
 | curation-workspace | supporting | 10 | 218 | 3 | 9 |
 | graph-explorer | supporting | 10 | 170 | 3 | 4 |
 | ingest-workspace | supporting | 3 | 58 | 3 | 4 |
-| knowledge-base | core | 75 | 403 | 5 | 10 |
+| knowledge-base | core | 79 | 414 | 5 | 24 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
@@ -38,7 +38,7 @@ Derived by spec.py from the specification files; never edited.
 - knowledge-base/knowledge-link — 0 entity(ies) inside, 8 attribute(s) on the root
 - knowledge-base/knowledge-node — 1 entity(ies) inside, 2 attribute(s) on the root
 - knowledge-base/link-type — 1 entity(ies) inside, 9 attribute(s) on the root
-- knowledge-base/llm-run — 1 entity(ies) inside, 8 attribute(s) on the root
+- knowledge-base/llm-run — 1 entity(ies) inside, 10 attribute(s) on the root
 - knowledge-base/node-attribute — 0 entity(ies) inside, 9 attribute(s) on the root
 - knowledge-base/node-type — 0 entity(ies) inside, 3 attribute(s) on the root
 - knowledge-base/raw-information — 1 entity(ies) inside, 11 attribute(s) on the root
@@ -90,4 +90,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-278 decision(s) disclosed, 2 location(s) retired in the decision logs.
+287 decision(s) disclosed, 2 location(s) retired in the decision logs.

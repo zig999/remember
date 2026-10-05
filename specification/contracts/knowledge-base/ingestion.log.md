@@ -68,4 +68,12 @@ entries:
   unstated: The material did not state the message and the detail names of the propose-attribute refusal for a value outside the allowed values.
   decided: The message attribute value not in closed domain, with details value and allowed_values.
   why: The structural layer raises that message and those details, and the contract already states messages verbatim for other refusals.
+- field: answers
+  unstated: The material has propose_node list each alias it did not record and why, without naming the reason, and keeps the document context for audit without saying which answers show it.
+  decided: A refused alias is answered with the reason ALIAS_NOT_IN_SOURCE; read-llm-run and run-extraction show the run's document context status and document context when it holds them.
+  why: A below-floor link is already answered with a reason code, and the run reads are where an auditor looks at what the model was given.
+- field: answers
+  unstated: The material lets an extraction go on when its preliminary reading fails, while run-extraction and ingest-document answered a failed run whenever the language model provider failed; a provider error during the preliminary reading was decided both ways.
+  decided: The provider-failure refusal of run-extraction and ingest-document applies only when the provider fails while a chunk is read.
+  why: The material states that a failed preliminary reading never fails the extraction, so that failure cannot also answer a failed run.
 ---

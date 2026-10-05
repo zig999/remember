@@ -119,13 +119,22 @@ None.
 
 === constraints/document-content-is-data
 ---
-statement: An extraction presents a document's content to the language model marked apart from its instructions as data, never as instruction.
+statement: An extraction presents a document's content, and the document context read from it, to the language model marked apart from its instructions as data, never as instruction.
 scope: knowledge-base
 ---
 
 ## Description
 
 None.
+
+=== constraints/document-content-is-data.log
+---
+entries:
+- field: statement
+  unstated: The material shows a document context to the model with every chunk without saying how it is presented.
+  decided: The document context is presented to the model marked apart from its instructions as data, like the content it was read from.
+  why: The context is a model reading of the document, so an instruction planted in the document can reach it.
+---
 
 === constraints/every-operation-requires-owner-authentication
 ---
@@ -1845,7 +1854,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: read-llm-run
-  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
+  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, its document context status and document context when it holds them, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
   refusals:
   - &id003
     when: The named LLM run is not a well-formed identifier.
@@ -1863,7 +1872,7 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - *id002
 - operation: run-extraction
-  accepted: 'HTTP 200 carrying the completed run: the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
+  accepted: 'HTTP 200 carrying the completed run: the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, its document context status and document context when it holds them, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
   refusals:
   - *id001
   - when: The request carries a body with any field.
@@ -1875,7 +1884,7 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run, HTTP 500 over REST
   - rule: rules/knowledge-base/prompt-version-known
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run, HTTP 500 over REST
-  - when: The language model provider fails.
+  - when: The language model provider fails while a chunk is read.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run, HTTP 502 over REST
 - operation: retry-llm-run
   accepted: HTTP 200 carrying the run, running again, with its summary
@@ -1910,7 +1919,7 @@ answers:
     when: A proposal fails for a cause no other refusal names, other than an unreachable store.
     answer: 'error code SYSTEM_INTERNAL_ERROR carrying no details, HTTP 500 over REST with the message "Internal server error.", and over MCP the message "Internal error in MCP handler."'
 - operation: propose-node
-  accepted: '`{ ok: true, result }` carrying the node''s identity and its resolution matched_existing, created_new or needs_review'
+  accepted: '`{ ok: true, result }` carrying the node''s identity, its resolution matched_existing, created_new or needs_review, and each proposed alias that was not admitted, with the reason ALIAS_NOT_IN_SOURCE'
   refusals:
   - *id003
   - *id004
@@ -2004,7 +2013,7 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - rule: rules/knowledge-base/prompt-version-known
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
-  - when: The language model provider fails.
+  - when: The language model provider fails while a chunk is read.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run
   - when: Persisting the document before extraction fails for a cause other than an unreachable store.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the document before extraction.", carrying no run
@@ -2118,6 +2127,14 @@ entries:
   unstated: The material did not state the message and the detail names of the propose-attribute refusal for a value outside the allowed values.
   decided: The message attribute value not in closed domain, with details value and allowed_values.
   why: The structural layer raises that message and those details, and the contract already states messages verbatim for other refusals.
+- field: answers
+  unstated: The material has propose_node list each alias it did not record and why, without naming the reason, and keeps the document context for audit without saying which answers show it.
+  decided: A refused alias is answered with the reason ALIAS_NOT_IN_SOURCE; read-llm-run and run-extraction show the run's document context status and document context when it holds them.
+  why: A below-floor link is already answered with a reason code, and the run reads are where an auditor looks at what the model was given.
+- field: answers
+  unstated: The material lets an extraction go on when its preliminary reading fails, while run-extraction and ingest-document answered a failed run whenever the language model provider failed; a provider error during the preliminary reading was decided both ways.
+  decided: The provider-failure refusal of run-extraction and ingest-document applies only when the provider fails while a chunk is read.
+  why: The material states that a failed preliminary reading never fails the extraction, so that failure cannot also answer a failed run.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -2143,7 +2160,7 @@ operations:
 - traverse
 answers:
 - operation: search
-  accepted: '`{ ok: true, result }` carrying the page of ranked search items, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
+  accepted: '`{ ok: true, result }` carrying the page of ranked search items, each knowledge node matched directly showing whether it matched exactly or approximately and the similarity of an approximate match, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
   refusals:
   - &id001
     when: The request carries no valid owner authentication.
@@ -4862,6 +4879,88 @@ The ground on which disputed assertions compete.
 
 It is what one dispute is about, so the assertions that compete are listed and resolved together.
 
+=== domain/knowledge-base/document-context
+---
+type: value-object
+attributes:
+- name: summary
+  type: string
+  required: true
+- name: entities
+  type: document-entity
+  many: true
+- name: model
+  type: string
+  required: true
+---
+
+## Description
+
+What a preliminary reading of a whole document yields before an extraction reads its chunks: a short summary and the entities the document speaks of, with the model that read it.
+It is a reading aid shown to the model and never a source of knowledge.
+
+## Responsibility
+
+It lets each chunk be read knowing what the rest of the document says, and keeps on record what the model was shown.
+
+=== domain/knowledge-base/document-context-status
+---
+type: enumeration
+values:
+- produced
+- single-chunk
+- too-long
+- failed
+---
+
+## Description
+
+Whether an extraction produced a document context before reading its chunks, and why not when it did not.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/document-context.log
+---
+entries:
+- field: attributes.model
+  unstated: The material gives the preliminary reading its own configured model without saying whether the run records which model produced its context.
+  decided: The document context records the model that produced it.
+  why: The context is kept for audit, and the extraction model recorded on the run is not the one that read the document first.
+---
+
+=== domain/knowledge-base/document-entity
+---
+type: value-object
+attributes:
+- name: names
+  type: string
+  required: true
+  many: true
+relationships:
+- target: node-type
+  type: reference
+  cardinality: '1'
+---
+
+## Description
+
+One entity a document context lists: its node type and the names the document uses for it.
+
+## Responsibility
+
+It tells the model, while it reads any one chunk, which names elsewhere in the document denote the same entity.
+
+=== domain/knowledge-base/document-entity.log
+---
+entries:
+- field: attributes.names.required
+  unstated: The material lists each entity with the names the document uses for it without saying whether an entity may carry none.
+  decided: 'true'
+  why: An entity listed with no name gives the model nothing to recognise in a chunk.
+---
+
 === domain/knowledge-base/effective-status
 ---
 type: enumeration
@@ -5356,6 +5455,10 @@ attributes:
 - name: idempotency_key
   type: string
   required: true
+- name: document_context
+  type: document-context
+- name: document_context_status
+  type: document-context-status
 - name: summary
   type: run-summary
 relationships:
@@ -5524,6 +5627,22 @@ What a listing of knowledge nodes is narrowed to: a node type, the start of a na
 
 None.
 
+=== domain/knowledge-base/node-match
+---
+type: enumeration
+values:
+- exact
+- approximate
+---
+
+## Description
+
+How the node layer matched a knowledge node: through the lexical parse of the query text, or by the trigram similarity of one of its aliases to it.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/node-merge
 ---
 type: value-object
@@ -5654,6 +5773,7 @@ values:
 - v2
 - v3
 - v4
+- v5
 ---
 
 ## Description
@@ -5994,6 +6114,10 @@ attributes:
 - name: flags
   type: assertion-flag
   many: true
+- name: match
+  type: node-match
+- name: similarity
+  type: decimal
 relationships:
 - target: information-fragment
   type: association
@@ -17049,6 +17173,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/alias-admitted-only-from-source
+---
+type: invariant
+statement: A node proposal's alias is admitted only when its normalized form occurs in the normalized content of the raw information of the proposal's LLM run, except within a directed ingestion.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/alias-matching
 ---
 type: invariant
@@ -17227,6 +17364,27 @@ entries:
   unstated: How many candidates a review pairs with the new node
   decided: The ten most similar nodes at or above the floor
   why: The resolver fetches ten candidates by similarity before filtering by the floor, so no more are ever paired.
+---
+
+=== rules/knowledge-base/approximate-match-strength
+---
+type: invariant
+statement: An approximate node-layer match's strength is the highest word similarity of the knowledge node's aliases to the query text.
+constrains:
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/approximate-match-strength.log
+---
+entries:
+- field: statement
+  unstated: The material does not say what score a knowledge node matched only approximately takes.
+  decided: Its strength is the highest word similarity of its aliases to the query text, weighted by the node layer weight.
+  why: The similarity is the measure the match was decided by, and the ranking already places approximate results after the others whatever their score.
 ---
 
 === rules/knowledge-base/assertion-review-check-order
@@ -18665,7 +18823,7 @@ entries:
 === rules/knowledge-base/default-prompt-version
 ---
 type: invariant
-statement: A document ingestion that names no prompt version runs under v4.
+statement: A document ingestion that names no prompt version runs under v5.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/prompt-version
@@ -19161,6 +19319,56 @@ entries:
   why: A dispute on such a link type arises precisely between links to different targets, so requiring one target leaves every such dispute unresolvable.
 ---
 
+=== rules/knowledge-base/document-context-model
+---
+type: invariant
+statement: A document context is produced under the configured context model, or under claude-haiku-4-5 where none is configured.
+constrains:
+- domain/knowledge-base/document-context
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/document-context-read-first
+---
+type: invariant
+statement: Under prompt version v5 and later, an extraction whose raw information holds more than one chunk and at most 100000 characters reads that whole content once, before its first chunk, to produce the run's document context when the run holds none.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/document-context
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/document-context-status-recorded
+---
+type: invariant
+statement: Under prompt version v5 and later, an extraction records its run's document context status as single-chunk when the raw information holds one chunk, too-long when its content exceeds 100000 characters, failed when the preliminary reading fails and produced when it yields a document context.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/document-context-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/document-context-summary-lines
+---
+type: invariant
+statement: A document context's summary holds at most 5 lines.
+constrains:
+- domain/knowledge-base/document-context
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/document-ingestion-extracts-new-content
 ---
 type: policy
@@ -19637,6 +19845,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-asks-for-other-names
+---
+type: invariant
+statement: Under prompt version v5 and later, an extraction asks the model to propose with each node every other name the text gives the same entity, such as an acronym, a short name or another spelling, and never a pronoun or a role alone.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/extraction-chunk-turn-limit
 ---
 type: invariant
@@ -19798,7 +20019,7 @@ None.
 === rules/knowledge-base/extraction-prompt-names-relative-date-words
 ---
 type: invariant
-statement: Under prompt version v4, an extraction's system prompt names "hoje", "ontem" and "amanhã" as relative-date words.
+statement: Under prompt version v4 and later, an extraction's system prompt names "hoje", "ontem" and "amanhã" as relative-date words.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/prompt-version
@@ -19815,6 +20036,10 @@ entries:
   unstated: No node said which relative-date words the v4 extraction system prompt names.
   decided: hoje, ontem and amanhã.
   why: The v4 system prompt carries those three words and its test fails when one goes missing.
+- field: statement
+  unstated: The material creates prompt version v5 without saying whether it keeps what v4 asks of the model about relative dates.
+  decided: Under prompt version v4 and later.
+  why: v5 is v4 plus the alias and document-context instructions; dropping v4 relative-date handling would make the new default regress on dates.
 ---
 
 === rules/knowledge-base/extraction-prompt-values-ascending
@@ -19846,7 +20071,7 @@ None.
 === rules/knowledge-base/extraction-reads-chunks-in-order
 ---
 type: invariant
-statement: An extraction reads its raw information's chunks one at a time in index order, showing the model each one with the source's type, document date, title and reception time and the last 200 characters of the chunk before it.
+statement: An extraction reads its raw information's chunks one at a time in index order, showing the model each one with the source's type, document date, title and reception time, the last 200 characters of the chunk before it and the run's document context when it holds one.
 constrains:
 - domain/knowledge-base/llm-run
 ---
@@ -19858,7 +20083,7 @@ None.
 === rules/knowledge-base/extraction-relative-date-falls-back-to-reception
 ---
 type: invariant
-statement: Under prompt version v4, an extraction asks the model to resolve a relative date in a chunk against the document date when the source has one and otherwise against the date of its reception.
+statement: Under prompt version v4 and later, an extraction asks the model to resolve a relative date in a chunk against the document date when the source has one and otherwise against the date of its reception.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/prompt-version
@@ -19883,6 +20108,10 @@ entries:
   unstated: Which basis the v4 prompt asks for on the reception fallback
   decided: None is stated by the node; the earlier wording naming received is withdrawn
   why: Naming received here would contradict the rule that no proposal states it.
+- field: statement
+  unstated: The material creates prompt version v5 without saying whether it keeps the v4 fallback of relative dates to the reception time.
+  decided: Under prompt version v4 and later.
+  why: v5 is v4 plus the alias and document-context instructions; dropping the v4 fallback would make the new default regress on dates.
 ---
 
 === rules/knowledge-base/extraction-relative-date-needs-document-date
@@ -20039,6 +20268,18 @@ entries:
   decided: It shows both, with (unknown) for a missing document date.
   why: The v4 directive tells the model to look for document_date being (unknown), so the marker is part of the contract between the two prompts.
 ---
+
+=== rules/knowledge-base/failed-preliminary-reading-continues
+---
+type: invariant
+statement: An extraction whose preliminary reading fails goes on to read its chunks.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
 
 === rules/knowledge-base/fragment-chunks-exist
 ---
@@ -20923,7 +21164,7 @@ entries:
 === rules/knowledge-base/matched-node-gains-only-aliases
 ---
 type: invariant
-statement: A node proposal resolved to an existing knowledge node adds each of its proposed aliases to that node and never its proposed name.
+statement: A node proposal resolved to an existing knowledge node adds each of its admitted aliases to that node and never its proposed name.
 constrains:
 - domain/knowledge-base/knowledge-node
 - domain/knowledge-base/node-alias
@@ -21188,7 +21429,7 @@ None.
 === rules/knowledge-base/name-normalization
 ---
 type: invariant
-statement: Entity resolution and the node listing compare names after lower-casing them, removing their accents, trimming them and collapsing their inner whitespace.
+statement: Entity resolution, the node listing, alias admission and the node layer's approximate match compare names after lower-casing them, removing their accents, trimming them and collapsing their inner whitespace.
 constrains:
 - domain/knowledge-base/node-alias
 ---
@@ -21258,7 +21499,7 @@ entries:
 === rules/knowledge-base/new-node-aliases
 ---
 type: invariant
-statement: A newly created knowledge node holds its proposed name as its canonical alias and each of its proposed aliases as an alias.
+statement: A newly created knowledge node holds its proposed name as its canonical alias and each of its admitted aliases as an alias.
 constrains:
 - domain/knowledge-base/knowledge-node
 - domain/knowledge-base/node-alias
@@ -21284,6 +21525,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-item-shows-match
+---
+type: invariant
+statement: A knowledge node search item at hop 0 carries whether the node layer matched it exactly or approximately, and the similarity of an approximate match.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/node-match
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-item-summary
 ---
 type: invariant
@@ -21296,10 +21550,24 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-layer-approximate-match
+---
+type: invariant
+statement: The node layer matches a knowledge node approximately when it does not match it exactly and one of its aliases at least 5 characters long once normalized has a word similarity of at least 0.6 to the query text.
+constrains:
+- domain/knowledge-base/search-layer
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-match
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-layer-matches-through-aliases
 ---
 type: policy
-statement: The node layer matches a knowledge node when the query text matches any one of its aliases.
+statement: The node layer matches a knowledge node exactly when the lexical parse of the query text matches any one of its aliases.
 constrains:
 - domain/knowledge-base/search-layer
 - domain/knowledge-base/knowledge-node
@@ -22511,7 +22779,7 @@ None.
 === rules/knowledge-base/search-ranking
 ---
 type: invariant
-statement: Search items are ranked by score descending, then by recording time descending with a knowledge node counting as never recorded, then by identifier ascending.
+statement: Search items are ranked with every item the search reached only through knowledge nodes it matched approximately after all the others, and within each group by score descending, then by recording time descending with a knowledge node counting as never recorded, then by identifier ascending.
 constrains:
 - domain/knowledge-base/search-item
 ---
@@ -22519,6 +22787,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/search-ranking.log
+---
+entries:
+- field: statement
+  unstated: The material ranks a knowledge node matched only approximately below every knowledge node matched exactly, but says nothing of fragments, of other items, or of links expansion reaches from it.
+  decided: Every item the search reached only through approximately matched knowledge nodes ranks after all the others, then by score within each group.
+  why: A link reached from a misspelled name would otherwise outrank an exact match whenever its decayed similarity beat a low full-text rank.
+---
 
 === rules/knowledge-base/search-total-before-pagination
 ---
@@ -23137,6 +23414,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/word-similarity
+---
+type: invariant
+statement: An alias's word similarity to a query text is the highest trigram similarity between the normalized alias and any continuous stretch of the normalized query text.
+constrains:
+- domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
 === rules/owner-access/access-token-is-held-before-the-owner-moves-on
 ---
 type: invariant
@@ -23739,6 +24028,117 @@ then:
 
 Content made only of spaces is content, so the form is ready.
 
+=== scenarios/knowledge-base/acronym-in-source-is-admitted
+---
+subject: rules/knowledge-base/alias-admitted-only-from-source
+given:
+- a raw information whose content says "o Conselho Nacional de Desenvolvimento Científico (CNPq) aprovou o projeto"
+- an LLM run over it holds no knowledge node of that name
+when:
+- a node proposal names "Conselho Nacional de Desenvolvimento Científico" with the alias "CNPq"
+then:
+- the knowledge node is created with the canonical alias "Conselho Nacional de Desenvolvimento Científico"
+- it also holds the alias "CNPq"
+involves:
+- rules/knowledge-base/new-node-aliases
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+---
+subject: rules/knowledge-base/exact-alias-resolves
+given:
+- an active knowledge node holds the canonical alias "Conselho Nacional de Desenvolvimento Científico" and the alias "CNPq"
+when:
+- a later document's node proposal of the same node type names "CNPq"
+then:
+- the proposal resolves as matched-existing to that knowledge node
+involves:
+- rules/knowledge-base/alias-admitted-only-from-source
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/alias-absent-from-source-not-admitted
+---
+subject: rules/knowledge-base/alias-admitted-only-from-source
+given:
+- a raw information whose content refers to a company only as "a estatal"
+when:
+- a node proposal in an LLM run over it names the alias "Petrobras"
+then:
+- the node proposal is taken and its resolution answered
+- the alias "Petrobras" is not recorded on the knowledge node
+- the answer lists "Petrobras" as not admitted, with the reason ALIAS_NOT_IN_SOURCE
+involves:
+- contracts/knowledge-base/ingestion
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/context-links-later-mention
+---
+subject: rules/knowledge-base/document-context-read-first
+given:
+- a raw information of 3 chunks under prompt version v5
+- chunk 1 says "o Diretor Financeiro, João Silva" and chunk 3 says "o Diretor aprovou o orçamento"
+- the document context lists João Silva as a person the document also calls "o Diretor"
+when:
+- while reading chunk 3 the model proposes a node named "João Silva" and a fragment for the approval
+then:
+- the node proposal resolves to the knowledge node created while reading chunk 1
+- the fragment is anchored to chunk 3
+involves:
+- rules/knowledge-base/extraction-reads-chunks-in-order
+- rules/knowledge-base/extraction-anchors-to-read-chunk
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/correct-name-matches-exactly
+---
+subject: rules/knowledge-base/node-layer-approximate-match
+given:
+- the knowledge base holds the knowledge nodes "Petrobras" and "Petrobrás Distribuidora", each with an accepted information fragment mentioning it
+when:
+- the owner searches for "petrobras"
+then:
+- both knowledge nodes are returned
+- both items carry the match exact
+involves:
+- rules/knowledge-base/node-layer-matches-through-aliases
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/directed-alias-admitted-without-source
+---
+subject: rules/knowledge-base/alias-admitted-only-from-source
+given:
+- a directed ingestion whose fragments never write the name "Petrobras"
+when:
+- one of its nodes states the alias "Petrobras"
+then:
+- the alias "Petrobras" is recorded on the knowledge node
+involves:
+- domain/knowledge-base/directed-ingestion
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/email-without-blank-line-is-one-block
 ---
 subject: rules/knowledge-base/email-quote-blocks
@@ -23752,6 +24152,25 @@ then:
 - the whole email is one block
 involves:
 - rules/knowledge-base/email-header-block
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/failed-context-reading-keeps-extracting
+---
+subject: rules/knowledge-base/failed-preliminary-reading-continues
+given:
+- a raw information of 3 chunks under prompt version v5
+when:
+- the preliminary reading answers a provider error
+then:
+- the 3 chunks are read
+- the run completes
+- the run records the document context status failed and holds no document context
+involves:
+- rules/knowledge-base/document-context-status-recorded
 ---
 
 ## Description
@@ -23869,6 +24288,76 @@ then:
 
 None.
 
+=== scenarios/knowledge-base/misspelled-name-inside-longer-query
+---
+subject: rules/knowledge-base/node-layer-approximate-match
+given:
+- the knowledge base holds the knowledge node "Petrobras", with an accepted information fragment mentioning it
+when:
+- the owner searches for "contrato Petrobrass"
+then:
+- the knowledge node "Petrobras" is returned with the match approximate
+involves:
+- rules/knowledge-base/word-similarity
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/misspelled-name-matches-approximately
+---
+subject: rules/knowledge-base/node-layer-approximate-match
+given:
+- the knowledge base holds the knowledge node "Petrobras", with an accepted information fragment mentioning it
+when:
+- the owner searches for "Petrobrass"
+then:
+- the knowledge node "Petrobras" is returned as a search item at hop 0
+- the item carries the match approximate and its similarity
+involves:
+- rules/knowledge-base/node-item-shows-match
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/preliminary-reading-proposes-nothing
+---
+subject: domain/knowledge-base/document-context
+given:
+- a raw information of 3 chunks under prompt version v5
+- the knowledge base holds nothing read from it
+when:
+- the preliminary reading yields a document context listing two entities
+then:
+- no proposal is made
+- the knowledge base holds no knowledge node, information fragment, knowledge link or node attribute read from it until its first chunk is read
+involves:
+- rules/knowledge-base/document-context-read-first
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/retried-run-reuses-context
+---
+subject: rules/knowledge-base/document-context-read-first
+given:
+- an LLM run under prompt version v5 that failed after producing its document context
+when:
+- the run is retried and its extraction runs again
+then:
+- no second preliminary reading is made
+- each chunk is shown with the document context the run already held
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/same-target-succession-is-disputed
 ---
 subject: rules/knowledge-base/conflict-disputes
@@ -23886,6 +24375,37 @@ involves:
 - rules/knowledge-base/consolidation-precedence
 - rules/knowledge-base/reaffirmation-consolidates
 - rules/knowledge-base/succession-closes-previous
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/short-alias-never-matches-approximately
+---
+subject: rules/knowledge-base/node-layer-approximate-match
+given:
+- the knowledge base holds the knowledge node "CNPq", whose only alias is "CNPq"
+when:
+- the owner searches for "CNPJ"
+then:
+- the knowledge node "CNPq" is not returned
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/single-chunk-document-has-no-context
+---
+subject: rules/knowledge-base/document-context-status-recorded
+given:
+- a raw information of 1 chunk under prompt version v5
+when:
+- the extraction runs
+then:
+- no preliminary reading is made
+- the run records the document context status single-chunk
 ---
 
 ## Description
@@ -23919,6 +24439,23 @@ then:
 - the search is accepted
 - the total is 0
 - no search item is returned
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+---
+subject: rules/knowledge-base/node-layer-approximate-match
+given:
+- the knowledge base holds the knowledge node "Petrobras", with an accepted information fragment mentioning it, and no alias holding the word "contrato"
+when:
+- the owner searches for "contrato Petrobras"
+then:
+- the knowledge node "Petrobras" is returned with the match approximate
+involves:
+- rules/knowledge-base/node-layer-matches-through-aliases
 ---
 
 ## Description

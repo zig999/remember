@@ -20,7 +20,7 @@ operations:
 - traverse
 answers:
 - operation: search
-  accepted: '`{ ok: true, result }` carrying the page of ranked search items, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
+  accepted: '`{ ok: true, result }` carrying the page of ranked search items, each knowledge node matched directly showing whether it matched exactly or approximately and the similarity of an approximate match, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
   refusals:
   - &id001
     when: The request carries no valid owner authentication.
