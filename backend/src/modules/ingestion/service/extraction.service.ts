@@ -280,6 +280,10 @@ export const FATAL_ERROR_BURST = 3 as const;
 
 export const PREV_TAIL_CHARS = 200 as const;
 
+function lastCodePoints(text: string, count: number): string {
+  return Array.from(text).slice(-count).join("");
+}
+
 export interface RunExtractionDeps {
   readonly env: {
     readonly ANTHROPIC_API_KEY: string;
@@ -370,9 +374,7 @@ export async function runLlmExtraction(
           partial
         );
       }
-      prevTail = chunk.text.length <= PREV_TAIL_CHARS
-        ? chunk.text
-        : chunk.text.slice(-PREV_TAIL_CHARS);
+      prevTail = lastCodePoints(chunk.text, PREV_TAIL_CHARS);
     }
   } catch (err) {
     if (err instanceof ExtractionFatalError) throw err;

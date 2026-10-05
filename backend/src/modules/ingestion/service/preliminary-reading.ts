@@ -7,6 +7,7 @@ import { InvariantError } from "../../../shared/invariant-error.js";
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import type {
   DocumentContext,
+  DocumentContextStatus,
   DocumentEntity,
 } from "../dto/llm-run.dto.js";
 import {
@@ -26,6 +27,7 @@ import {
 
 export const PRELIMINARY_READING_MAX_CONTENT_UNITS = 100_000 as const;
 
+const SINGLE_CHUNK_COUNT = 1 as const;
 const FIRST_PRELIMINARY_READING_VERSION = 5 as const;
 const PROMPT_VERSION_PATTERN = /^v(\d+)$/;
 const LINE_BREAK = "\n";
@@ -179,6 +181,25 @@ async function recordProducedContext(
   }
 }
 
+async function recordReadingStatus(
+  pool: Pool,
+  llmRunId: string,
+  status: DocumentContextStatus
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    const row = await recordDocumentContextStatus(client, {
+      llm_run_id: llmRunId,
+      document_context_status: status,
+    });
+    if (row === null) {
+      throw new InvariantError(`llm_run ${llmRunId} vanished before its ${status} document context status was recorded`);
+    }
+  } finally {
+    client.release();
+  }
+}
+
 async function recordFailedReading(
   request: DocumentContextRequest,
   err: unknown
@@ -191,23 +212,42 @@ async function recordFailedReading(
     },
     "document_context_reading_failed"
   );
-  const client = await request.pool.connect();
-  try {
-    const row = await recordDocumentContextStatus(client, {
-      llm_run_id: request.run.id,
-      document_context_status: "failed",
-    });
-    if (row === null) {
-      throw new InvariantError(`llm_run ${request.run.id} vanished before its failed document context status was recorded`);
-    }
-  } finally {
-    client.release();
+  await recordReadingStatus(request.pool, request.run.id, "failed");
+}
+
+export function skippedReadingStatus(
+  request: DocumentContextRequest
+): DocumentContextStatus | null {
+  if (!readsDocumentFirst(request.run.prompt_version)) return null;
+  if (request.chunkCount === SINGLE_CHUNK_COUNT) return "single-chunk";
+  if (
+    request.chunkCount > SINGLE_CHUNK_COUNT &&
+    request.content.length > PRELIMINARY_READING_MAX_CONTENT_UNITS
+  ) {
+    return "too-long";
   }
+  return null;
+}
+
+async function recordSkippedReading(
+  request: DocumentContextRequest,
+  status: DocumentContextStatus
+): Promise<void> {
+  await recordReadingStatus(request.pool, request.run.id, status);
+  request.logger.info(
+    { llm_run_id: request.run.id, document_context_status: status },
+    "document_context_reading_skipped"
+  );
 }
 
 export async function produceDocumentContext(
   request: DocumentContextRequest
 ): Promise<void> {
+  const skipped = skippedReadingStatus(request);
+  if (skipped !== null) {
+    await recordSkippedReading(request, skipped);
+    return;
+  }
   if (!shouldReadDocument(request)) return;
   let context: DocumentContext;
   try {

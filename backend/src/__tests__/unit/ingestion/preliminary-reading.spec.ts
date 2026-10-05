@@ -113,6 +113,19 @@ const CHUNK_TEXTS = [
   `${TOKEN_C} third chunk.`,
 ];
 
+const ONE_CHUNK: string[] = CHUNK_TEXTS.slice(0, 1);
+const OVER_LIMIT_UNITS = CONTENT_LIMIT_UNITS + 1;
+const SHORT_CONTENT_UNITS = 100;
+const SOURCE_TYPE = "transcricao";
+const DOCUMENT_DATE = "2026-09-30";
+const TITLE = "Test doc";
+const RECEIVED_AT_PREFIX = "2026-10-05T12:00:00";
+const TAIL_CODE_POINTS = 200;
+const HEAD_FILLER = "Q".repeat(50);
+const TAIL_FILLER = "Z";
+const LATER_CHUNK_TEXTS = ["second chunk body", "third chunk body"];
+const BEFORE_V5 = ["v1", "v2", "v3", "v4"];
+
 type Row = Record<string, unknown>;
 
 interface QueryResult {
@@ -128,6 +141,7 @@ interface ReadingAnswer {
 interface Scenario {
   promptVersion: string;
   content: string;
+  chunkTexts?: string[];
   answer: ReadingAnswer;
   readingError?: Error;
   readingText?: string;
@@ -199,17 +213,17 @@ function rowsOf(...rows: object[]): QueryResult {
 function rawRow(scenario: Scenario): Row {
   return {
     id: RAW_ID,
-    source_type: "text",
+    source_type: SOURCE_TYPE,
     content: scenario.content,
     storage_ref: null,
     content_hash: "f".repeat(64),
     received_at: new Date("2026-10-05T12:00:00Z"),
-    metadata: { document_date: "2026-10-05", title: "Test doc" },
+    metadata: { document_date: DOCUMENT_DATE, title: TITLE },
   };
 }
 
-function chunkRows(): Row[] {
-  return CHUNK_TEXTS.map((text, index) => ({
+function chunkRows(scenario: Scenario): Row[] {
+  return (scenario.chunkTexts ?? CHUNK_TEXTS).map((text, index) => ({
     id: `66666666-6666-4666-8666-66666666660${index}`,
     raw_information_id: RAW_ID,
     chunk_index: index,
@@ -238,7 +252,7 @@ function answer(sql: string, params: unknown[], world: World): QueryResult {
   if (sql.startsWith("UPDATE llm_run")) return updateRun(sql, params, world.run);
   if (sql.includes("FROM llm_run")) return rowsOf(world.run);
   if (sql.includes("FROM raw_information")) return rowsOf(rawRow(world.scenario));
-  if (sql.includes("FROM raw_chunk")) return rowsOf(...chunkRows());
+  if (sql.includes("FROM raw_chunk")) return rowsOf(...chunkRows(world.scenario));
   return EMPTY_RESULT;
 }
 
@@ -643,4 +657,197 @@ it("makes every model call of an extraction, the preliminary reading included, t
       retriedAtMostTwice: true,
     })
   );
+});
+
+function astralContentOneUnitPastTheLimit(): string {
+  const head = `${TOKENS.join(" ")} x`;
+  return head + ASTRAL_CHARACTER.repeat((OVER_LIMIT_UNITS - head.length) / 2);
+}
+
+function readingsOf(world: World): number {
+  return callKinds(world).filter((kind) => kind === "reading").length;
+}
+
+function wereRead(world: World, texts: readonly string[]): boolean[] {
+  return texts.map((text) =>
+    world.calls.some((call) => !isReading(call) && call.text.includes(text))
+  );
+}
+
+function metadataMissingFromAChunk(world: World): string[] {
+  const needles = [SOURCE_TYPE, DOCUMENT_DATE, TITLE, RECEIVED_AT_PREFIX];
+  return needles.filter(
+    (needle) => !world.calls.every((call) => call.text.includes(needle))
+  );
+}
+
+function secondChunkPrompt(world: World): string {
+  return world.calls[1]?.text ?? "";
+}
+
+async function tailShownWithTheSecondChunk(
+  filler: string
+): Promise<{ last200: boolean; the201st: boolean }> {
+  const chunkTexts = [
+    HEAD_FILLER + filler.repeat(TAIL_CODE_POINTS),
+    ...LATER_CHUNK_TEXTS,
+  ];
+  const world = await runExtraction({
+    chunkTexts,
+    content: contentOfUnits(OVER_LIMIT_UNITS),
+  });
+  const prompt = secondChunkPrompt(world);
+  return {
+    last200: prompt.includes(filler.repeat(TAIL_CODE_POINTS)),
+    the201st: prompt.includes(HEAD_FILLER.slice(-1) + filler.repeat(TAIL_CODE_POINTS)),
+  };
+}
+
+async function statusOf(overrides: Partial<Scenario>): Promise<string | null> {
+  const world = await runExtraction(overrides);
+  return world.run.document_context_status;
+}
+
+function runShapes(): Record<string, Partial<Scenario>> {
+  return {
+    oneChunk: { chunkTexts: ONE_CHUNK, content: contentOfUnits(SHORT_CONTENT_UNITS) },
+    threeChunksWithinTheLimit: {},
+    threeChunksPastTheLimit: { content: contentOfUnits(OVER_LIMIT_UNITS) },
+  };
+}
+
+it("makes no preliminary reading and records the document context status single-chunk for a v5 raw information of 1 chunk", async () => {
+  const world = await runExtraction({
+    chunkTexts: ONE_CHUNK,
+    content: contentOfUnits(SHORT_CONTENT_UNITS),
+  });
+
+  const outcome = {
+    readings: readingsOf(world),
+    status: world.run.document_context_status,
+  };
+
+  expect(outcome).toEqual({ readings: 0, status: "single-chunk" });
+});
+
+it("reads the one chunk of a v5 raw information of 1 chunk", async () => {
+  const world = await runExtraction({
+    chunkTexts: ONE_CHUNK,
+    content: contentOfUnits(SHORT_CONTENT_UNITS),
+  });
+
+  const read = wereRead(world, ONE_CHUNK);
+
+  expect(read).toEqual([true]);
+});
+
+it("makes no preliminary reading of a v5 raw information of 3 chunks whose content is 100001 characters", async () => {
+  const world = await runExtraction({ content: contentOfUnits(OVER_LIMIT_UNITS) });
+
+  expect(readingsOf(world)).toBe(0);
+});
+
+it("records on a v5 run the status each chunk count, content length and reading outcome calls for, counting the length in UTF-16 code units", async () => {
+  const statuses = {
+    oneChunkWithinTheLimit: await statusOf({
+      chunkTexts: ONE_CHUNK,
+      content: contentOfUnits(SHORT_CONTENT_UNITS),
+    }),
+    oneChunkPastTheLimit: await statusOf({
+      chunkTexts: ONE_CHUNK,
+      content: contentOfUnits(OVER_LIMIT_UNITS),
+    }),
+    threeChunksAtTheLimit: await statusOf({
+      content: contentOfUnits(CONTENT_LIMIT_UNITS),
+    }),
+    threeChunksOneUnitPastTheLimit: await statusOf({
+      content: contentOfUnits(OVER_LIMIT_UNITS),
+    }),
+    threeChunksPastTheLimitInUnitsWithinItInCodePoints: await statusOf({
+      content: astralContentOneUnitPastTheLimit(),
+    }),
+    threeChunksWhoseReadingFails: await statusOf({ readingError: providerError() }),
+  };
+
+  expect(statuses).toEqual({
+    oneChunkWithinTheLimit: "single-chunk",
+    oneChunkPastTheLimit: "single-chunk",
+    threeChunksAtTheLimit: "produced",
+    threeChunksOneUnitPastTheLimit: "too-long",
+    threeChunksPastTheLimitInUnitsWithinItInCodePoints: "too-long",
+    threeChunksWhoseReadingFails: "failed",
+  });
+});
+
+it("reads every chunk of a v5 raw information whose content exceeds 100000 characters, whether it holds 3 chunks or 1", async () => {
+  const several = await runExtraction({ content: contentOfUnits(OVER_LIMIT_UNITS) });
+  const one = await runExtraction({
+    chunkTexts: ONE_CHUNK,
+    content: contentOfUnits(OVER_LIMIT_UNITS),
+  });
+
+  const read = {
+    several: wereRead(several, CHUNK_TEXTS),
+    one: wereRead(one, ONE_CHUNK),
+  };
+
+  expect(read).toEqual({ several: [true, true, true], one: [true] });
+});
+
+it("reads the chunks of a v5 raw information past 100000 characters in index order", async () => {
+  const world = await runExtraction({ content: contentOfUnits(OVER_LIMIT_UNITS) });
+
+  const firstShownInCall = CHUNK_TEXTS.map((text) =>
+    world.calls.findIndex((call) => call.text.includes(text))
+  );
+
+  expect(firstShownInCall).toEqual([0, 1, 2]);
+});
+
+it("shows every chunk the source's type, document date, title and reception time on a v5 run that skipped its preliminary reading", async () => {
+  const oneChunk = await runExtraction({
+    chunkTexts: ONE_CHUNK,
+    content: contentOfUnits(SHORT_CONTENT_UNITS),
+  });
+  const threeChunks = await runExtraction({ content: contentOfUnits(OVER_LIMIT_UNITS) });
+
+  const missing = {
+    oneChunk: metadataMissingFromAChunk(oneChunk),
+    threeChunks: metadataMissingFromAChunk(threeChunks),
+  };
+
+  expect(missing).toEqual({ oneChunk: [], threeChunks: [] });
+});
+
+it("shows the second chunk of a v5 run past 100000 characters the last 200 characters of the first chunk and no more", async () => {
+  const shown = await tailShownWithTheSecondChunk(TAIL_FILLER);
+
+  expect(shown).toEqual({ last200: true, the201st: false });
+});
+
+it("shows the second chunk of a v5 run past 100000 characters the last 200 Unicode code points of the first chunk when they are astral", async () => {
+  const shown = await tailShownWithTheSecondChunk(ASTRAL_CHARACTER);
+
+  expect(shown).toEqual({ last200: true, the201st: false });
+});
+
+it("makes no preliminary reading and records no document context and no status under v1 to v4 whatever the chunk count and content length", async () => {
+  const observed: Row[] = [];
+  const expected: Row[] = [];
+
+  for (const promptVersion of BEFORE_V5) {
+    for (const [shape, overrides] of Object.entries(runShapes())) {
+      const world = await runExtraction({ ...overrides, promptVersion });
+      observed.push({
+        promptVersion,
+        shape,
+        readings: readingsOf(world),
+        context: world.run.document_context,
+        status: world.run.document_context_status,
+      });
+      expected.push({ promptVersion, shape, readings: 0, context: null, status: null });
+    }
+  }
+
+  expect(observed).toEqual(expected);
 });
