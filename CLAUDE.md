@@ -76,8 +76,8 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 >    `backend/src/middleware/auth.ts` (env `NEON_AUTH_URL`; JWKS em
 >    `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA por padrão). Sem service key; modelo
 >    single-owner mantido, sem entidade `User`.
-> O **v7 (§2.2/§2.5) ainda registra Supabase** — este CLAUDE.md reflete o estado atual. As specs em
-> `docs/specs/` também ainda citam Supabase; reconciliar v7 + specs numa revisão futura.
+> O **v7 (§2.2/§2.5) ainda registra Supabase** — este CLAUDE.md reflete o estado atual; reconciliar o
+> v7 numa revisão futura.
 
 > **Migração MCP→SDK (2026-06-15) — transportes.** Os três transportes MCP foram migrados para o
 > SDK oficial **`@modelcontextprotocol/sdk`**, sobre um kernel único
@@ -93,8 +93,7 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 > 3. **`ingest` dual + run-id por argumento:** `llm_run_id` é **argumento de ferramenta** (não mais
 >    o header `X-LLM-Run-Id`); o modelo per-session foi aposentado. O `ingest` é dual (espelhos REST
 >    `propose-*`) — revoga o rótulo "MCP-only" antes registrado.
-> Reconciliado na fonte normativa pela **Emenda v7.2** e na back-spec `ingestion.back.md`
-> (BR-21/23/24/28).
+> Reconciliado na fonte normativa pela **Emenda v7.2**.
 
 > **Acesso via Claude Desktop (2026-06-17) — `ingest_document` + token local.** Para consumir o BFF
 > a partir do Claude Desktop (Windows) via `mcp-remote`, duas adições:
@@ -102,13 +101,13 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 >    inteiro, cria `RawInformation`+chunks+`LLMRun` e dispara a extração **server-side** (o LLM que
 >    extrai é o do servidor, chave Anthropic do BFF — o cliente só entrega o conteúdo). Idempotente
 >    (`content_hash` → `already_ingested`). Distinta das 4 `propose_*` (que operam dentro de um run).
->    Síncrona/LLM-bound. Reconciliada pela **Emenda v7.4** + back-spec `ingestion.back.md` **BR-30**.
+>    Síncrona/LLM-bound. Reconciliada pela **Emenda v7.4**.
 > 2. **Carve-out de auth dev-only `LOCAL_OPERATOR_TOKEN`:** `requireNeonAuth` aceita um bearer
 >    estático (== env `LOCAL_OPERATOR_TOKEN`, ≥16 chars, comparação constant-time) como dono,
 >    pulando o JWKS — **só** quando `NODE_ENV=development`. Em produção o JWT continua sendo a única
 >    porta (contrato do §2.5 intocado). **Fail-closed:** o `loadEnv` recusa subir se o token estiver
 >    setado com `NODE_ENV` não explicitamente `development` (checa o source cru, pois o default é
->    `development`). Registrado em `knowledge-graph.back.md` **BR-01** (v1.3.0).
+>    `development`).
 >    Resolve a expiração (~1h) do JWT do Neon Auth, que o `mcp-remote` não renova. Rode o BFF com
 >    `npm run dev`. Config do cliente: `mcp-remote` apontando para `/api/v1/mcp/{query,ingest}` com
 >    `--header "Authorization:${AUTH}"` (`AUTH="Bearer <token>"`), `--transport http-only`.
@@ -283,9 +282,8 @@ migrations/                       # ESTRUTURA (DDL) na raiz; SEEDS (dados/catál
     0003_event_type_taxonomy.sql  #   Extensão ADITIVA: +5 valid_values em Event.event_type
   ops/                            # Scripts DESTRUTIVOS de manutenção (truncate) — fora da sequência, on-demand + aprovação
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
-docs/specs/                       # Specs
-  front/                          #   front.md (global), features/*.feature.spec.md,
-                                  #   components/*.component.spec.md, _flows/*.flow.md, design-system/
+specification/                    # Especificação Siegard — nós markdown: domain/, rules/, scenarios/,
+                                  #   contracts/, constraints/ (+ projections/ derivadas)
 ```
 
 ---
