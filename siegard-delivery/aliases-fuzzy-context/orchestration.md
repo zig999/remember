@@ -16,3 +16,4 @@ Stopped at task/document-context/context-model-setting: the suite went red on on
 Delivered task/document-context/context-model-setting in e7f99e8: suite red once (test over another task's clause, withdrawn by the test author as owed by preliminary-reading), green on suite-2.
 Run resumed on main by a new ask; migration 0008 applied to the database by the owner's approval and committed in 43f4b67, outside this run's targets.
 Planned in f62548a: retired task/approximate-node-search/search-answers-show-match, whose behavior search-item-shows-match delivered and proved; no node was exclusive to it, so the epic did not change and no decomposition ran.
+Delivered task/document-context/record-document-context in cd223fd: lint red once on a parse error in the new spec (fixed by the test author), green on suite-2.
