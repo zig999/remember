@@ -14,7 +14,7 @@ import {
   ProposeLinkInputSchema,
   ProposeNodeInputSchema,
 } from "../dto/index.js";
-import type { LlmRunResponse } from "../dto/llm-run.dto.js";
+import type { DocumentContext, LlmRunResponse } from "../dto/llm-run.dto.js";
 import {
   proposeAttributeHandler,
 } from "../mcp/propose-attribute.handler.js";
@@ -47,6 +47,10 @@ import {
   type AffectedNode,
   type AffectedNodeCollector,
 } from "./affected-nodes.js";
+import {
+  produceDocumentContext,
+  type ContextMessageRequest,
+} from "./preliminary-reading.js";
 
 export class RunNotRunnableError extends Error {
   public readonly statusCode = 409;
@@ -121,7 +125,9 @@ export interface ExtractionMessageStream {
 
 export interface AnthropicLike {
   readonly messages: {
-    stream(req: ExtractionMessageRequest): ExtractionMessageStream;
+    stream(
+      req: ExtractionMessageRequest | ContextMessageRequest
+    ): ExtractionMessageStream;
   };
 }
 
@@ -293,7 +299,10 @@ export async function runLlmExtraction(
   const anthropicFactory = deps.anthropicFactory ?? defaultAnthropicFactory;
   const now = deps.now ?? (() => new Date());
 
-  const { run, metadata, chunks } = await loadRunContext(pool, llmRunId);
+  const { run, metadata, chunks, content } = await loadRunContext(
+    pool,
+    llmRunId
+  );
 
   if (run.status !== "running") {
     throw new RunNotRunnableError(llmRunId, run.status);
@@ -323,6 +332,17 @@ export async function runLlmExtraction(
       },
       "extraction_prompt_selected"
     );
+
+    await produceDocumentContext({
+      pool,
+      anthropic,
+      catalog,
+      logger,
+      model: deps.env.CONTEXT_MODEL,
+      run,
+      chunkCount: chunks.length,
+      content,
+    });
 
     for (const chunk of chunks) {
       const outcome = await runChunkLoop({
@@ -579,8 +599,10 @@ interface LoadedRunContext {
     readonly model: string;
     readonly prompt_version: string;
     readonly input_raw_information_id: string;
+    readonly document_context: DocumentContext | null;
   };
   readonly metadata: DocumentMetadata;
+  readonly content: string;
   readonly chunks: readonly { readonly id: string; readonly chunk_index: number; readonly text: string }[];
 }
 
@@ -620,8 +642,10 @@ async function loadRunContext(
         model: runRow.model,
         prompt_version: runRow.prompt_version,
         input_raw_information_id: runRow.input_raw_information_id,
+        document_context: runRow.document_context,
       },
       metadata,
+      content: rawInfo.content,
       chunks: chunkRows.map((c) => ({
         id: c.id,
         chunk_index: c.chunk_index,
