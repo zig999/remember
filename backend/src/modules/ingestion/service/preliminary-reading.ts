@@ -240,23 +240,10 @@ async function recordSkippedReading(
   );
 }
 
-export async function produceDocumentContext(
-  request: DocumentContextRequest
-): Promise<void> {
-  const skipped = skippedReadingStatus(request);
-  if (skipped !== null) {
-    await recordSkippedReading(request, skipped);
-    return;
-  }
-  if (!shouldReadDocument(request)) return;
-  let context: DocumentContext;
-  try {
-    context = await readDocumentContext(request);
-  } catch (err) {
-    await recordFailedReading(request, err);
-    return;
-  }
-  await recordProducedContext(request.pool, request.run.id, context);
+function logProducedContext(
+  request: DocumentContextRequest,
+  context: DocumentContext
+): void {
   request.logger.info(
     {
       llm_run_id: request.run.id,
@@ -265,4 +252,25 @@ export async function produceDocumentContext(
     },
     "document_context_produced"
   );
+}
+
+export async function produceDocumentContext(
+  request: DocumentContextRequest
+): Promise<DocumentContext | null> {
+  const skipped = skippedReadingStatus(request);
+  if (skipped !== null) {
+    await recordSkippedReading(request, skipped);
+    return null;
+  }
+  if (!shouldReadDocument(request)) return request.run.document_context ?? null;
+  let context: DocumentContext;
+  try {
+    context = await readDocumentContext(request);
+  } catch (err) {
+    await recordFailedReading(request, err);
+    return null;
+  }
+  await recordProducedContext(request.pool, request.run.id, context);
+  logProducedContext(request, context);
+  return context;
 }

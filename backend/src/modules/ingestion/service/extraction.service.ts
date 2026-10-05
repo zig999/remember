@@ -337,7 +337,7 @@ export async function runLlmExtraction(
       "extraction_prompt_selected"
     );
 
-    await produceDocumentContext({
+    const documentContext = await produceDocumentContext({
       pool,
       anthropic,
       catalog,
@@ -358,6 +358,7 @@ export async function runLlmExtraction(
         chunkText: chunk.text,
         chunkId: chunk.id,
         prevTail,
+        documentContext,
         dispatchDeps,
         prompt,
         logger,
@@ -445,6 +446,7 @@ interface ChunkLoopInput {
   readonly chunkText: string;
   readonly chunkId: string;
   readonly prevTail: string;
+  readonly documentContext: DocumentContext | null;
   readonly dispatchDeps: DispatchDeps;
   readonly prompt: PromptModule;
   readonly logger: Logger;
@@ -466,6 +468,7 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
     metadata: input.metadata,
     chunkText: input.chunkText,
     prevTail: input.prevTail,
+    documentContext: input.documentContext,
   });
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: userBlocks },

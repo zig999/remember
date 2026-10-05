@@ -1,18 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
-import type { UserPromptArgs } from "./extraction.v1.js";
 import * as v1 from "./extraction.v1.js";
 import * as v2 from "./extraction.v2.js";
 import * as v3 from "./extraction.v3.js";
 import * as v4 from "./extraction.v4.js";
 import * as v5 from "./extraction.v5.js";
+import type { ContextUserPromptArgs } from "./extraction.v5.js";
 
 export interface PromptModule {
   readonly version: string;
   readonly MAX_TOKENS: number;
   system(catalog: CatalogSnapshot): string;
-  user(args: UserPromptArgs): Anthropic.Messages.TextBlockParam[];
+  user(args: ContextUserPromptArgs): Anthropic.Messages.TextBlockParam[];
 }
 
 const V1: PromptModule = {
