@@ -1,20 +1,3 @@
-// MCP `ingest.ingest_document` handler (TC-MCI-002).
-//
-// One-shot document ingestion for EXTERNAL MCP clients (e.g. Claude Desktop).
-// Wraps the two REST-only steps the in-process orchestrator path uses behind a
-// single tool call, so a client that cannot create runs or manage chunk offsets
-// can still ingest a source:
-//
-//   1. Persist RawInformation + chunks + a `running` LLMRun (own transaction,
-//      BR-19) via `ingestRawInformation`.
-//   2. Drive the SERVER-SIDE extraction orchestrator (`runLlmExtraction`),
-//      which runs its own short transactions per proposal and closes the run.
-//
-// The extraction LLM is the SERVER's (ANTHROPIC_API_KEY) — the calling client
-// only hands over the document; the inviolable rule that the LLM never touches
-// the DB directly is preserved (every write still goes through the validated
-// propose-* path the orchestrator calls).
-
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 
@@ -34,7 +17,6 @@ import type { IngestDocumentMcpInput } from "./mcp-schemas.js";
 
 export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";
 
-/** Canonical MCP envelope the toolset handlers return. */
 export interface McpEnvelopeJson {
   readonly ok: boolean;
   readonly result?: unknown;
@@ -48,30 +30,20 @@ export interface McpEnvelopeJson {
 export interface IngestDocumentDeps {
   readonly pool: Pool;
   readonly logger: Logger;
-  /** Ingestion catalog snapshot — required by the extraction orchestrator. */
   readonly catalog: CatalogSnapshot;
   readonly anthropicApiKey: string;
   readonly ingestModel?: string;
-  /** Test seam — forwarded to the orchestrator. Production omits it. */
+  readonly contextModel: string;
   readonly anthropicFactory?: RunExtractionDeps["anthropicFactory"];
   readonly now?: () => Date;
-  /**
-   * Collaborator seams (DI). Default to the real service functions in
-   * production; tests inject stubs to exercise the branch/error-mapping logic
-   * without a database (same pattern as `anthropicFactory` / `now`).
-   */
   readonly ingestRaw?: typeof ingestRawInformation;
   readonly runExtraction?: typeof runLlmExtraction;
-  /** Test seam — best-effort run-status read used on the idempotent path. */
   readonly readRunStatus?: (
     pool: Pool,
     llmRunId: string
   ) => Promise<string | undefined>;
 }
 
-/** Best-effort read of an LLMRun's status — used on the idempotent path so a
- *  previously-FAILED run is not reported as a successful ingestion. Returns
- *  `undefined` if the run can't be read (never throws). */
 async function readRunStatus(
   pool: Pool,
   llmRunId: string
@@ -85,6 +57,19 @@ async function readRunStatus(
   } finally {
     client.release();
   }
+}
+
+function buildExtractionDeps(deps: IngestDocumentDeps): RunExtractionDeps {
+  return {
+    env: {
+      ANTHROPIC_API_KEY: deps.anthropicApiKey,
+      CONTEXT_MODEL: deps.contextModel,
+    },
+    ...(deps.anthropicFactory !== undefined
+      ? { anthropicFactory: deps.anthropicFactory }
+      : {}),
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  };
 }
 
 export async function ingestDocumentHandler(
@@ -104,12 +89,6 @@ export async function ingestDocumentHandler(
     prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
   };
 
-  // Step 1 — persist raw info + chunks + run (committed before extraction; the
-  // orchestrator manages its own short transactions and must see committed rows).
-  // Intake errors are mapped to a clean envelope HERE — an uncaught throw would
-  // otherwise be turned by the SDK kernel into a JSON-RPC error leaking the raw
-  // `err.message` (e.g. the BR-09 invariant message with ids), and pg-down would
-  // be mis-surfaced. No `tool_call` audit row is due — no run exists yet.
   let ingest;
   try {
     ingest = await withTransaction(deps.pool, (client) => ingestRaw(client, body));
@@ -138,7 +117,6 @@ export async function ingestDocumentHandler(
   }
   const { raw_information_id, llm_run_id, chunk_count, outcome } = ingest.body;
 
-  // Step 2 — idempotent short-circuit: already ingested, do not re-extract.
   if (outcome === "noop_existing") {
     const runStatus = await runStatusReader(deps.pool, llm_run_id);
     const completed = runStatus === "completed";
@@ -168,22 +146,13 @@ export async function ingestDocumentHandler(
     };
   }
 
-  // Step 3 — drive the server-side extraction orchestrator.
-  const extractionDeps: RunExtractionDeps = {
-    env: { ANTHROPIC_API_KEY: deps.anthropicApiKey },
-    ...(deps.anthropicFactory !== undefined
-      ? { anthropicFactory: deps.anthropicFactory }
-      : {}),
-    ...(deps.now !== undefined ? { now: deps.now } : {}),
-  };
-
   try {
     const run = await runExtraction(
       deps.pool,
       llm_run_id,
       deps.logger,
       deps.catalog,
-      extractionDeps
+      buildExtractionDeps(deps)
     );
     return {
       ok: true,
@@ -196,9 +165,6 @@ export async function ingestDocumentHandler(
       },
     };
   } catch (err) {
-    // The run was just created `running`, so NotFound/NotRunnable cannot occur
-    // here; the realistic failures are provider/extraction fatals (the run is
-    // already closed `failed` and a partial summary is attached).
     if (
       err instanceof LlmProviderFatalError ||
       err instanceof ExtractionFatalError
@@ -222,7 +188,6 @@ export async function ingestDocumentHandler(
         },
       };
     }
-    // Unknown — surface loud as SYSTEM_INTERNAL_ERROR with ids for forensics (never swallow).
     deps.logger.error(
       {
         component: "mcp.ingest",

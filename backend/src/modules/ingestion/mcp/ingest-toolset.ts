@@ -1,24 +1,3 @@
-// MCP `ingest` toolset registrar — wires the four `propose_*` tool handlers
-// onto the SHARED in-process `McpServer` registry under the `ingest` toolset
-// key. The MCP transport (`mcp/transport.ts`, mounted via the shared SDK
-// kernel `mountMcpEndpoint`) looks tools up on this registry at request time.
-//
-// Pattern mirrors `modules/curation/mcp/curation-toolset.ts` and
-// `modules/knowledge-graph/mcp/query-toolset.ts` — single source per BR-24,
-// per-tool handler that owns the MCP-facing Zod parse, dispatch to the
-// transport-agnostic business shell, and envelope shape.
-//
-// Run binding (BR-21 revised, BR-28, v1.2.4 — Option B):
-//   - The MCP-facing schema of each tool extends the business DTO with
-//     `llm_run_id: z.string().min(1)`.
-//   - The handler reads `llm_run_id` from the parsed args, splits it from the
-//     business DTO, and forwards both to the existing `proposeXxxHandler`
-//     (`propose-*.handler.ts`), which already owns the per-call transaction,
-//     `assertRunIsRunning`, and the `tool_call` audit row (BR-23 updated).
-//
-// Idempotency: `McpServer.registerTool` rejects duplicates by design; calling
-// this registrar twice in the same process throws. The boot wires it once.
-
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 import { z, ZodError } from "zod";
@@ -65,48 +44,22 @@ import {
   type IngestMcpToolName,
 } from "./mcp-schemas.js";
 
-// --------------------------------------------------------------------------
-// Public closed enumeration — re-exported from this module (consumed by
-// `app.ts` to compose the transport's `toolNames` whitelist).
-// --------------------------------------------------------------------------
-
 export { INGEST_TOOL_NAMES, type IngestMcpToolName };
 
-/** Dependencies required to register the ingest MCP tools. */
 export interface IngestToolsetDeps {
   readonly mcp: McpServer;
   readonly pool: Pool;
   readonly logger: Logger;
   readonly catalog: CatalogSnapshot;
-  /**
-   * Anthropic secret — consumed by the high-level `ingest_document` tool, which
-   * drives the server-side extraction orchestrator. The four `propose_*` tools
-   * do not need it (they are called BY an LLM, not the other way around).
-   */
   readonly env: {
     readonly ANTHROPIC_API_KEY: string;
-    /** Default model for the `ingest_document` server-side extraction. */
     readonly INGEST_MODEL: string;
-    /**
-     * Rollout flag for `start_async_ingestion` (BR-32). When `true`, the tool
-     * is registered on the `ingest` toolset; when `false` or absent, the
-     * registration is skipped at boot — `tools/list` then omits the tool and
-     * `mcp.getTool('ingest', 'start_async_ingestion')` returns `undefined`.
-     * Boot-only — there is no per-call gate after registration. Wired from
-     * `env.CHAT_INGEST_ENABLED` (default `false`, added by TC-02).
-     */
+    readonly CONTEXT_MODEL: string;
     readonly CHAT_INGEST_ENABLED?: boolean;
   };
-  /** Clock source — defaults to `() => new Date()`. Tests inject deterministic clocks. */
   readonly now?: () => Date;
-  /** Test seam — forwarded to the `ingest_document` orchestrator. Production omits it. */
   readonly anthropicFactory?: IngestDocumentDeps["anthropicFactory"];
 }
-
-// --------------------------------------------------------------------------
-// Envelope shape — identical to query / curation. Kept as a structural type
-// so we do not pull a service-layer type into the toolset module.
-// --------------------------------------------------------------------------
 
 export interface McpEnvelopeJson {
   readonly ok: boolean;
@@ -118,17 +71,10 @@ export interface McpEnvelopeJson {
   };
 }
 
-// --------------------------------------------------------------------------
-// Register the four `ingest` tools on the shared registry under the `ingest`
-// toolset key. Idempotency caveat: `McpServer.registerTool` rejects duplicate
-// keys — calling this twice in the same process throws.
-// --------------------------------------------------------------------------
-
 export function registerIngestToolset(deps: IngestToolsetDeps): void {
   const { mcp, pool, logger, catalog } = deps;
   const now = deps.now ?? (() => new Date());
 
-  // ----- propose_fragment (UC-08) -----
   mcp.registerTool("ingest", {
     name: "propose_fragment",
     description: IngestToolDescriptions.propose_fragment,
@@ -153,7 +99,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- propose_node (UC-09) -----
   mcp.registerTool("ingest", {
     name: "propose_node",
     description: IngestToolDescriptions.propose_node,
@@ -179,7 +124,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- propose_link (UC-10) -----
   mcp.registerTool("ingest", {
     name: "propose_link",
     description: IngestToolDescriptions.propose_link,
@@ -206,7 +150,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- propose_attribute (UC-11) -----
   mcp.registerTool("ingest", {
     name: "propose_attribute",
     description: IngestToolDescriptions.propose_attribute,
@@ -233,12 +176,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- ingest_document (TC-MCI-002) — one-shot, run-creating ingestion -----
-  // Distinct from the four `propose_*` writers: this tool CREATES the run and
-  // drives server-side extraction, so it takes no `llm_run_id`. A Zod failure
-  // happens before any run exists, so there is no `tool_call` row to audit
-  // against — we return VALIDATION_INVALID_FORMAT directly (the orchestrator
-  // it triggers writes its own per-proposal audit rows).
   mcp.registerTool("ingest", {
     name: "ingest_document",
     description: IngestToolDescriptions.ingest_document,
@@ -266,6 +203,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
         catalog,
         anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
         ingestModel: deps.env.INGEST_MODEL,
+        contextModel: deps.env.CONTEXT_MODEL,
         now,
         ...(deps.anthropicFactory !== undefined
           ? { anthropicFactory: deps.anthropicFactory }
@@ -274,11 +212,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- ingest_directed (BR-34) — deterministic, NO-LLM sibling of ingest_document -----
-  // Always registered (no rollout flag): the directed path never calls
-  // Anthropic and re-uses the same validated `propose_*` pipeline as the four
-  // proposal writers, so there is no extraction cost or model risk to gate.
-  // Replaces the retired `start_async_ingestion` tool (TC-03 / BR-34).
   mcp.registerTool("ingest", {
     name: "ingest_directed",
     description: IngestToolDescriptions.ingest_directed,
@@ -287,16 +220,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
       rawInput: unknown,
       invocation_context?: Record<string, unknown>
     ): Promise<McpEnvelopeJson> => {
-      // The handler owns its own Zod parse (BR-34, TC-03) — no second parse
-      // here. A parse failure surfaces as the directed handler's own inline
-      // envelope (still STRUCTURAL_INVALID pending TC-05 migration); the run is
-      // never opened so there is no `tool_call` row to audit against.
-      //
-      // TC-02 / BR-34 (Path 1): `invocation_context` is the transport-neutral
-      // 2nd-arg seam — present when the chat-agent dispatch invoked the tool
-      // (carries `source_excerpt` + the `{conversation_id, message_id}`
-      // pointer); absent on REST / MCP-direct (handler treats those fields
-      // as `null`). Forwarded structurally; the handler validates shape.
       return await ingestDirectedHandler(
         rawInput,
         {
@@ -312,10 +235,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- health — liveness + DB ping (read-only, no args) -----
-  // Always succeeds at the MCP level: a DB failure surfaces inside `result`
-  // (`{ ok: false, database: "unreachable" }`) rather than as an error
-  // envelope, so the caller can always tell the BFF is answering.
   mcp.registerTool("ingest", {
     name: "health",
     description: IngestToolDescriptions.health,
@@ -326,7 +245,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- get_ingestion_status — poll one run by id (read-only) -----
   mcp.registerTool("ingest", {
     name: "get_ingestion_status",
     description: IngestToolDescriptions.get_ingestion_status,
@@ -344,7 +262,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- list_recent_ingestions — discover a run after a timeout (read-only) -----
   mcp.registerTool("ingest", {
     name: "list_recent_ingestions",
     description: IngestToolDescriptions.list_recent_ingestions,
@@ -384,14 +301,6 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   );
 }
 
-// --------------------------------------------------------------------------
-// Error mapping for the three operational tools above. The error mapper handles
-// the ingestion-domain `ResourceNotFoundError` (the KG mapper recognises a
-// DIFFERENT class) plus Zod / pg-unavailable / unknown terminals. The
-// `withReadOnly` wrapper is imported from `shared/pg-transaction.ts` (single
-// source for every module).
-// --------------------------------------------------------------------------
-
 function mapReadError(err: unknown): McpEnvelopeJson {
   if (err instanceof ZodError) {
     return {
@@ -422,7 +331,6 @@ function mapReadError(err: unknown): McpEnvelopeJson {
   return internalError().envelope;
 }
 
-
 function extractLlmRunIdFromRaw(rawInput: unknown): string {
   if (typeof rawInput !== "object" || rawInput === null) return "";
   const candidate = (rawInput as { llm_run_id?: unknown }).llm_run_id;
@@ -437,9 +345,6 @@ async function runZodFailureAudit(
   toolName: IngestToolName
 ): Promise<McpEnvelopeJson> {
   const llmRunId = extractLlmRunIdFromRaw(rawInput);
-  // The handler-shell takes the audit row's `arguments` from the `input`
-  // payload it receives. We forward the raw (untyped) input verbatim so the
-  // tool_call row records exactly what the LLM sent.
   return (await runIngestHandler({
     deps: { pool, logger, llm_run_id: llmRunId },
     tool_name: toolName,

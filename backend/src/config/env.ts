@@ -1,37 +1,13 @@
-// Loads and validates BFF environment variables.
-//
-// TC-01 acceptance criterion: missing required env vars must crash startup
-// with a clear, actionable message. Validation runs once at process start
-// (called from `server.ts`) and the parsed result is exported as a frozen
-// singleton — never re-read at runtime, never mutated.
-//
-// References:
-//   CLAUDE.md "Security": secrets never hardcoded, never logged.
-//   ingestion.back.md §1: pino, pg pool min=2/max=10, statement timeout 10 s.
-//   knowledge-graph.back.md §1: JWKS cached in-process for 10 min.
-
 import { z } from "zod";
 
-/**
- * Schema for the BFF process environment.
- *
- * Required vars are explicit; optional ones carry safe defaults. We never
- * fall back silently on a required secret — missing one is a fatal config
- * error and the process must refuse to start.
- */
+export const DEFAULT_CONTEXT_MODEL = "claude-haiku-4-5";
+
 const envSchema = z.object({
-  // HTTP / runtime
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
-  // Browser origins allowed to call the BFF (CORS). The SPA runs on a different
-  // origin than the BFF (Vite dev on :5173 vs Fastify on :3000), so without
-  // this the browser blocks every cross-origin fetch at the preflight. Comma-
-  // separated list; each entry is matched exactly and echoed back in
-  // `Access-Control-Allow-Origin`. Default covers the Vite dev server on both
-  // localhost and 127.0.0.1; set the real SPA origin(s) in production.
   CORS_ORIGINS: z
     .string()
     .default("http://localhost:5173,http://127.0.0.1:5173")
@@ -42,7 +18,6 @@ const envSchema = z.object({
         .filter(Boolean)
     ),
 
-  // PostgreSQL (Neon — managed Postgres)
   DATABASE_URL: z
     .string()
     .min(1, "DATABASE_URL is required (Neon connection string).")
@@ -54,7 +29,6 @@ const envSchema = z.object({
   PG_POOL_MAX: z.coerce.number().int().min(1).default(10),
   PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(10_000),
 
-  // Neon Auth (Stack Auth) — JWT access tokens verified via JWKS.
   NEON_AUTH_URL: z
     .string()
     .min(
@@ -64,167 +38,59 @@ const envSchema = z.object({
     .refine((v) => /^https?:\/\//.test(v), "NEON_AUTH_URL must be a URL."),
   NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
 
-  // DEV-ONLY local operator token — convenience auth for local MCP clients
-  // (e.g. Claude Desktop via `mcp-remote`) that cannot run the Neon Auth OAuth
-  // flow. When set AND `NODE_ENV=development`, a request carrying
-  // `Authorization: Bearer <LOCAL_OPERATOR_TOKEN>` is accepted as the single
-  // owner WITHOUT JWKS verification (see middleware/auth.ts).
-  // Optional: absent => disabled.
   LOCAL_OPERATOR_TOKEN: z
     .string()
     .min(16, "LOCAL_OPERATOR_TOKEN must be at least 16 characters.")
     .optional(),
 
-  // Anthropic SDK (BR-29). The orchestrator (TC-12 / BR-26) is the sole LLM
-  // caller of the BFF. The value never appears in logs, responses, or stack traces.
   ANTHROPIC_API_KEY: z
     .string()
     .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),
 
-  // INGEST_MODEL: default Anthropic model for SERVER-SIDE extraction — the
-  //   `ingest_document` one-shot when the caller omits `model`. Cost-optimized
-  //   to Sonnet 4.6: extraction is structured tool-calling steered by the closed
-  //   catalog, so it rarely needs Opus-tier reasoning (Opus 4.8 was the original
-  //   functional-E2E-validated model). Flip back to `claude-opus-4-8` here with
-  //   no recompile if extraction quality regresses. The REST
-  //   `/ingest/raw-information` path takes `model` per request and is unaffected.
   INGEST_MODEL: z.string().min(1).default("claude-sonnet-4-6"),
 
-  // Chat surface (modules/chat). All sanity ceilings, not hard product limits;
-  // defaults match chat.back.md §8. All optional — missing values fall back to
-  // the defaults below so a deployment can boot without chat-specific config.
-  //
-  // CHAT_ENABLED: kill-switch (BR-14). When `false`, the chat route short-
-  //   circuits with 503 BUSINESS_CHAT_DISABLED before the SSE is opened.
+  CONTEXT_MODEL: z.string().min(1).default(DEFAULT_CONTEXT_MODEL),
+
   CHAT_ENABLED: z
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(true),
-  // CHAT_MODEL: default Anthropic model id (per-request `model` field overrides).
   CHAT_MODEL: z.string().min(1).default("claude-opus-4-8"),
-  // CHAT_UTILITY_MODEL: Anthropic model for the distillation jobs — rolling
-  //   summary (BR-33) + title (BR-34). Smaller / cheaper than the turn model.
-  //   chat.back.md v2.0.0 §8. NEW in TC-02.
   CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5"),
-  // CHAT_PROMPT_VERSION: prompt module version (BR-18). Unknown value is a boot
-  //   error — see modules/chat/prompts/index.ts (UnknownChatPromptVersionError).
-  //   v2.5 (TC-01): default bumped from `v2` → `v3`. The `v3` module is
-  //   ontology-aware — it renders the boot-time `CatalogSnapshot` into the
-  //   system prompt (block 4A) AND adds search-discipline (4B) + post-
-  //   ingestion playbook (4C) directives. `v1` and `v2` continue to resolve
-  //   verbatim for backward-compatibility (they ignore the catalog argument
-  //   of the widened `system(catalog)` signature). v2.4 (TC-02): default
-  //   bumped from `v1` → `v2` (ingestion directives now part of v3). v2.8
-  //   (TC-005): default bumped from `v3` → `v4` — v4 preserves blocks 4A/4B
-  //   verbatim from v3 and REPLACES block 4C with the directed-ingestion
-  //   playbook (BR-18 v4). `v3` / `v2` / `v1` continue to resolve.
   CHAT_PROMPT_VERSION: z.string().min(1).default("v4"),
-  // CHAT_INGEST_ENABLED: feature flag gating the v2.4 async-ingestion capability
-  //   on chat (BR-44). Boot-time only — toggling requires a BFF restart; the
-  //   chat tool catalog is resolved lazily on the first request and cached for
-  //   the process lifetime (BR-05 v2.4). When `true`, the catalog includes
-  //   `start_async_ingestion` + `get_ingestion_status` (15 tools total);
-  //   when `false`, the catalog is the v2.0 13-tool read-only set. Independent
-  //   of `CHAT_ENABLED` (BR-14): the kill-switch still wins. Default `false`
-  //   (BR-44). NEW in TC-02.
   CHAT_INGEST_ENABLED: z
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(false),
-  // MAX_HISTORY_MESSAGES: legacy stateless-v1 upper bound on `messages.length`
-  //   (BR-01 v1). In v2.0 it is functionally superseded by MAX_CONTENT_LENGTH
-  //   (the request body now carries ONE `content` string; history is server-
-  //   reconstructed via context-builder). Kept here for backward compatibility
-  //   so existing deployments do not break on boot; safe to remove in a
-  //   follow-up cleanup. See delivery `spec_divergences`.
   MAX_HISTORY_MESSAGES: z.coerce.number().int().min(1).default(40),
-  // MAX_CONTENT_LENGTH: upper bound on `sendMessage.content` length (BR-01
-  //   v2.0). chat.back.md v2.0.0 §8. NEW in TC-02.
   MAX_CONTENT_LENGTH: z.coerce.number().int().min(1).default(32_768),
-  // MAX_ITERATIONS: upper bound on agentic-loop iterations (BR-15).
   MAX_ITERATIONS: z.coerce.number().int().min(1).default(8),
-  // TURN_TIMEOUT_MS: per-turn wall-clock budget (BR-16).
   TURN_TIMEOUT_MS: z.coerce.number().int().min(1).default(90_000),
-  // TOOL_TIMEOUT_MS: per-tool-call wall-clock budget (BR-17).
   TOOL_TIMEOUT_MS: z.coerce.number().int().min(1).default(15_000),
-  // TOOL_RESULT_MAX_CHARS: truncation ceiling for tool results fed back to the
-  //   model (BR-13). Unicode code points, not bytes.
   TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000),
-  // CHAT_RECENT_WINDOW: number of recent REAL TURNS used by context-builder
-  //   (BR-31). v2.9 (chat-context-fidelity TC-01): UNIT SHIFT — was "K message
-  //   rows" (default 10), now "K real turns" (default 6). A real turn is one
-  //   user `chat_message` row with `idempotency_key IS NOT NULL`; the
-  //   context-builder reads via `listRecentRealTurns` and includes ALL
-  //   scaffolding rows (intermediate `assistant[tool_use]` rows, synthetic
-  //   `user[tool_result]` rows, terminal assistant rows) of each selected
-  //   turn. Older real turns are absorbed into `summary_rolling` (BR-33). The
-  //   chat module emits an INFO boot log `chat.recent_window_resolved
-  //   { turns: K }` at process start to make the unit shift explicit
-  //   (BR-31 v2.9; chat.back.md §12).
   CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6),
-  // CHAT_SUMMARY_AFTER_TURNS: DEPRECATED v2.9 — kept in the schema for
-  //   back-compat boot. Up to v2.8 this was the turn-count gate for BR-33
-  //   (refresh fires when the count of natural-language user turns exceeds
-  //   this threshold). In chat-context-fidelity TC-02 the gate becomes
-  //   refresh-on-overflow (any real turn older than the recent window not yet
-  //   absorbed; BR-33 v2.9 step 1) and this env's VALUE is IGNORED at runtime.
-  //   When set on a deployment, the route registrar emits a one-shot INFO
-  //   `chat.deprecated_env { name: 'CHAT_SUMMARY_AFTER_TURNS', reason:
-  //   'retired_as_gate_v2_9' }` at boot so operators see the change.
   CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),
-  // CHAT_SUMMARY_OVERLAP_M: hard cap on the number of `chat_message` rows the
-  //   rolling-summary fold pulls into the `bounded_overlap_slice` per refresh
-  //   (BR-33 v2.9 step 2 / BR-46). The slice is cut on REAL-turn boundaries —
-  //   if the cap would land mid-turn, the slicer shrinks the start forward to
-  //   the nearest anchor row so the slice always begins on a real-turn anchor
-  //   (Anthropic-valid sequence). Bounded slice keeps per-refresh cost
-  //   constant regardless of conversation length. NEW v2.9 (TC-02).
   CHAT_SUMMARY_OVERLAP_M: z.coerce.number().int().min(1).default(40),
-  // CHAT_SUMMARY_PROMPT_VERSION: chat summary prompt module version (BR-46).
-  //   `v2` is the incremental fold (NEW v2.9, default); `v1` is the legacy
-  //   single-input summariser of v2.0 (registered for back-compat tests; NOT
-  //   reachable via BR-33 v2.9). Unknown values -> boot fails
-  //   (`UnknownChatSummaryPromptVersionError` raised by
-  //   `prompts/chat-summary/index.ts`). NEW v2.9 (TC-02).
   CHAT_SUMMARY_PROMPT_VERSION: z.string().min(1).default("v2"),
-  // CHAT_TITLE_ENABLED: when `false`, the title-distillation job (BR-34) is
-  //   skipped. chat.back.md v2.0.0 §8. NEW in TC-02.
   CHAT_TITLE_ENABLED: z
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(true),
-  // CHAT_SUMMARY_ENABLED: when `false`, the rolling-summary job (BR-33) is
-  //   skipped — `summary_rolling` stays NULL permanently. chat.back.md v2.0.0
-  //   §8. NEW in TC-02.
   CHAT_SUMMARY_ENABLED: z
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(true),
-  // OWNER_TZ: owner's local IANA timezone — used to render the dynamic
-  //   datetime BlockB on every chat turn's `system` array (chat.back.md
-  //   BR-47 v2.9). Single-owner -> a single value applies process-wide.
-  //   `loadEnv` validates the value against the runtime's IANA zone
-  //   database. NEW in v2.9 / TC-03.
   OWNER_TZ: z.string().min(1).default("America/Sao_Paulo"),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
-/**
- * Parse and validate `process.env`. Throws a `ZodError` on failure.
- *
- * The caller (server bootstrap) should catch the error, render a readable
- * report, and exit non-zero. Tests pass an explicit source to avoid touching
- * the real process environment.
- */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new EnvValidationError(parsed.error);
   }
 
-  // Fail-closed guard for the DEV-only auth bypass (see LOCAL_OPERATOR_TOKEN /
-  // middleware/auth.ts).
   if (
     parsed.data.LOCAL_OPERATOR_TOKEN !== undefined &&
     source.NODE_ENV !== "development"
@@ -249,13 +115,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return Object.freeze(parsed.data);
 }
 
-/**
- * Boot-time error for an unknown / unsupported IANA timezone in `OWNER_TZ`.
- * Thrown by `loadEnv` per chat.back.md BR-47 step 4 — the BFF refuses to start
- * with a bad zone rather than blowing up on the first chat turn. Same
- * fail-closed family as `EnvValidationError`; kept distinct so callers (and
- * tests) can pattern-match against the timezone-specific failure.
- */
 export class InvalidOwnerTimezoneError extends Error {
   public readonly timezone: string;
 
@@ -271,12 +130,6 @@ export class InvalidOwnerTimezoneError extends Error {
   }
 }
 
-/**
- * Wraps a Zod error with a human-readable message and a structured field list.
- * The error is intentionally thrown before any logger or DB client is ready,
- * so the message goes to stderr unredacted (still excluding secret VALUES,
- * only their keys are surfaced).
- */
 export class EnvValidationError extends Error {
   public readonly issues: Array<{ path: string; message: string }>;
 

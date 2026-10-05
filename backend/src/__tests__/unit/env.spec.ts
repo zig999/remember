@@ -319,6 +319,20 @@ describe("loadEnv", () => {
   });
 });
 
+describe("loadEnv context model setting", () => {
+  it("yields claude-haiku-4-5 as the context model when none is configured", () => {
+    const env = loadEnv(baseEnv);
+
+    expect(env.CONTEXT_MODEL).toBe("claude-haiku-4-5");
+  });
+
+  it("yields the configured context model when one is configured", () => {
+    const env = loadEnv({ ...baseEnv, CONTEXT_MODEL: "claude-context-test-model" });
+
+    expect(env.CONTEXT_MODEL).toBe("claude-context-test-model");
+  });
+});
+
 function grabError(fn: () => unknown): unknown {
   try {
     fn();

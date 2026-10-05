@@ -1,4 +1,3 @@
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
@@ -46,47 +45,26 @@ import { proposeNodeService } from "../service/propose-node.service.js";
 import type { McpEnvelope } from "../service/propose.types.js";
 import { isValidationFailure } from "../validation/errors.js";
 
-/** Dependencies the route module needs to wire itself. */
 export interface IngestionRouteDeps {
   readonly pool: Pool;
   readonly logger: Logger;
-  /**
-   * Catalog snapshot required by the propose-{node,link,attribute} REST
-   * mirrors (TC-13) and the extraction orchestrator (TC-12). When omitted,
-   * only the propose-fragment mirror (no catalog dependency) is registered
-   * and the runLlmExtraction endpoint is skipped.
-   */
   readonly catalog?: CatalogSnapshot;
-  /**
-   * Clock source for the temporal layer of propose-link / propose-attribute
-   * REST mirrors (TC-13). Defaults to `() => new Date()` when omitted; tests
-   * inject deterministic clocks here.
-   */
   readonly now?: () => Date;
-  /**
-   * Environment fragment carrying the Anthropic API key (BR-29). Required to
-   * mount the `runLlmExtraction` route (TC-12). Same optional reason as `catalog`.
-   */
-  readonly env?: { readonly ANTHROPIC_API_KEY: string };
-  /**
-   * Anthropic factory override — defaults to the real SDK. Tests inject a
-   * stub to drive the orchestrator without hitting the network (TC-12).
-   */
+  readonly env?: {
+    readonly ANTHROPIC_API_KEY: string;
+    readonly CONTEXT_MODEL: string;
+  };
   readonly anthropicFactory?: AnthropicFactory;
 }
 
-/** Schema for the (currently empty) `runLlmExtraction` request body. */
 const RunLlmExtractionRequestSchema = z.object({}).strict().default({});
 
-/** Body limit override for the POST route — 11 MiB per `ingestion.back.md §1`. */
 const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
 
-/** Path parameter Zod schema — UUID v4 (or any UUID format). */
 const RawInformationIdParamSchema = z.object({
   rawInformationId: z.string().uuid(),
 });
 
-/** Path parameter Zod schema for LLMRun endpoints. */
 const LlmRunIdParamSchema = z.object({
   llmRunId: z.string().uuid(),
 });
@@ -99,7 +77,6 @@ export async function registerIngestionRoutes(
     "/raw-information",
     { bodyLimit: POST_INGEST_BODY_LIMIT },
     async (request, reply) => {
-      // Zod parse — failure surfaces as ZodError -> 422 via the global handler.
       const body = IngestRawInformationRequestSchema.parse(request.body);
       const { logger } = deps;
 
@@ -173,7 +150,6 @@ export async function registerIngestionRoutes(
     }
   );
 
-  // --- LLMRun endpoints (UC-04, UC-05, UC-06) ----------------------------
   app.get(
     "/llm-runs/:llmRunId",
     async (request: FastifyRequest, reply: FastifyReply) => {
@@ -229,10 +205,6 @@ export async function registerIngestionRoutes(
     }
   );
 
-  // --- TC-12: synchronous extraction trigger (UC-12 / BR-26) -------------
-  // Mount the run endpoint only when the orchestrator dependencies (catalog
-  // + ANTHROPIC_API_KEY) are present. Tests that exercise the read-only
-  // surface can omit them.
   if (deps.catalog !== undefined && deps.env !== undefined) {
     const orchestratorCatalog = deps.catalog;
     const orchestratorEnv = deps.env;
@@ -241,8 +213,6 @@ export async function registerIngestionRoutes(
       "/llm-runs/:llmRunId/run",
       async (request: FastifyRequest, reply: FastifyReply) => {
         const params = LlmRunIdParamSchema.parse(request.params);
-        // Body is optional in v1 — parse with a strict default so unknown
-        // fields surface as 422.
         RunLlmExtractionRequestSchema.parse(request.body ?? {});
 
         try {
@@ -317,7 +287,6 @@ export async function registerIngestionRoutes(
     "/llm-runs/:llmRunId/retry",
     async (request: FastifyRequest, reply: FastifyReply) => {
       const params = LlmRunIdParamSchema.parse(request.params);
-      // Body is optional; parse with the schema's default to accept empty bodies.
       RetryLlmRunRequestSchema.parse(request.body ?? {});
       const { logger } = deps;
       return await withTransaction(deps.pool, async (client) => {
@@ -361,7 +330,6 @@ export async function registerIngestionRoutes(
       });
     }
   );
-
 
   app.post(
     "/llm-runs/:llmRunId/propose-fragment",
@@ -429,11 +397,6 @@ async function handleProposeMirror<R>(
 ): Promise<FastifyReply> {
   try {
     const envelope = await withTransaction(deps.pool, async (client) => {
-      // BR-21 REST branch: load the run row inside the transaction. This is
-      // also the source of `input_raw_information_id` for the service's
-      // `runCtx` argument (per the task contract's allowed assumption:
-      // "load run row for rawInformationId lookup within the same
-      // transaction as the service call").
       const run = await findLlmRunById(client, llmRunId);
       if (run === null) {
         throw new ResourceNotFoundError("llm_run", llmRunId);
@@ -447,9 +410,6 @@ async function handleProposeMirror<R>(
           rawInformationId: run.input_raw_information_id,
         });
       } catch (err) {
-        // Map the typed sentinel to the MCP error envelope verbatim and
-        // throw a transient marker so `withTransaction` rolls back any
-        // partial writes (BR-13). The outer catch unwraps it.
         if (isValidationFailure(err)) {
           throw new ProposeMirrorEnvelopeReject({
             ok: false,
@@ -495,12 +455,6 @@ async function handleProposeMirror<R>(
   }
 }
 
-/**
- * Carry an MCP error envelope back through the `withTransaction` ROLLBACK
- * path. We throw this from the inner closure so the transaction rolls back
- * cleanly; the outer `.catch` unwraps it and returns the envelope verbatim
- * to the route handler.
- */
 class ProposeMirrorEnvelopeReject extends Error {
   public readonly envelope: McpEnvelope<unknown>;
   constructor(envelope: McpEnvelope<unknown>) {
@@ -509,4 +463,3 @@ class ProposeMirrorEnvelopeReject extends Error {
     this.envelope = envelope;
   }
 }
-
