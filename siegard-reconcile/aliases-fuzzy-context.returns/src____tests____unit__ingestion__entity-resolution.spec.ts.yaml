@@ -1,0 +1,392 @@
+findings:
+  - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+    where: >-
+      the "TC-10 — thresholds (BR-25)" test, line 181-184
+    evidence: |-
+      it("exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55", () => {
+          expect(MATCH_STRONG).toBe(0.85);
+    cost: >-
+      The 0.85 strong-candidate value is written as a literal expectation in a test that no node is bound
+      to. strong-candidate-resolves holds it and is bound only to entity-resolution.service.ts. When the
+      node moves, `--check` never reaches this file. The test then fails on a literal nobody owns, and
+      the next reader cannot tell whether the test or the specification holds the decision.
+    kind: contradicts
+    correction: >-
+      Bind this file to rules/knowledge-base/strong-candidate-resolves so a change to the node reaches
+      it. The literal cannot read the node.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+    where: >-
+      the same "TC-10 — thresholds (BR-25)" test, line 181-184, and the candidate sims used throughout
+      (0.9, 0.6, 0.4, 0.3)
+    evidence: |-
+      expect(MATCH_FLOOR).toBe(0.55);
+    cost: >-
+      The 0.55 floor, below which a proposal creates an active node and at or above which it needs
+      review, is restated here as an authority. no-candidate-creates-active-node holds it (and
+      ambiguous-candidates-need-review reuses it) and is bound to entity-resolution.service.ts only. The
+      test's candidate similarities (0.6, 0.4) are chosen around the same value, so a change to the node
+      would be tracked by neither the bind nor `--check`.
+    kind: contradicts
+    correction: >-
+      Bind this file to rules/knowledge-base/no-candidate-creates-active-node and
+      rules/knowledge-base/ambiguous-candidates-need-review.
+    node: rules/knowledge-base/no-candidate-creates-active-node
+  - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+    where: >-
+      the header comment, lines 12-16
+    evidence: |-
+      //   - entity_match_review row count = candidates with sim >= MATCH_FLOOR
+      //   - aliases attempted via INSERT ... ON CONFLICT DO NOTHING
+      //   - thresholds (MATCH_STRONG = 0.85, MATCH_FLOOR = 0.55) live in the
+      //     entity-resolution module only.
+    cost: >-
+      A comment restates the strong and floor thresholds, and it says the review row count equals every
+      candidate at or above the floor. ambiguous-candidates-need-review limits the review to "the ten
+      such nodes most similar", so the prose is a second home that is narrower than the node. The
+      thresholds are also held in code (the service, and the literals in this test), so removing the
+      comment loses no behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The route is the comment route, then a reconcile over this file.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a unit spec for resolveOrCreateNode and proposeNodeService and builds no prompt:
+      `describe("TC-10 — resolveOrCreateNode pipeline branches", () => {`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No model call is made or bounded: `query: async (...args: unknown[]) => {` is a stub pg client.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts only the resolution field of the propose-node answer, as
+      `expect(envelope.result.resolution).toBe("needs_review");`. It declares no operation, refusal or
+      answer shape.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file touches no search or read operation: `import { proposeNodeService } from "../../../modules/ingestion/service/propose-node.service.js";`
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No enumeration of flags is declared; the imports are catalog, entity-resolution and
+      propose-node only.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context shape is declared; `const runCtx = { llmRunId: RUN_ID, rawInformationId: RAW_INFO_ID };`
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a document context status: `interface StubState {` declares only opLog,
+      lockArg, insertedNode, matchReviewRows and aliasRows.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document entity shape is declared; the only types declared are StubConfig and StubState.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries a run identity as a value: `const RUN_ID = "44444444-4444-4444-4444-444444444444";`
+      It declares no LLMRun shape.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search match enumeration; it is about entity resolution, not the search node layer.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item shape is declared in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The stub admits every alias unconditionally and nothing in the file tests the source rule:
+      `rows: proposed.map((alias) => ({ alias, admitted: true, is_name: false })),`
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns entity-resolution candidates, not search items: `trigramCandidates?: ReadonlyArray<{ node_id: string; sim: number }>;`
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search strength is computed in the file; `sim` is only a stub column for entity-resolution candidates.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog is built only with the Person type: `nodeTypes: [{ id: NODE_TYPE_PERSON_ID, name: "Person" }],`
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context model is configured or named in the file.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction or preliminary reading is exercised in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status is read or written in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status is read or written in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context summary appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context summary appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      the branch 1 test, lines 247-271. It stubs an exact alias row and asserts the outcome; it exercises the rule and does not implement it.
+    evidence: |-
+      { exactMatch: [{ node_id: EXISTING_NODE_A }] }
+      expect(out.node_id).toBe(EXISTING_NODE_A);
+      expect(out.resolution).toBe("matched_existing");
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search items; the only `sim` is the stub's entity-resolution candidate column.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No graph expansion appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file proposes nodes only and no fragments: `{ node_type: "Person", name: "Ada L." },`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is read in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search layer weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search items appear in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      the branch 1 test, lines 267-270. It asserts that only the proposed alias is inserted on the matched node and not the proposed name; it exercises the rule and does not implement it.
+    evidence: |-
+      // LLM-supplied alias was attempted (canonical not re-inserted on match).
+      expect(state.aliasRows).toEqual([
+        { node_id: EXISTING_NODE_A, alias: "Augusta Ada King", kind: "alias", run_id: RUN_ID },
+      ]);
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The stub only lower-cases the lock key and never applies a normalization policy:
+      `rows: [{ key: `${params[0]}\x1F${String(params[1]).toLowerCase()}` }],`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      the branch 3 and branch 4 tests, lines 335-339 and 425-428. They assert the canonical alias and each supplied alias on a new node; they exercise the rule and do not implement it.
+    evidence: |-
+      expect(state.aliasRows).toEqual([
+        { node_id: newId, alias: "Brand New Person", kind: "canonical", run_id: RUN_ID },
+        { node_id: newId, alias: "B. N. P.", kind: "alias", run_id: RUN_ID },
+      ]);
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search items appear in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The trigram stub serves entity resolution (`sql.includes("alias_norm % norm(")`), not the search node layer, and the 0.6 and 5-character figures do not appear.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search node layer appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prose matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no word similarity; the stub only emulates the service's `::text` cast of `sim`: `sim: String(c.sim),`
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No raw information content or "CNPq" appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No acronym alias scenario appears in the file. Its exact-alias fixture is the generic `exactMatch: [{ node_id: EXISTING_NODE_A }]`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The stub never refuses an alias: `({ alias, admitted: true, is_name: false })`
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk or document context appears in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk or document context appears in the file.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The header's BR-25, BR-20, A12 and TC-10 citations, and the test's pinning of the advisory-lock key shape (`expect(state.lockArg).toContain("\x1F")`), are another judgment's, since a test's rationale and a lock mechanism are not domain facts a node here holds.
+candidates_opened:
+  - rules/knowledge-base/strong-candidate-resolves
+  - rules/knowledge-base/no-candidate-creates-active-node
+  - rules/knowledge-base/ambiguous-candidates-need-review
+  - rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - rules/knowledge-base/candidate-similarity

@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: names hoje, ontem and amanhã as relative-date words in the v4 and v5 system prompts
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: holds exactly the prompt versions v1 to v5, each resolving to a module of its own version
+    why: >-
+      The words are checked only in the v4 and v5 system prompts. The test gets those two
+      versions from VERSIONS_FROM_V4, a hand-written list (["v4", "v5"]). It does not work the
+      list out from the versions the system actually holds. So the "and later" part of the fact
+      is not checked by the relative-date test itself. If someone added a v6 whose system prompt
+      left out hoje, ontem or amanhã, that test would still pass.
+
+      Today a v6 would be caught only by accident. The test "holds exactly the prompt versions v1
+      to v5" would fail, but because the set of versions changed, not because the words are
+      missing. Updating HELD_VERSIONS to make that test pass again leaves VERSIONS_FROM_V4 as it
+      was, and the gap stays open.
+
+      The regex also checks more than the fact states. It needs "relative date" to come before
+      the three words and the words to appear in the order hoje, ontem, amanhã, within fixed
+      character windows. A v4 or v5 prompt that names all three words in another order or
+      layout would fail the test, though the fact would still hold.
+    remainder: testable
+    remainder_why: >-
+      Take every prompt version the registry holds and keep the ones at v4 or later, working the
+      list out from the registry instead of writing it by hand. For each one, check that the
+      system prompt names hoje, ontem and amanhã as relative-date words. Adding a later version
+      without them should then make this test fail.

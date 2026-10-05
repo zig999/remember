@@ -1,0 +1,318 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never builds a prompt. It stubs the model as `messages: { stream: (): ExtractionMessageStream => ({ finalMessage: async () => END_TURN_MESSAGE }) }` and presents no document content marked as data.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `endTurnClient()` answers at once, and no timeout or retry count appears in the file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls the service function directly, `runLlmExtraction(buildPool(state), RUN_ID, ...)`. It declares no operation, answer or refusal of the contract.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or read operation appears. The only call is `runLlmExtraction(...)`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `uncertain`, `disputed` or `low-confidence` value is declared or used.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document context shape. `runRow` carries no `document_context` column, only `idempotency_key: "a".repeat(64)`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no status enumeration. `runRow` carries no `document_context_status`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no entity shape. The catalog fixture is only `nodeTypes: [{ id: NODE_TYPE_PERSON, name: "Person" }]`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `runRow(status)` is a plain `Row` record, `Record<string, unknown>`, built as `{ id: RUN_ID, model: "claude-opus-4-8", prompt_version: PROMPT_VERSION_UNDER_TEST, ... }`. It is a test row, not a declaration of the aggregate's shape.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `exact` or `approximate` match value appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes one value along, `const PROMPT_VERSION_UNDER_TEST = "v5";`. It declares no enumeration of versions.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item or its attributes appear in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub returns only `content: [{ type: "text", text: "done", citations: null }]`. No node proposal or alias is made.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no similarity computation or search.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no similarity computation or search.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file always names the version, `prompt_version: PROMPT_VERSION_UNDER_TEST`. It never exercises a default.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and keeps no entity list.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file configures no context model. `{ env: { ANTHROPIC_API_KEY: "sk-ant-test" }, anthropicFactory: () => endTurnClient() }` is the only environment.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw information has one chunk and the stub answers every call alike, `finalMessage: async () => END_TURN_MESSAGE`. No preliminary reading is exercised or asserted.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never presets a document context or asserts a status. The only assertion is `expect(result.status).toBe("completed");`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture holds one chunk, `answer` returns `{ rows: [CHUNK_ROW], rowCount: 1 }`, but the file asserts no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is produced or asserted in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is produced or asserted in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias lookup is made in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search is made in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No graph expansion is made in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `CHUNK_ROW` is read, but the stub proposes no fragment. The only assertion is `expect(result.status).toBe("completed");`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt. `stream: (): ExtractionMessageStream => ({ finalMessage: ... })` takes no argument.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect any prompt, and it runs only v5.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt, because the `stream` stub ignores its argument.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt, because the `stream` stub ignores its argument.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file serves one chunk, `if (sql.includes("FROM raw_chunk") && sql.includes("ORDER BY chunk_index"))`, and does not assert the order or what is shown to the model.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the prompt. The metadata `{ document_date: "2026-06-11", title: "Test doc" }` is only a fixture.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading is made, and the stub never fails.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No scoring appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name comparison appears in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is created in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs only v5, `const PROMPT_VERSION_UNDER_TEST = "v5";`. It exercises no earlier version.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      the test at lines 124-142. The run is fixed at v5 through `prompt_version: PROMPT_VERSION_UNDER_TEST` and the test asserts the outcome. It exercises the rule; it does not implement it.
+    evidence: >-
+      `it("completes an extraction run whose prompt version is v5 instead of failing it as an unknown prompt version", ...)` ending in `expect(result.status).toBe("completed");`
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No full-text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is exercised. `runRow` carries `attempts: 1` and the test makes one extraction call.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No trigram similarity appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias and no node proposal. The chunk text is `"First chunk text — talks about Alice and Bob."`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias and no node proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias and no node proposal.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw information has one chunk, `answer` returns `{ rows: [CHUNK_ROW], rowCount: 1 }`, so there is no later chunk and no context.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The stub never fails and there is only one chunk.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading is made, because the raw information has one chunk.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry or document context appears. The only run row is `runRow(status)` with `attempts: 1`.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file serves a single chunk, `{ rows: [CHUNK_ROW], rowCount: 1 }`, but it asserts neither the absence of a preliminary reading nor the status `single-chunk`. Its one assertion is `expect(result.status).toBe("completed");`.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The fixtures use literal values that other nodes govern, namely source type "text", run statuses "running" and "completed", chunking version "v1", the model "claude-opus-4-8" and the key "sk-ant-test". They are test data, not rules the file states, so I reported nothing against them.

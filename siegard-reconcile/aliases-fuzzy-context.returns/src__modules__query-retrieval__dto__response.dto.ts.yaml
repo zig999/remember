@@ -1,0 +1,390 @@
+findings:
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      interface SearchItem, line 44 (the `id` field)
+    evidence: >-
+      export interface SearchItem { readonly kind: SearchKind; readonly layer: SearchLayer; readonly id: string; readonly score: number;
+    cost: >-
+      A search item's identity is a shape the code declares and the search-item node never lists among its attributes (kind, layer, score, hop, summary, flags, match, similarity). The next reader of search-item will not find that every item carries the identity of the node, link or fragment it stands for, and will find it only here.
+    kind: unstated
+    correction: >-
+      The search-item node should hold the identity the item carries, or the analysis should decide it is not part of the item's shape.
+    node: domain/knowledge-base/search-item
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      interface SearchResponse, lines 55, 57 and 58 (the `query`, `limit` and `offset` fields)
+    evidence: >-
+      export interface SearchResponse { readonly query: string; readonly total: number; readonly limit: number; readonly offset: number; readonly items: readonly SearchItem[]; }
+    cost: >-
+      The retrieval contract's search answer is "the page of ranked search items ... and the total before pagination". It does not say the answer echoes the query text or carries the page's limit and offset (the contract does say so for list-nodes and list-tool-calls). The code states what a search answer carries, and the next reader looks in the contract and finds neither the echoed query nor the window.
+    kind: unstated
+    correction: >-
+      The accepted answer of the search operation in the retrieval contract should name what it carries beyond the items and the total, or the analysis should decide the answer carries only those.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      interface ProvenanceFragment, line 84 (the `status` field)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The fragment-status enumeration, which types the information fragment's status, holds five values: proposed, accepted, rejected, superseded and deleted. The code declares four and omits superseded. A provenance read that reaches a superseded fragment has no declared status to carry it, and the narrower set is stated only in this file.
+    kind: contradicts
+    correction: >-
+      The declared status values should agree with the fragment-status enumeration, or the specification should state why a provenance fragment never carries superseded.
+    node: domain/knowledge-base/fragment-status
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      interface ProvenanceFragment, lines 80-86, which declares the fragment's text, confidence and status. The status union is in conflict with fragment-status (see the finding).
+    evidence: >-
+      export interface ProvenanceFragment { readonly id: string; readonly text: string; readonly confidence: number; readonly status: "accepted" | "proposed" | "rejected" | "deleted"; readonly chunks: readonly ProvenanceChunk[]; }
+  - node: domain/knowledge-base/item-kind
+    held_at: >-
+      type SearchKind, line 3
+    evidence: >-
+      export type SearchKind = "node" | "link" | "fragment";
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      type NodeMatch, line 6
+    evidence: >-
+      export type NodeMatch = "exact" | "approximate";
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of SearchResponse, lines 57-58. The file declares no separate page shape.
+    evidence: >-
+      readonly limit: number; readonly offset: number;
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      interface SearchProvenanceEntry, lines 31-39, which declares the fragment each provenance entry points at and the raw information shown with it. It does not declare recorded_at; the retrieval contract's provenance entries do not list it either.
+    evidence: >-
+      export interface SearchProvenanceEntry { readonly fragment_id: string; readonly fragment_text: string; readonly confidence: number; readonly raw_information_id: string; readonly source_type: SourceType; readonly received_at: string; readonly excerpt: string; }
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      interface SearchItem, lines 41-52, which declares kind, layer, score, hop, summary, flags, match, similarity and provenance. It also declares `id`, which the node does not hold (see the finding).
+    evidence: >-
+      export interface SearchItem { readonly kind: SearchKind; readonly layer: SearchLayer; readonly id: string; readonly score: number; readonly hop: number; readonly summary: string; readonly flags: readonly AssertionFlag[]; readonly match?: NodeMatch; readonly similarity?: number; readonly provenance: readonly SearchProvenanceEntry[]; }
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      type SearchLayer, line 4
+    evidence: >-
+      export type SearchLayer = "fragment" | "node" | "chunk";
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      type SourceType, lines 7-14, and the SOURCE_TYPES set, lines 16-24. They use the material's own words ata, artigo, transcricao and outro that the node names.
+    evidence: >-
+      export type SourceType = | "pdf" | "email" | "ata" | "chat" | "artigo" | "transcricao" | "outro";
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      nowhere. The file only declares the `total` field beside the page window. Counting before the cut is not done in this file.
+    evidence: >-
+      readonly total: number;
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only response types for search and provenance; no construct concerns an extraction prompt, for example `export interface SearchResponse {`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only response types; no construct calls a language model, for example `export function toSourceType(s: string): SourceType {`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only search and provenance response types; no construct concerns an ingestion operation, for example `export interface ProvenanceResponse { readonly fragments: readonly ProvenanceFragment[]; }`
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      SearchResponse, SearchItem and SearchProvenanceEntry (lines 31-60) for the search answer, and ProvenanceResponse, ProvenanceFragment, ProvenanceChunk and ProvenanceRawInformation (lines 62-90) for the provenance reads. SearchResponse also carries `query`, `limit` and `offset`, which the contract does not state (see the finding).
+    evidence: >-
+      export interface ProvenanceChunk { readonly id: string; readonly chunk_index: number; readonly offset_start: number; readonly offset_end: number; readonly excerpt: string; readonly locator: Record<string, unknown> | null; readonly raw_information: ProvenanceRawInformation; }
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      type AssertionFlag, line 5, which spells the third value low_confidence
+    evidence: >-
+      export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      no document context shape appears; the file declares `export interface SearchResponse {` and the provenance types only
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no document context status, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no document entity shape appears in `export interface ProvenanceRawInformation {`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no run shape; the provenance types hold `readonly chunks: readonly ProvenanceChunk[];` only
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file, for example `export type SearchLayer = "fragment" | "node" | "chunk";`
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias, for example `export function toSourceType(s: string): SourceType {`
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere. The file declares only that an item may carry a similarity, not its value.
+    evidence: >-
+      readonly similarity?: number;
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no strength; `readonly score: number;` is a declared field only
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no document context, for example `export interface ProvenanceResponse {`
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no model, for example `export type SearchKind = "node" | "link" | "fragment";`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no document, for example `export function toSourceType(s: string): SourceType {`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no run state, for example `export interface ProvenanceFragment {`
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no status of a run, for example `export interface SearchProvenanceEntry {`
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no summary; `readonly summary: string;` is a declared field only
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file counts no lines; `readonly summary: string;` is a declared field only
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no proposal, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere. The similarity is optional in the type, and no construct decides when it is absent.
+    evidence: >-
+      readonly match?: NodeMatch; readonly similarity?: number;
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no score; `readonly hop: number;` is a declared field only
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file anchors no fragment, for example `readonly chunks: readonly ProvenanceChunk[];`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no chunks in order; `readonly chunk_index: number;` is a declared field only
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no date; `readonly received_at: string;` is a declared field only
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no document, for example `export function toSourceType(s: string): SourceType {`
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file weights no layer; `readonly layer: SearchLayer;` is a declared field only
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere. The file leaves match and similarity optional on every kind of item, and no construct decides which kinds carry them.
+    evidence: >-
+      readonly match?: NodeMatch; readonly similarity?: number;
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file adds no alias, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no name, for example `export function toSourceType(s: string): SourceType {`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no node, for example `export type SearchKind = "node" | "link" | "fragment";`
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no run or prompt version, for example `export interface ProvenanceResponse {`
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere. The file declares that an item may carry a match and a similarity, but not which items do.
+    evidence: >-
+      readonly match?: NodeMatch; readonly similarity?: number;
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no threshold; `export type NodeMatch = "exact" | "approximate";` only names the outcomes
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file matches no alias; `export type NodeMatch = "exact" | "approximate";` only names the outcomes
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt version, for example `export interface SearchResponse {`
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file matches no text, for example `export interface SearchProvenanceEntry {`
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no run, for example `export interface ProvenanceFragment {`
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no cap; `readonly total: number;` is a declared field only
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ranks nothing; `readonly items: readonly SearchItem[];` is a declared field only
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity; `readonly similarity?: number;` is a declared field only
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no proposal, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no document, for example `export interface ProvenanceResponse {`
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere. The file declares the exact outcome only.
+    evidence: >-
+      export type NodeMatch = "exact" | "approximate";
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no document, for example `export interface ProvenanceResponse {`
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere. The file declares the approximate outcome only.
+    evidence: >-
+      export type NodeMatch = "exact" | "approximate";
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere. The file declares that an item may carry an approximate match and a similarity, but does not return one.
+    evidence: >-
+      readonly match?: NodeMatch; readonly similarity?: number;
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file makes no proposal, for example `export interface ProvenanceResponse {`
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no run, for example `export interface ProvenanceFragment {`
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no alias length rule, for example `export type NodeMatch = "exact" | "approximate";`
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no run or document context, for example `export interface ProvenanceResponse {`
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file matches no term, for example `export type NodeMatch = "exact" | "approximate";`
+looked_past: >-
+  The enumeration values are spelled low_confidence and the material's own words ata, artigo, transcricao and outro, where the nodes spell them kebab-case; I read that as a wire-spelling convention the source-type node's description acknowledges, not as a domain fact, and filed no finding.
+candidates_opened:
+  - domain/knowledge-base/search-query
+  - rules/knowledge-base/search-option-defaults

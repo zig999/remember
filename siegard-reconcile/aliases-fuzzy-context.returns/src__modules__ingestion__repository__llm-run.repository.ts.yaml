@@ -1,0 +1,401 @@
+read:
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere. The enumeration is imported as a type from ../dto/llm-run.dto.js. recordDocumentContextStatus only passes a value through, so the shape is declared in another file.
+    evidence: >-
+      `document_context_status: DocumentContextStatus;` and `SET document_context_status = $2::document_context_status`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere. insertFragmentWithSources only passes text and confidence to an INSERT. The orphan predicate in aggregateToolCallOutcomes and retryLlmRunRow reads status.
+    evidence: >-
+      `INSERT INTO information_fragment (llm_run_id, "text", confidence)`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      The operations are realized in retryLlmRunRow (retry) and closeLlmRunRow (complete and fail). The row shape LlmRunRow is declared in ingestion.repository.js and re-exported here, not declared here.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed'` and `SET status = $2::llm_run_status, finished_at = now() WHERE id = $1 AND status = 'running'`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      Partly, in the RecentIngestionRow type and the findRecentIngestions projection of source type, status, reception time and content. The full shape is declared in ingestion.repository.
+    evidence: >-
+      `readonly source_type: string; readonly raw_status: string; readonly received_at: Date; readonly content_preview: string;`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      The ToolCallRow interface, line 16, plus insertToolCall and insertToolCallStandalone.
+    evidence: >-
+      `export interface ToolCallRow { readonly id: string; readonly llm_run_id: string; readonly tool_name: IngestToolName; readonly arguments: Record<string, unknown>; readonly result: Record<string, unknown> | null; readonly validation_outcome: ValidationOutcome; readonly created_at: Date; }`
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      countFragmentsAnchoredToSource, which counts the fragments drawn from a chunk of the expected raw information.
+    evidence: >-
+      `JOIN fragment_source fs ON fs.fragment_id = f.id JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id WHERE f.id = ANY($1::uuid[]) AND rc.raw_information_id = $2`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      closeLlmRunRow sets finished_at to now() when it completes or fails the run.
+    evidence: >-
+      `SET status = $2::llm_run_status, finished_at = now()`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      countChunksInSource, which counts the cited chunks that belong to the expected raw information.
+    evidence: >-
+      `FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      The guards in retryLlmRunRow (only from failed) and closeLlmRunRow (only from running).
+    evidence: >-
+      `WHERE id = $1 AND status = 'failed'` and `WHERE id = $1 AND status = 'running'`
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      The orphan predicate in aggregateToolCallOutcomes and in retryLlmRunRow.
+    evidence: >-
+      `AND status = 'proposed' AND id NOT IN ( SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL )`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      The LEFT JOIN LATERAL in findRecentIngestions, which takes the latest started run and leaves it null when there is none.
+    evidence: >-
+      `LEFT JOIN LATERAL ( SELECT id, status, started_at, finished_at, prompt_version, model FROM llm_run WHERE input_raw_information_id = ri.id ORDER BY started_at DESC LIMIT 1 ) lr ON true`
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      The ORDER BY of findRecentIngestions.
+    evidence: >-
+      `ORDER BY ri.received_at DESC LIMIT $1`
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      The UPDATE in retryLlmRunRow. It leaves started_at untouched.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL`
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      The retryLlmRunRow UPDATE, whose SET list does not name document_context_status. The column only appears in RETURNING.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed' RETURNING id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key, document_context, document_context_status`
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      The second statement of retryLlmRunRow.
+    evidence: >-
+      `UPDATE information_fragment SET status = 'rejected' WHERE llm_run_id = $1 AND status = 'proposed' AND id NOT IN ( SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL )`
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      The orphan count query in aggregateToolCallOutcomes, which assigns summary.orphaned_fragments.
+    evidence: >-
+      `summary.orphaned_fragments = orphan.rows[0]?.n ?? 0;`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      aggregateToolCallOutcomes. It groups tool_call by validation_outcome and starts every outcome at zero.
+    evidence: >-
+      `SELECT validation_outcome, count(*)::text AS n FROM tool_call WHERE llm_run_id = $1 GROUP BY validation_outcome` and `accepted: 0, consolidated: 0, superseded_previous: 0, needs_review: 0, uncertain: 0, disputed: 0, rejected: 0, error: 0,`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      findToolCallsByRun.
+    evidence: >-
+      `ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3`
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      countToolCalls counts every tool call of the run with no LIMIT or OFFSET.
+    evidence: >-
+      `SELECT count(*)::text AS n FROM tool_call WHERE llm_run_id = $1`
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      retryLlmRunRow does not clear document_context. Its SET list leaves it as it was, so the retried run keeps the context it already held.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL`
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere. The file holds no prompt construction.
+    evidence: >-
+      `export async function findLlmRunById(`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere. The file makes no model call.
+    evidence: >-
+      `import type { Pool, PoolClient } from "pg";`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly. The 80-character content preview and the latest-run fields of list-recent-ingestions are in findRecentIngestions. The tool-call page SQL for list-tool-calls is in findToolCallsByRun. The rest of the contract is held in other files.
+    evidence: >-
+      `left(ri.content, 80) AS content_preview` and `LIMIT $2 OFFSET $3`
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere. The file serves no retrieval operation.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export type { LlmRunRow };`
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere. The shape is imported and serialized only.
+    evidence: >-
+      `SET document_context = $2::jsonb` with `JSON.stringify(args.document_context)`
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `args: { llm_run_id: string; document_context: DocumentContext }`
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findRecentIngestions(`
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere. The file only carries the version as a string column.
+    evidence: >-
+      `readonly prompt_version: string | null;`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function countToolCalls(`
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findLlmRunById(`
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findLlmRunById(`
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere. The file defaults no prompt version.
+    evidence: >-
+      `readonly prompt_version: string | null;`
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere. The file only stores a context. It decides nothing about producing one.
+    evidence: >-
+      `SET document_context = $2::jsonb WHERE id = $1`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere. The file does not decide reuse. It only writes a status when told to.
+    evidence: >-
+      `SET document_context_status = $2::document_context_status WHERE id = $1`
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere. recordDocumentContextStatus writes a status it is handed and holds none of the conditions that choose it.
+    evidence: >-
+      `args: { llm_run_id: string; document_context_status: DocumentContextStatus; }`
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere. insertFragmentWithSources inserts the chunk ids it is handed. It does not choose them.
+    evidence: >-
+      `SELECT $1, c FROM unnest($2::uuid[]) AS c`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContextStatus(`
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function countToolCalls(`
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function countToolCalls(`
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere. The file stores a context and a status when called and holds no version gate.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere. The file holds the version only as a string column and does not check it.
+    evidence: >-
+      `readonly prompt_version: string | null;`
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function insertFragmentWithSources(`
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContextStatus(`
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function recordDocumentContext(`
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere. The file holds no condition that picks single-chunk.
+    evidence: >-
+      `args: { llm_run_id: string; document_context_status: DocumentContextStatus; }`
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere.
+    evidence: >-
+      `export async function findNodeTypeIdByNodeId(`
+looked_past: >-
+  The file's SQL, its row-type plumbing and its transaction handling in insertToolCallStandalone state no domain fact and fall under a code review, which this pass does not make.
+candidates_opened:
+  - domain/knowledge-base/run-summary
+  - domain/knowledge-base/validation-outcome

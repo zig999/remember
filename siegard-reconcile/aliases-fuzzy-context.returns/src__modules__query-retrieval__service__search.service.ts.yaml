@@ -1,0 +1,558 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      resolveLayers, lines 466-471, the branch taken when the layer list is absent or empty
+    evidence: >-
+      if (layers === undefined || layers.length === 0) {
+          return new Set(ALLOWED_LAYERS);
+        }
+    cost: >-
+      The code treats an empty layer list the same as an omitted one and searches every layer. The
+      defaults node speaks only of an option the query omits, and no node says what an empty list
+      means. The next reader will look for that in the specification and will not find it. The
+      decision lives only in this branch.
+    kind: unstated
+    correction: >-
+      A node should state whether a search query that names an empty layer list reads every layer,
+      or is refused. search-option-defaults or search-layer-outside-set-refused are the nodes the
+      statement would sit with.
+    node: rules/knowledge-base/search-option-defaults
+read:
+  - node: constraints/retrieval-is-lexical-only
+    held_at: >-
+      searchKnowledgeService, lines 133-149: the only text matching the file performs is through the
+      three lexical layer searches, and the file holds no embedding or similarity-model construct
+    evidence: >-
+      fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+      nodeHits = await searchNodeLayer(client, input.query);
+      chunkHits = await searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+  - node: domain/knowledge-base/item-kind
+    held_at: >-
+      IntermediateItem.kind, line 62, the inline union of the three item kinds
+    evidence: >-
+      readonly kind: "node" | "link" | "fragment";
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      toExactHit and toApproximateHit, lines 314-320, which assign the two match values; the
+      NodeMatch type itself is imported from the DTO
+    evidence: >-
+      return { ...row, match: "exact" };
+      return { ...row, match: "approximate" };
+  - node: domain/knowledge-base/page
+    held_at: >-
+      SearchServiceInput.limit and offset (lines 56-57), the slice at line 265, and the response
+      fields at lines 286-287
+    evidence: >-
+      const sliced = filtered.slice(input.offset, input.offset + input.limit);
+      limit: input.limit,
+      offset: input.offset,
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      IntermediateItem (lines 60-76), which declares kind, layer, score, hop, summary, flags, match
+      and similarity, and toSearchItem (lines 542-554), which builds the SearchItem from it
+    evidence: >-
+      return {
+          kind: it.kind,
+          layer: it.layer,
+          id: it.id,
+          score: it.score,
+          hop: it.hop,
+          summary: it.summary,
+          flags: it.flags,
+          provenance: it.provenance,
+          ...matchFields(it),
+        };
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      SearchServiceInput, lines 47-58, which declares the query's choices: text, layers, as-of,
+      in-effect-only, include-uncertain, expand, depth, link types and the page (limit, offset)
+    evidence: >-
+      readonly query: string;
+        readonly layers?: readonly string[];
+        readonly asOf?: string;
+        readonly inEffectOnly: boolean;
+        readonly includeUncertain: boolean;
+        readonly expand: boolean;
+        readonly expandDepth: number;
+        readonly expandLinkTypes?: readonly string[];
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: >-
+      searchKnowledgeService, lines 143-149 and 170-245: chunkHits is fetched but is never turned
+      into an item; items are pushed only for fragment hits, node hits and expanded links
+    evidence: >-
+      const chunksById = new Map(chunkHits.map((c) => [c.id, c] as const));
+      items.push({ key: `fragment:${f.id}`, kind: "fragment", layer: "fragment",
+      items.push({ key: `node:${n.node_id}`, kind: "node", layer: "node",
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      toExactHit, line 314-316, which gives an exactly matched hit only the match value and sets no
+      similarity
+    evidence: >-
+      function toExactHit(row: NodeAliasHitRow): NodeLayerHit {
+        return { ...row, match: "exact" };
+      }
+  - node: rules/knowledge-base/expanded-link-layer-is-node
+    held_at: >-
+      toExpandedLinkItem, lines 450-453, the item built for a link the expansion reaches
+    evidence: >-
+      key: `link:${link.id}`,
+          kind: "link",
+          layer: "node",
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: >-
+      toExpandedLinkItem, lines 431-444, which returns no item when the link holds no provenance
+    evidence: >-
+      if (provenance.length === 0) {
+          context.logger.warn(
+          ...
+          return undefined;
+        }
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the date to traverseNodes in traverseFrom, line 373, as `asOf:
+      context.input.asOf`. The validity-window comparison is made in the knowledge-graph module,
+      not in this file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      collectExpandedLinks, line 391, which scores a reached link by the decay raised to its hop
+      times the score of the matched node it was reached from
+    evidence: >-
+      score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score,
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: >-
+      traverseFrom, line 370, which asks the traversal for both directions
+    evidence: >-
+      direction: "both",
+  - node: rules/knowledge-base/expansion-hop
+    held_at: nowhere
+    evidence: >-
+      This file takes the hop from the traversal's result, line 390, as `hop: link.hop`. The count
+      of links along the path is made by traverseNodes in another module, not here.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the switch, in traverseFrom line 374, as `inEffectOnly:
+      context.input.inEffectOnly`. The comparison of a link's validity start with the as-of date or
+      today is made in the knowledge-graph module, not in this file.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      resolveLinkTypeIds (lines 482-496), which turns the named link types into catalog identities,
+      and traverseFrom line 371, which hands them to the traversal
+    evidence: >-
+      linkTypeIds: context.linkTypeIds,
+      ids.push(row.id);
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: >-
+      searchKnowledgeService, lines 247-256, and collectExpandedLinks, lines 385-387, which start a
+      traversal from each matched node
+    evidence: >-
+      if (input.expand && nodeHits.length > 0) {
+      for (const [startId, start] of matchedNodes) {
+          const traversal = await traverseFrom(context, startId);
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: >-
+      the fragment item push, line 200
+    evidence: >-
+      summary: f.text,
+  - node: rules/knowledge-base/item-flags
+    held_at: >-
+      computeFlags, lines 524-540, and LOW_CONFIDENCE_THRESHOLD, line 45
+    evidence: >-
+      if (args.status === "uncertain") flags.push("uncertain");
+        if (args.status === "disputed") flags.push("disputed");
+        if (
+          args.kind === "fragment" &&
+          args.status === "accepted" &&
+          args.confidence < LOW_CONFIDENCE_THRESHOLD
+        ) {
+          flags.push("low_confidence");
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      the fragment push (lines 191-205) and toExpandedLinkItem (lines 450-463), neither of which sets
+      match or similarity, and matchFields, line 559, which adds neither when the item holds no match
+    evidence: >-
+      if (it.match === undefined) return {};
+  - node: rules/knowledge-base/link-item-summary
+    held_at: >-
+      toExpandedLinkItem, line 459
+    evidence: >-
+      summary: `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`,
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: >-
+      searchKnowledgeService, lines 117-119, where the named link types are resolved only when the
+      query expands
+    evidence: >-
+      const linkTypeIds = input.expand
+          ? resolveLinkTypeIds(catalog, input.expandLinkTypes)
+          : undefined;
+  - node: rules/knowledge-base/matched-item-hop-zero
+    held_at: >-
+      the fragment push, line 197, and the node push, line 235
+    evidence: >-
+      hop: 0,
+  - node: rules/knowledge-base/matched-node-requires-provenance
+    held_at: >-
+      the node loop, line 221, which skips a matched node that has no provenance
+    evidence: >-
+      if (provenance.length === 0) continue;
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      the node push, lines 241-242, and matchFields, lines 556-562
+    evidence: >-
+      match: n.match,
+      similarity: n.similarity,
+  - node: rules/knowledge-base/node-item-summary
+    held_at: >-
+      the node push, line 237
+    evidence: >-
+      summary: n.canonical_name,
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      searchNodeLayer, lines 306-310, which asks for approximate matches only among the nodes not
+      already matched exactly. The 5-character alias floor and the 0.6 word-similarity floor are
+      not in this file.
+    evidence: >-
+      const approximateRows = await searchNodeAliasApproximateLayer(client, {
+          query,
+          limit: remaining,
+          excludedNodeIds: exactHits.map((hit) => hit.node_id),
+        });
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only calls `searchNodeAliasLayer(client, query, PER_LAYER_FETCH_LIMIT)` and labels
+      what it returns exact. The lexical parse and the alias comparison are in the repository, not in
+      this file.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: >-
+      the node loop, line 221, which keeps a node only when provenance rows were returned for it.
+      What counts as accepted fragments mentioning an alias is decided in listProvenanceForNodes, in
+      the repository.
+    evidence: >-
+      const provRows = await listProvenanceForNodes(client, nodeHits.map((n) => n.node_id));
+      if (provenance.length === 0) continue;
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      searchKnowledgeService, line 248, the only place the traversal is started
+    evidence: >-
+      if (input.expand && nodeHits.length > 0) {
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      PER_LAYER_FETCH_LIMIT, line 43, passed to the fragment, chunk and node layer searches, and the
+      total at line 264
+    evidence: >-
+      const PER_LAYER_FETCH_LIMIT = 200;
+      const remaining = PER_LAYER_FETCH_LIMIT - exactHits.length;
+      const total = filtered.length;
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      resolveLayers, lines 466-471, holds only the default for the layers. The defaults for
+      expansion, depth, uncertain items and in-effect-only are not in this file: they arrive as
+      required fields of SearchServiceInput.
+    evidence: >-
+      if (layers === undefined || layers.length === 0) {
+          return new Set(ALLOWED_LAYERS);
+        }
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      compareItems, lines 322-327, with approximateOnly set at lines 199, 236 and 458, and
+      recordedAtTs set at lines 198, 235 and 457
+    evidence: >-
+      if (a.approximateOnly !== b.approximateOnly) return a.approximateOnly ? 1 : -1;
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      searchKnowledgeService, lines 264-265
+    evidence: >-
+      const total = filtered.length;
+        const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: >-
+      only traverseFrom, lines 373-374, receives the as-of date and the in-effect-only switch. The
+      three layer searches are called without them.
+    evidence: >-
+      asOf: context.input.asOf,
+      inEffectOnly: context.input.inEffectOnly,
+      nodeHits = await searchNodeLayer(client, input.query);
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: >-
+      the filter at lines 258-260 and the check in toExpandedLinkItem, lines 446-448
+    evidence: >-
+      const filtered = input.includeUncertain
+          ? items
+          : items.filter((it) => it.status !== "uncertain");
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds, lines 489-492
+    evidence: >-
+      const row = catalog.linkTypeByName.get(name);
+        if (row === undefined) {
+          throw new UnknownLinkTypeError(name);
+        }
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      toExactHit, line 314-316, and the node push at lines 228-243, which carries the match through
+      as exact
+    evidence: >-
+      return { ...row, match: "exact" };
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      toApproximateHit, lines 318-320, the node push at hop 0 (lines 235-242) and matchFields, which
+      carry the match and the similarity through. The approximate matching itself is in the
+      repository.
+    evidence: >-
+      return { ...row, match: "approximate" };
+      match: n.match,
+      similarity: n.similarity,
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: >-
+      searchKnowledgeService, lines 121-127, the refusal when the query parses to nothing
+    evidence: >-
+      const parsed = await parseTsQuery(client, input.query);
+        if (parsed === "") {
+          throw new InvalidSearchQueryError("empty_after_parse", {
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: >-
+      the three layer searches at lines 133-149. The file adds no match path beyond them, so a
+      synonym with no shared characters yields no hit and no item.
+    evidence: >-
+      fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+      nodeHits = await searchNodeLayer(client, input.query);
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file only passes the whole query text, `searchNodeAliasApproximateLayer(client, { query,
+      ...` and carries the returned match. How an unmatched term still leaves an approximate match
+      is decided in the repository, not here.
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no prompt and sends
+      nothing to a language model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It makes no model call.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no intake, run,
+      proposal or ingestion operation.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      searchKnowledgeService, which returns the page of ranked items with the total (lines 284-291)
+      and throws the query, layer and link-type refusals (lines 123, 475, 491). The error codes and
+      statuses are in errors.ts, not in this file. The other retrieval operations are not in this
+      file.
+    evidence: >-
+      const response: SearchResponse = {
+          query: input.query,
+          total,
+          limit: input.limit,
+          offset: input.offset,
+          items: sliced.map(toSearchItem),
+        };
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      computeFlags, lines 530-537, which writes the three flag values; the AssertionFlag type is
+      imported from the DTO
+    evidence: >-
+      flags.push("uncertain");
+      flags.push("disputed");
+      flags.push("low_confidence");
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no document context.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no document context
+      status.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no document entity.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no LLM run.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It names no prompt version.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It admits no alias.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file only carries `similarity: n.similarity` on the item. The highest word similarity of
+      the aliases is computed in the repository, not here.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file only reads the score the repository returns, `score: n.score,`. The strength of an
+      approximate match is not computed here.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no ingestion default.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It reads no preliminary reading.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It names no context model.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It reads no document.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It records no document context
+      status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It records no document context
+      status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It cuts no summary.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It holds no summary of lines.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It resolves no node proposal.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It anchors no fragment.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It runs no extraction.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It builds no extraction prompt.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It runs no extraction.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file holds no layer weight. It only reads the score each layer search returns, as in
+      `score: f.score,` and `score: n.score,`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It adds no alias to a node.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no name. It passes `input.query` to the repository unchanged.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It creates no node.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It makes no preliminary reading.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It names no prompt version.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file performs no stemming or accent handling. It passes `input.query` to
+      searchFragmentLayer and searchChunkLayer in the repository.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It retries no run.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity. It reads the `similarity` the repository returns.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It admits no alias.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It resolves no node proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It admits no alias.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It runs no extraction.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It admits no alias.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It runs no extraction.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file only passes the whole query text to `searchNodeAliasApproximateLayer(client, { query,
+      ...`. The word similarity inside a longer query is computed in the repository, not here.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It makes no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It retries no run.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file holds no alias length floor. It only passes the query to
+      `searchNodeAliasApproximateLayer`; the floor is applied in the repository, not here.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file's only exported function is searchKnowledgeService. It runs no extraction.
+looked_past: >-
+  The chunk-layer fetch and the dedup count it feeds (dedup_collapsed_count) reach only a log line,
+  and the value of TRAVERSAL_DECAY lives in the knowledge-graph module; both are another
+  judgment's, not a domain fact stated in this file.

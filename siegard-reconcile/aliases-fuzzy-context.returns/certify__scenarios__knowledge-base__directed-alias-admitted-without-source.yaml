@@ -1,0 +1,27 @@
+certified:
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
+        name: records an alias that the source never writes on the node
+    why: >-
+      The named test seeds a directed run whose source never writes "Petrobras",
+      proposes a node stating the alias "Petrobras", and asserts that the alias is
+      recorded on the node. It would fail if the service stopped recording an
+      admitted alias, or stopped sending the run's directed model and prompt
+      version to the admission query. But the decision that a directed ingestion
+      admits an alias its source never writes is made by the store, and here the
+      store is a stand-in. The stand-in's answerAdmission recomputes that decision
+      itself: it marks the alias admitted when the run's model and prompt_version
+      equal parameters 1 and 2. It never reads the query the service sends. So if
+      the query lost its directed exemption, the test would still pass. The test
+      depends on how the query's parameters are laid out, not on the directed
+      admission itself. That part of the fact goes unexercised: a directed
+      ingestion getting "Petrobras" recorded against a store that actually runs
+      the admission query.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, against a store that runs the
+      admission query: a directed ingestion whose source never writes the name
+      "Petrobras", one of whose nodes states the alias "Petrobras". The expected
+      result is that the node holds the alias "Petrobras" afterwards.

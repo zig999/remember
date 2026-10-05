@@ -1,0 +1,30 @@
+certified:
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: proposes nothing and writes nothing but the run's own context columns before its first chunk is read
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records on the run the summary and the entities the preliminary reading yielded
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the document context status produced when the preliminary reading yields a context
+    why: >-
+      The first named test runs the node's own scenario. It is a v5 run over a raw information
+      of 3 chunks. The database fake holds nothing read from it. The preliminary reading answers
+      a context listing two entities, a Person and an Organization. The test collects every
+      statement other than SELECT/BEGIN/COMMIT/ROLLBACK issued before the first chunk's model
+      call, removes those starting with "UPDATE llm_run", and asserts that nothing is left. If
+      the reading led to a proposal, or to a knowledge node, information fragment, knowledge
+      link or node attribute being written before the first chunk is read, an INSERT would
+      appear in that list and the test would fail.
+
+      That test does not itself assert that the reading took place and yielded the two-entity
+      context. If the reading were skipped, it would pass without exercising the "when". The
+      second and third named tests run the same default scenario and pin that half: the
+      recorded entities equal the two-entity answer, and the status is "produced".
+
+      Over-assertion, for a reader to route. The node forbids only proposals and four kinds of
+      knowledge-base rows before the first chunk is read. The test forbids every write to every
+      table other than llm_run, such as a tool_call or any audit row. It would break the day a
+      sibling task legitimately writes such a row in that window. Its filter also lets any
+      UPDATE of llm_run through, not only the context columns its name claims.

@@ -1,0 +1,362 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the registration of the get_ingestion_status tool, line 248 to 263 (mcp.registerTool("ingest", { name: "get_ingestion_status", ...))
+    evidence: >-
+      mcp.registerTool("ingest", {
+          name: "get_ingestion_status",
+          description: IngestToolDescriptions.get_ingestion_status,
+    cost: >-
+      The name a caller uses to read an LLM run over MCP is stated only here and in the schema and description files. The contract's operation is named read-llm-run. The other ingest tools carry names a node spells (propose_fragment and the other three propose_* in domain/knowledge-base/ingest-tool, health in contracts/knowledge-base/access, and ingest_document and ingest_directed in the refusal messages of contracts/knowledge-base/ingestion). get_ingestion_status is not spelled anywhere in the specification, so a reader who looks there for the run-read tool's name does not find it, and a rename in code would pass without any node disagreeing.
+    kind: unstated
+    correction: >-
+      Contracts/knowledge-base/ingestion would have to state that the run read over MCP is offered as the tool get_ingestion_status. That is for the analysis route to decide. It is not a change to this file.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the set of registerTool("ingest", ...) calls in registerIngestToolset, lines 78 to 280. They register propose_fragment, propose_node, propose_link, propose_attribute, ingest_document, ingest_directed, health, get_ingestion_status and list_recent_ingestions. None of them starts an ingestion and returns before it completes.
+    evidence: >-
+      tool_names: [...INGEST_TOOL_NAMES, "ingest_document", "ingest_directed", ...READ_ONLY_TOOL_NAMES] with READ_ONLY_TOOL_NAMES = ["health", "get_ingestion_status", "list_recent_ingestions"]; the ingest_document handler is awaited, `return await ingestDocumentHandler(parsed.data, {`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      the safeParse guard at the head of each of the four proposal handlers (lines 83 to 92, 107 to 116, 132 to 141, 158 to 167). A malformed request is refused before the proposal handler is reached. The existing-run and running-run checks are not in this file; they sit behind proposeFragmentHandler and the others, and behind runIngestHandler.
+    evidence: >-
+      const parsed = ProposeFragmentMcpInputSchema.safeParse(rawInput);
+            if (!parsed.success) {
+              return (await runZodFailureAudit(
+    
+      and, on success, `return (await proposeFragmentHandler(input, {`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      runZodFailureAudit, lines 340 to 365. A proposal refused for its shape is sent through runIngestHandler with the tool name and the raw input, and its run throws a ValidationFailure. The recording itself, and what else it writes, sit in runIngestHandler, outside this file.
+    evidence: >-
+      return (await runIngestHandler({
+          deps: { pool, logger, llm_run_id: llmRunId },
+          tool_name: toolName,
+          input: rawInput as never,
+          run: async () => {
+            throw new ValidationFailure(
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and marks no content as data. It passes the call on: `return await ingestDocumentHandler(parsed.data, {`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no timeout and no retry count. It forwards `anthropicApiKey: deps.env.ANTHROPIC_API_KEY,` and the model names only.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      in part, at the answers this file emits itself. These are the ingest_document validation refusal (lines 184 to 199), the proposal shape refusal with "MCP tool args failed Zod parse." (lines 353 to 363), and the read refusals of get_ingestion_status and list_recent_ingestions in mapReadError (lines 304 to 332). The proposal, extraction and directed answers themselves sit in the handlers this file calls.
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+                  message: "ingest_document arguments failed validation.",
+    
+      and `"MCP tool args failed Zod parse.",` and `code: err.code,` for ResourceNotFoundError
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only the ingest toolset: `mcp.registerTool("ingest", {`. No search, provenance, catalog or graph read is registered here.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item and no flag. `export interface McpEnvelopeJson {` declares only the envelope.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document context shape. It reads the run through `getLlmRunById(client, llm_run_id)`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No status value is named in this file. The run is returned as `return { ok: true, result };`
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document entity is declared or read in the file; the only shapes declared are `IngestToolsetDeps` and `McpEnvelopeJson`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no LLM run shape. It only reads one: `getLlmRunById(client, llm_run_id)` and passes `llm_run_id` to the proposal handlers.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search surface; `registerIngestToolset(deps: IngestToolsetDeps): void` registers ingest tools only.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version. The `env` deps carry `INGEST_MODEL` and `CONTEXT_MODEL` only.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item. `export interface McpEnvelopeJson {` is the only response shape.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never inspects an alias. The node proposal is passed on whole: `return (await proposeNodeHandler(input, {`
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no similarity. Its registrations are `propose_*`, `ingest_document`, `ingest_directed`, `health`, `get_ingestion_status` and `list_recent_ingestions`.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no match strength. It registers only ingest tools.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no prompt version default. It calls `ingestDocumentHandler(parsed.data, {` and forwards only the parsed input.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards the catalog: `catalog,` inside the ingest_document deps. It filters no entity.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file forwards the configured value and holds no fallback model name: `contextModel: deps.env.CONTEXT_MODEL,`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file triggers no reading and holds no chunk count or length threshold. It delegates with `return await ingestDocumentHandler(parsed.data, {`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no reuse path. It makes no write to a run's document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no status recording. It makes no write to a run's document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no summary handling. It holds no line count and makes no cut.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no summary and no line limit.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no resolution. `return (await proposeNodeHandler(input, {` hands the proposal to the handler.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item; it registers only ingest tools.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no expansion and no scoring.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment. `return (await proposeFragmentHandler(input, {` passes the proposal as it arrived.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It passes `description: IngestToolDescriptions.propose_node,` from another file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction instruction.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction system prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction system prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk. Extraction runs behind `return await ingestDocumentHandler(parsed.data, {`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no date resolution or instruction.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and handles no such failure.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no layer weight.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file writes no alias. `return (await proposeNodeHandler(input, {` hands the proposal to the handler.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node. `return (await proposeNodeHandler(input, {` hands the proposal to the handler.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file branches on no prompt version.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node layer and no similarity threshold.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node layer matching.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no prompt version. The only deps it names are `INGEST_MODEL` and `CONTEXT_MODEL`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no text matching and holds no text search configuration.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers no retry tool. The retry is REST-only per the ingestion contract.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no candidate cap.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file admits no alias; it passes `return (await proposeNodeHandler(input, {`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no proposal; it passes `return (await proposeNodeHandler(input, {`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not report non-admitted aliases; it passes `return (await proposeNodeHandler(input, {` and returns the handler's answer as it comes.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk and builds no document context.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file admits no alias. It delegates `return await ingestDirectedHandler(`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no context reading.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and no proposal of its own.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers no retry and holds no context.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chunk count handling.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+looked_past: >-
+  I saw the optional `CHAT_INGEST_ENABLED` flag in the `env` type, which this file never reads, and the `tools_registered` count and `ingest_toolset_registered` log line, which state no domain fact. Both belong to a code review, not to this pass.
+candidates_opened:
+  - domain/knowledge-base/ingest-tool
+  - contracts/knowledge-base/access

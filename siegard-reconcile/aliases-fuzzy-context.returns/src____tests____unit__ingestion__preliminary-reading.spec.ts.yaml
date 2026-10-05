@@ -1,0 +1,285 @@
+findings:
+  - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+    where: >-
+      lines 501-519, the test "presents the content to the model in the user turn, bracketed and labelled as data, and not among the instructions", the closedAfter entry
+    evidence: >-
+      closedAfter: text.slice(at + DEFAULT_CONTENT.length).trim().length > 0,
+      and, expected, closedAfter: true,
+    cost: >-
+      The test requires non-empty text after the content, a closing marker as well as an opening one. The node only says the content is presented "marked apart from its instructions as data". A prompt that marks the data only at its start conforms to the node and fails this test. The bracketing rule then lives in the test, and a reader checking the specification will not find it.
+    kind: unstated
+    correction: >-
+      The node would have to state that the content is closed by a marker after it as well as marked before it, or the assertion would have to drop to what the node holds, which is the content marked as data and kept out of the instructions.
+    node: constraints/document-content-is-data
+
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      the test at lines 501-519, asserting the content is absent from the system text and labelled as data before it
+    evidence: >-
+      contentInInstructions: system.includes(INJECTION), labelledAsDataBefore: /data/i.test(text.slice(0, at)),
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      the test at lines 638-660, which checks each served call's timeout and maxRetries against the bounds
+    evidence: >-
+      waitsAtMostFiveMinutes: (call.timeout ?? SDK_DEFAULT_TIMEOUT_MS) <= FIVE_MINUTES_MS, retriedAtMostTwice: (call.maxRetries ?? SDK_DEFAULT_MAX_RETRIES) <= MAX_RETRIES,
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file calls the service directly and exercises no REST or MCP surface: await runLlmExtraction(buildPool(world), RUN_ID, pino({ level: "silent" }), CATALOG, { env: ENV, anthropicFactory: factory })
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file reads no search or graph surface; its catalog fixture holds no links: linkTypes: [], linkTypeRules: [],
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file mentions no search flag; it only has const CHUNK_REPLY = "done";
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The shape is imported, not declared here: import { DocumentContextSchema, type DocumentContext, type DocumentEntity, } from "../../../modules/ingestion/dto/llm-run.dto.js";
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration; it types the column as a string: document_context_status: string | null;
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The shape is imported and the file builds only instances: const PERSON_ENTITY: DocumentEntity = { node_type: "Person", names: ["Maria Souza", "M. Souza"], };
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      lines 150-162, the RunRow type, which declares part of the run's shape as a test row
+    evidence: >-
+      type RunRow = { id: string; model: string; prompt_version: string; started_at: Date; finished_at: Date | null; status: string; attempts: number; ... document_context: DocumentContext | null; document_context_status: string | null; };
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file has no search node match; it only has const CHUNK_REPLY = "done";
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file uses version names as fixture values and declares no enumeration: const BEFORE_V5 = ["v1", "v2", "v3", "v4"];
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file has no search item; it only has const CHUNK_REPLY = "done";
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file's fake model proposes nothing: finalMessage: async () => sdk.messageOf(req.model, CHUNK_REPLY),
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file's v5 is a fixture value, not a default under test: const DEFAULT_SCENARIO: Scenario = { promptVersion: "v5", content: DEFAULT_CONTENT, answer: DEFAULT_ANSWER, };
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      the test at lines 477-490, in which an entity under an unheld node type is dropped from the recorded context
+    evidence: >-
+      const unknownType: DocumentEntity = { node_type: "Spaceship", names: ["Enterprise"] }; ... expect(world.run.document_context?.entities).toEqual([ PERSON_ENTITY, ORGANIZATION_ENTITY, ]);
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the tests at lines 419-431, which check the reading's model and the context's model against the configured context model
+    evidence: >-
+      expect(reading.model).toBe(CONTEXT_MODEL); expect(world.run.document_context?.model).toBe(CONTEXT_MODEL);
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the tests at lines 395-417 (exactly one reading, made first, over the whole content) and lines 521-535 (the 100000 UTF-16 code-unit boundary, astral content included)
+    evidence: >-
+      expect(readings).toHaveLength(1); expect(firstCall).toBe("reading"); expect(reading.text).toContain(DEFAULT_CONTENT); expect(callKinds(world)).toEqual(["chunk", "chunk", "chunk"]);
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      Every scenario starts with a run holding no context: document_context: null, document_context_status: null,
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      the tests at lines 447-451, 719-731 and 750-780, covering the statuses produced, single-chunk, too-long and failed
+    evidence: >-
+      expect(statuses).toEqual({ oneChunkWithinTheLimit: "single-chunk", oneChunkPastTheLimit: "single-chunk", threeChunksAtTheLimit: "produced", threeChunksOneUnitPastTheLimit: "too-long", threeChunksPastTheLimitInUnitsWithinItInCodePoints: "too-long", threeChunksWhoseReadingFails: "failed", });
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      the test at lines 453-459, in which a 7-line summary is cut to its first 5 lines
+    evidence: >-
+      expect(world.run.document_context?.summary).toBe("l1\nl2\nl3\nl4\nl5");
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      the tests at lines 461-475, covering an empty line counting as a line and a carriage return ending none
+    evidence: >-
+      expect(world.run.document_context?.summary).toBe("a\n\nb\nc\nd"); expect(world.run.document_context?.summary).toBe("a\r\nb\r\nc\r\nd\r\ne\r");
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file resolves no entity: const CHUNK_REPLY = "done";
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search expansion: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file's fake model proposes no fragment: finalMessage: async () => sdk.messageOf(req.model, CHUNK_REPLY),
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file asserts nothing about the prompt's request for other names; the only system-text check is system.includes(INJECTION)
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The v1 to v4 tests assert only readings, context and status: readings: 0, context: null, status: null,
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file never inspects the system prompt for relative-date words; it only has system: systemTextOf(req.system),
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file compares no v4 prompt with a v5 prompt; it only has system: systemTextOf(req.system),
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the tests at lines 797-826: index order, the source's metadata on every chunk, and the last 200 Unicode code points of the chunk before
+    evidence: >-
+      expect(firstShownInCall).toEqual([0, 1, 2]); const needles = [SOURCE_TYPE, DOCUMENT_DATE, TITLE, RECEIVED_AT_PREFIX]; expect(shown).toEqual({ last200: true, the201st: false });
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file asserts no relative-date instruction; the only fixture date is DOCUMENT_DATE = "2026-09-30" and it is shown as metadata only.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      the tests at lines 575-620, in which every chunk is read after the reading fails
+    evidence: >-
+      expect(read).toEqual([true, true, true]);
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node: const CHUNK_REPLY = "done";
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no names; it only has const CHUNK_REPLY = "done";
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file creates no node: const CHUNK_REPLY = "done";
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      the tests at lines 537-558 and 834-853, covering v1 to v4 for every chunk count and content length
+    evidence: >-
+      expected.push({ promptVersion, shape, readings: 0, context: null, status: null });
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file never runs an unknown prompt version; its versions are only const BEFORE_V5 = ["v1", "v2", "v3", "v4"]; and promptVersion "v5".
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file exercises no full-text matching: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file never retries a run; each world starts at status: "running", attempts: 1,
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file exercises no similarity: linkTypes: [], linkTypeRules: [],
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file has no node proposal or alias: const CHUNK_REPLY = "done";
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file has no node proposal or alias: const CHUNK_REPLY = "done";
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file has no node proposal or alias: const CHUNK_REPLY = "done";
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No test has the model propose a node while reading a later chunk; the fake answers finalMessage: async () => sdk.messageOf(req.model, CHUNK_REPLY),
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: const CHUNK_REPLY = "done";
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      the test at lines 601-620, with 3 chunks read, the run completed, status failed and no context
+    evidence: >-
+      expect(outcome).toEqual({ chunksRead: 3, runStatus: "completed", contextStatus: "failed", context: null, });
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      the test at lines 492-499, in which nothing but the run's own columns is written before the first chunk is read
+    evidence: >-
+      const beyondTheRun = written.filter((sql) => !sql.startsWith("UPDATE llm_run")); expect(beyondTheRun).toEqual([]);
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file never retries a run or starts from a held context: document_context: null, document_context_status: null,
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      the test at lines 719-731, with no reading made and status single-chunk for 1 chunk under v5
+    evidence: >-
+      expect(outcome).toEqual({ readings: 0, status: "single-chunk" });
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file exercises no search: linkTypes: [], linkTypeRules: [],
+
+looked_past: >-
+  The RunRow test type mirrors the llm_run row's shape in a fixture, and the tests that record status failed for a reading answering non-context text or timing out extend "the preliminary reading fails" by reading, both of which I judged not a fact stated beyond the nodes.

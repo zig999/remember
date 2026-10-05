@@ -1,0 +1,317 @@
+findings:
+  - file: src/mcp-stdio.ts
+    where: >-
+      the REDACT_PATHS constant (lines 27-43) and the `redact` option of buildStderrLogger (lines 53-57)
+    evidence: |-
+      const REDACT_PATHS: readonly string[] = [
+        "content",
+        "text",
+        "value",
+        "*.content",
+        ...
+        "req.headers.authorization",
+        "*.req.headers.authorization",
+        "headers.authorization",
+      ];
+      ...
+      redact: {
+        paths: [...REDACT_PATHS],
+        censor: "[REDACTED]",
+        remove: false,
+      },
+    cost: >-
+      The redaction rule is implemented a second time. src/config/logger.ts declares an identical REDACT_PATHS list and the same "[REDACTED]" censor, and the node's own statement does not read either copy. If the node changes, for example a new field is redacted, only the file the node is bound to moves. The stdio process then keeps logging that field in clear text to stderr, and nothing signals the divergence. The two copies agree today.
+    kind: contradicts
+    correction: >-
+      Build the stdio logger from the one declaration the node is bound to, src/config/logger.ts, so that a single construct holds the redaction paths. Code never reads the specification, so what closes this is one code home and the node's bind reaching it. This file keeps no list of its own.
+    node: constraints/logs-redact-text-fields
+  - file: src/mcp-stdio.ts
+    where: >-
+      the buildConfiguredMcpServer call (lines 154-158) and the logger `base` (lines 48-51)
+    evidence: |-
+      const server = buildConfiguredMcpServer({
+        serverName: "remember-bff-stdio",
+        serverVersion: "0.1.0",
+        tools,
+      });
+      ...
+      base: {
+        env: env.NODE_ENV,
+        service: "remember-bff-stdio",
+      },
+    cost: >-
+      The identity the stdio process advertises to an MCP client, "remember-bff-stdio" at version "0.1.0", and the `service` field it stamps on every log line are values only this file holds. No node names them. The same pattern recurs in the other transports, each with its own name and the same "0.1.0". The next reader looks for these identities in the specification and does not find them. The only node that names a service, the health report's "remember-bff", is a different value.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the transport identity and version of each MCP surface is a fact of the business, and if so give it a node. Otherwise it is configuration and needs no node.
+read:
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the toolCoordinates list in main() (lines 144-150), which is the whole ingest toolset the stdio process exposes
+    evidence: |-
+      ...INGEST_TOOL_NAMES.map((name) => ({ toolset: "ingest" as const, name })),
+      { toolset: "ingest" as const, name: "ingest_document" },
+      { toolset: "ingest" as const, name: "ingest_directed" },
+  - node: constraints/local-process-transport-needs-no-authentication
+    held_at: >-
+      main() (lines 160-163). The only transport this process serves is StdioServerTransport, and no authentication step is taken before the tools are connected.
+    evidence: |-
+      const transport = new StdioServerTransport();
+      try {
+        await server.connect(transport);
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and marks no content as data. It only wires the toolsets: `registerIngestToolset({ mcp: registry, pool, logger, catalog: ingestionCatalog, env: {...} })`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file states no timeout and no retry count. It only passes `ANTHROPIC_API_KEY`, `INGEST_MODEL`, `CONTEXT_MODEL` and `CHAT_INGEST_ENABLED` through to registerIngestToolset.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file names the tools it exposes, `{ toolset: "ingest" as const, name: "ingest_document" }`, but states no answer, refusal code or message of the contract. Those live in the toolset handlers.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only enumerates tool names, `...QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name }))`, and states no answer or refusal of the retrieval contract.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag vocabulary is declared in the file; the constructs in it are logger options and toolset wiring.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document-context shape. The only reference is the env passthrough `CONTEXT_MODEL: env.CONTEXT_MODEL`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no status enumeration; `grep` of the file for produced, single-chunk, too-long and failed finds none.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no entity shape. The constructs in it are `buildStderrLogger` and `main`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no run shape and opens no run. It only registers the ingest toolset with `registerIngestToolset({...})`.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file declares no match enumeration. Search is reached only through the tool name list `QUERY_RETRIEVAL_TOOL_NAMES`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version. Its env passthrough carries `ANTHROPIC_API_KEY`, `INGEST_MODEL`, `CONTEXT_MODEL` and `CHAT_INGEST_ENABLED` only.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search-item shape; it contains logger setup, catalog loading, registration and shutdown.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file applies no alias admission rule; `registerIngestToolset` receives the catalog and the pool only.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity; search is delegated through `registerQueryRetrievalToolset({ mcp: registry, pool, logger, catalog: kgCatalog })`.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file computes no match strength; search is delegated through `registerQueryRetrievalToolset`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file states no prompt version default; ingest_document is only named, `{ toolset: "ingest" as const, name: "ingest_document" }`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file only loads the catalogs, `ingestionCatalog = await loadIngestionCatalog(catalogClient);`, and applies no rule over a document context's entities.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file passes the configured model through, `CONTEXT_MODEL: env.CONTEXT_MODEL,`, and states no model name or default of its own.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file states no 100000 threshold and no reading step; it contains no extraction logic.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file records no document context status; it contains no run logic.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file records no document context status; it contains no run logic.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file handles no summary text; its log fields are counts and error messages.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file handles no summary text; its log fields are counts and error messages.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file resolves no entities; it only registers the toolsets with `registerIngestToolset`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item; it only names the retrieval tools.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file expands no graph and states no 0.5 decay; traversal is reached only through tool names.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file anchors no fragment to a chunk; it contains no extraction logic.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt; its only strings are log event names and the server identity.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt; its only strings are log event names and the server identity.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt; it names none of "hoje", "ontem" or "amanhã".
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt; its only strings are log event names and the server identity.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunks; it contains no extraction logic.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and resolves no dates.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      The file makes no preliminary reading; its only failure handling is boot failure, `logger.fatal({ err_message: (err as Error).message }, "db_ping_failed");`.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file states no layer weight; it names no 1.0, 0.9 or 0.6.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item; it only names the retrieval tools.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file writes no aliases; it contains no persistence logic beyond the pool and catalog loading.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no names; there is no lower-casing, unaccenting or whitespace collapsing in it.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file creates no nodes or aliases; it only wires the toolsets.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version and makes no preliminary reading.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item; it only names the retrieval tools.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file states no similarity threshold and no 5-character floor; search is delegated through `registerQueryRetrievalToolset`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file matches no aliases; search is delegated through `registerQueryRetrievalToolset`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version and checks none.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file states no stemming or accent policy; it contains no full-text logic.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file retries no run and exposes no retry tool; its tool list is `INGEST_TOOL_NAMES`, `ingest_document` and `ingest_directed`.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The file states no cap of 200; search is delegated through `registerQueryRetrievalToolset`.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file ranks nothing; it contains no sort or score logic.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity; it contains no trigram logic.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no alias or node logic.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no resolution logic.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no alias admission logic.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no extraction logic.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no search logic.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file only names the tool, `{ toolset: "ingest" as const, name: "ingest_directed" }`, and implements no directed ingestion step.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no extraction logic.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no search logic.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no search logic.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no extraction logic.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no run or retry logic.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no search logic.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no extraction logic.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file implements no step of this scenario; it contains no search logic.
+looked_past: >-
+  The file's own comment-free boot and shutdown sequence (pool ping, catalog load, signal handling) and the repeated catalogClient.release() in the catch and finally blocks are operational code and no domain fact, so they are another judgment's.
+candidates_opened:
+  - domain/knowledge-base/ingest-tool

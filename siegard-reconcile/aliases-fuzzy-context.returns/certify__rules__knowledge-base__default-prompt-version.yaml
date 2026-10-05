@@ -1,0 +1,29 @@
+certified:
+  - node: rules/knowledge-base/default-prompt-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/default-prompt-version.spec.ts
+        name: opens the run under v5 when an ingest_document call names no prompt version
+    why: >-
+      The named test calls ingest_document without a prompt version. It reads
+      `prompt_version` from the body the handler passes to its injected
+      `ingestRaw` dependency, and it would fail if that default stopped being v5.
+      That establishes only the version requested of a mocked intake port. No run
+      is opened or persisted, and `runExtraction` is a mock whose arguments nothing
+      checks. So the run is never shown to execute under v5: nothing shows that
+      the opened LLMRun carries v5, or that extraction for a document with no
+      version selects the v5 prompt. The assertion also depends on how the code
+      is arranged. If the handler handed the default to extraction rather than to
+      `ingestRaw`, the test would fail even though the fact still held. The test
+      "opens the run under the version an ingest_document call names instead of
+      the default" covers the explicit-version case, which is the other half of
+      the default rather than the fact itself. The test "resolves exactly v1 to
+      v5 and refuses a version outside them" does not bear on this node. It also
+      asserts more than this node states: that exactly v1 to v5 exist and v6 is
+      refused. That claim breaks the day another version is legitimately added.
+    remainder: testable
+    remainder_why: >-
+      One input: an ingest_document call with no prompt version, run through
+      intake and extraction rather than mocks of them. One expected result: the
+      LLMRun it opens records prompt_version v5, and the extraction it starts
+      runs with the v5 prompt module.

@@ -1,0 +1,24 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/retry-reuses-document-context.spec.ts
+        name: leaves the document context status as it was after a retried run holding a document context is extracted again, whichever status it held
+      - file: src/__tests__/unit/ingestion/retry-reuses-document-context.spec.ts
+        name: makes no preliminary reading and shows each chunk the context the run held when a retried run holding a document context is extracted again
+    why: >-
+      The status-kept half is exercised at prompt version v5 only. The world these tests build
+      (retried-run-world.ts) pins every run to prompt_version "v5". A run at v5 holding a
+      document context is extracted again with each held status (produced, single-chunk,
+      too-long, failed, none), and the test asserts each status comes back unchanged. A sibling
+      test asserts that no preliminary reading is made in the produced case. Nothing in the
+      proof extracts a run at a prompt version later than v5. So the "and later" part of the
+      fact is unexercised: code that kept the status only at exactly v5 would pass every
+      offered test. The proof also reaches a held document context only through a retried
+      failed run. Nothing in it extracts a run that holds a context by any other route.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. A run at a prompt version later than v5 (for
+      example v6) already holds a document context with a status that is not produced, such as
+      single-chunk. It is extracted with no preliminary reading. The expected result is that
+      the run's document context status is still that same value.

@@ -1,0 +1,320 @@
+findings:
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      LlmRunResponseSchema, the attempts field (line 74)
+    evidence: >-
+      attempts: z.number().int().positive(),
+    cost: >-
+      The response schema refuses any run whose attempts is below 1, so the code decides that a run's attempts starts at one and never holds zero. The node domain/knowledge-base/llm-run types attempts only as a required integer, and rules/knowledge-base/retry-counts-attempts only adds one per retry. No node states the starting value or the lower bound. A reader looking for what attempts may hold finds nothing in the specification, and a stored run with a different count would fail this read.
+    kind: unstated
+    correction: >-
+      The analysis that owns domain/knowledge-base/llm-run would have to state the starting value of attempts, or that it is at least 1. Alternatively the schema drops the positivity bound.
+    node: domain/knowledge-base/llm-run
+
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      LlmRunResponseSchema, ToolCallResponseSchema, ListToolCallsResponseSchema, RetryLlmRunRequestSchema and ListToolCallsQuerySchema, the response and request shapes of read-llm-run, list-tool-calls, run-extraction and retry-llm-run
+    evidence: >-
+      reason: z.string().max(500).optional(),
+      and total/limit/offset/items in ListToolCallsResponseSchema, and document_context_status and document_context on LlmRunResponseSchema
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      DocumentContextSchema
+    evidence: >-
+      summary: z.string(), entities: z.array(DocumentEntitySchema), model: z.string(),
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      DocumentContextStatusSchema
+    evidence: >-
+      z.enum(["produced", "single-chunk", "too-long", "failed"])
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      DocumentEntitySchema
+    evidence: >-
+      node_type: z.string(), names: z.array(z.string()),
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      IngestToolNameSchema
+    evidence: >-
+      z.enum(["propose_fragment", "propose_node", "propose_link", "propose_attribute"])
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      LlmRunResponseSchema
+    evidence: >-
+      model: z.string(), prompt_version: z.string(), status: LlmRunStatusSchema, attempts: z.number().int().positive(), input_raw_information_id: z.string().uuid(), idempotency_key: z.string().regex(/^[0-9a-f]{64}$/), summary: LlmRunSummarySchema
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      LlmRunStatusSchema
+    evidence: >-
+      z.enum(["running", "completed", "failed"])
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      LlmRunSummarySchema
+    evidence: >-
+      accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error and orphaned_fragments, each z.number().int().nonnegative()
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      ToolCallResponseSchema
+    evidence: >-
+      tool_name: IngestToolNameSchema, arguments: z.record(z.string(), z.unknown()), result: z.record(z.string(), z.unknown()).nullable(), validation_outcome: ValidationOutcomeSchema, created_at: z.string().datetime({ offset: true })
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      ValidationOutcomeSchema
+    evidence: >-
+      z.enum(["accepted", "consolidated", "superseded_previous", "needs_review", "uncertain", "disputed", "rejected", "error"])
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      the idempotency_key field of LlmRunResponseSchema, which holds the 64-lowercase-hex shape only; the digest derivation is not computed in this file
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      the orphaned_fragments field of LlmRunSummarySchema, which declares the count's shape only; the counting is not done in this file
+    evidence: >-
+      orphaned_fragments: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      the eight outcome fields of LlmRunSummarySchema, which declare the shape and the zero floor only; the counting is not done in this file
+    evidence: >-
+      accepted: z.number().int().nonnegative(), consolidated: z.number().int().nonnegative(), ... error: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      ListToolCallsQuerySchema
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      the file declares response and request schemas only and presents no content to a model
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      the file calls no language model and holds no timeout or retry count
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      no schema in the file concerns search, provenance reads, catalog listings or graph reads
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      no flags field or enumeration in the file
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      no match enumeration in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      the prompt version is declared only as a plain string and not as its closed set: prompt_version: z.string(),
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      no search item shape in the file
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      no similarity in the file
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      no similarity in the file
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      prompt_version: z.string(), carries no default
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      node_type: z.string(), is not checked against the catalog in this file
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      model: z.string(), names no default context model
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      no reading or chunk threshold in the file
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      document_context_status: DocumentContextStatusSchema.optional(), only declares the shape
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      the file declares the status values only and records none
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      summary: z.string(), carries no line cut
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      summary: z.string(), carries no line limit
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      no entity resolution in the file
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      no search item in the file
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      no scoring in the file
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      no extraction in the file
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      no prompt in the file
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      no prompt in the file
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      no prompt in the file
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      no prompt in the file
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      no chunk reading in the file
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      no prompt in the file
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      no extraction flow in the file
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      no weights in the file
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      no search item in the file
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      no normalization in the file
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      document_context_status and document_context are declared .optional() with no version rule
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      no search item in the file
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      no matching in the file
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      no matching in the file
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      prompt_version: z.string(), accepts any string and does not check the closed set
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      no text matching in the file
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      only RetryLlmRunRequestSchema, with a reason field, is declared; the retry behaviour is not in the file
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      no ranking in the file
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      no similarity in the file
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      no resolution in the file
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      no extraction in the file
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      no alias handling in the file
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      no extraction flow in the file
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      no extraction in the file
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      no retry behaviour in the file
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      no extraction in the file
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+
+looked_past: >-
+  The wire spelling of the validation outcome and tool-name enumerations uses underscores while the nodes spell some values with hyphens; the ingestion contract's answers use the underscore spelling, so I did not report it.

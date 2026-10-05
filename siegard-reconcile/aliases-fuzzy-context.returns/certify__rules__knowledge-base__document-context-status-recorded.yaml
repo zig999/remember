@@ -1,0 +1,38 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-recorded
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records on a v5 run the status each chunk count, content length and reading outcome calls for, counting the length in UTF-16 code units
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the document context status produced when the preliminary reading yields a context
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: makes no preliminary reading and records the document context status single-chunk for a v5 raw information of 1 chunk
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the document context status failed when the preliminary reading answers a provider error
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: reads the 3 chunks, completes the run and records status failed with no document context when the preliminary reading of a 3-chunk v5 raw information answers a provider error
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the document context status failed when the preliminary reading answers text that is not a document context
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the document context status failed when the model call of the preliminary reading times out
+    why: >-
+      Under prompt version v5, the set exercises all four statuses. It records
+      single-chunk for one chunk both within and past 100000 units. It records
+      produced at exactly 100000 UTF-16 code units, and too-long at 100001 units.
+      It also records too-long for astral content that is past the limit in
+      UTF-16 code units but within it in code points. It records failed for a
+      provider error, a timeout and an answer that is not a document context.
+      It records produced when the reading yields a context. Every run in the
+      set uses prompt version v5, so the "and later" half of the fact is never
+      tested. An implementation that recorded these statuses only when the
+      prompt version equals v5 would pass every named test. The set does not
+      show whether a prompt version after v5 exists.
+    remainder: testable
+    remainder_why: >-
+      The fix is to run extractions under a prompt version after v5, with the
+      same four inputs. One raw information of one chunk should record
+      single-chunk. One of three chunks whose content exceeds 100000 UTF-16
+      code units should record too-long. One whose preliminary reading fails
+      should record failed. One whose reading yields a document context should
+      record produced.

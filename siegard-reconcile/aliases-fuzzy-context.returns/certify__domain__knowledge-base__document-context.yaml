@@ -1,0 +1,52 @@
+certified:
+  - node: domain/knowledge-base/document-context
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the summary of that context
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the node type of each listed entity
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the names of each listed entity
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the model that produced the context
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back the document context with its summary, every entity and its model
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back an entity with its one node type and all of its names in the recorded order
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back holding no document context when none was recorded
+      - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+        name: carries the whole document context of a run that holds one over REST
+      - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+        name: carries each entity of the document context with its node type and every name in the recorded order over REST
+      - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+        name: carries no document context for a run that holds none over REST
+    why: >-
+      The shape of the value is exercised. A recorded context reads back with its summary, every
+      entity in order (node type and names) and its model, both from the repository and from the
+      REST run answer. Several parts of the fact go unexercised. First, nothing in the offered
+      proof submits a context that has no summary or no model, so the claim that both are
+      required is never tested. Second, nothing shows the context to the model while it reads a
+      chunk. No test checks that the extraction of each chunk receives the document's summary and
+      entities, so "lets each chunk be read knowing what the rest of the document says" goes
+      unexercised. Third, "keeps on record what the model was shown" is only tested as storing
+      and reading back what was recorded. No test ties the recorded context to the context
+      actually shown during extraction. Fourth, nothing asserts that the context is never a
+      source of knowledge. No test checks that an entity named only in the context produces no
+      node, alias, link, attribute or provenance. The repository tests run against a fake store
+      that applies the SQL UPDATE's assignments to an in-memory row, so the round trip is
+      checked against that fake rather than a database. The tests on document_context_status
+      ("carries the document context status ... over REST", "carries no document context status
+      ...", "reads back with the status that was recorded", "reads back holding no document
+      context status ...", and the status enumeration test) are about the run's status, not this
+      value. They bear on nothing this node states.
+    remainder: testable
+    remainder_why: >-
+      Four assertions would close it, each one input against one expected result. (1) Recording a
+      document context that lacks a summary, or lacks a model, is refused and nothing is
+      recorded. (2) Extracting a multi-chunk document whose context was produced shows each
+      chunk's extraction that context's summary and entities. (3) The context recorded on the
+      run equals the context shown to the model during that extraction. (4) A context naming an
+      entity that no chunk of the document mentions yields no knowledge node, alias, link,
+      attribute or provenance for that entity once the run completes.

@@ -1,0 +1,30 @@
+certified:
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
+        name: resolves a later proposal named CNPq of the same node type to that node as matched_existing
+    why: >-
+      The test builds the given through a first proposal in run A. That proposal creates the
+      Organization node with the canonical alias "Conselho Nacional de Desenvolvimento Científico"
+      and admits the alias "CNPq". A second proposal from a different document in run B names
+      "CNPq" with the same node type. The test asserts that this later proposal answers
+      matched_existing with the first node's id. If the service stopped answering matched_existing
+      when the alias lookup returns a hit, the test would fail. It would also fail if the alias
+      were never recorded.
+
+      The other half of the fact is not exercised by the code under test. That half is that an
+      exact lookup finds an active node of the same type through a held alias that is not its
+      canonical one. The test's database stand-in decides this itself. Its answerExactMatch routes
+      on two things only: the SQL prefix "SELECT na.node_id" and the substring
+      "alias_norm = norm(". It then matches any alias kind, filters by node type and active status
+      in JavaScript, and ignores the rest of the query. So the real query could be changed to
+      match only canonical aliases, or to drop its node-type or active-status filter. That change
+      would stop the fact holding against the database, and this test would still pass.
+    remainder: testable
+    remainder_why: >-
+      Start from a store holding an active Organization node with the canonical alias
+      "Conselho Nacional de Desenvolvimento Científico" and the non-canonical alias "CNPq". Submit
+      a later document's Organization node proposal named "CNPq", with the resolution query running
+      against the real schema and the norm() function rather than a stand-in. The expected result
+      is matched_existing with that node's id.

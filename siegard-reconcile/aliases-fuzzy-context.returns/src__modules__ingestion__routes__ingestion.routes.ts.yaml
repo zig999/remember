@@ -1,0 +1,289 @@
+read:
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      handleProposeMirror, the REST side of the four proposals. It calls the same services and returns the
+      same error code the validation failure carries.
+    evidence: >-
+      throw new ProposeMirrorEnvelopeReject({ ok: false, error: { code: err.code, message: err.message, details: err.details, }, });
+      and return await proposeFragmentService(client, input, runCtx); the MCP side is another file.
+  - node: constraints/request-body-ceiling
+    held_at: >-
+      the POST_INGEST_BODY_LIMIT constant, applied as a per-route option on POST /raw-information
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024; app.post("/raw-information", { bodyLimit: POST_INGEST_BODY_LIMIT }, async (request, reply) => {
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      the status check in handleProposeMirror's transaction callback
+    evidence: >-
+      if (run.status !== "running") { throw new RunNotRunningError(llmRunId, run.status); }
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      the order in the four propose-* route handlers and in handleProposeMirror. The run id param is parsed, then
+      the body is parsed, then the run is looked up, then its status is checked, all before the service call.
+    evidence: >-
+      const params = LlmRunIdParamSchema.parse(request.params); const input = ProposeFragmentInputSchema.parse(request.body);
+      then in handleProposeMirror: const run = await findLlmRunById(client, llmRunId); if (run === null) { throw new ResourceNotFoundError("llm_run", llmRunId); }
+      if (run.status !== "running") {
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      the file mentions no prompt or model input. It forwards only `runLlmExtraction(deps.pool, params.llmRunId, deps.logger, orchestratorCatalog, {`
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      the file holds no timeout or retry bound. It only calls `const body = await runLlmExtraction(` and maps its errors.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the REST handlers of registerIngestionRoutes and handleProposeMirror. They map each refusal to its HTTP
+      status and body: 404 for a missing resource, 409 for run not runnable, not retryable or not running,
+      502 for a provider failure, 500 for a fatal extraction, and 200 with {ok:false,error} for layered
+      validation rejections. The 201/200 outcomes of intake are passed through from the service.
+    evidence: >-
+      return reply.status(409).send({ ok: false, error: { code: err.code, message: err.message, details: { llm_run_id: err.llmRunId, current_status: err.currentStatus, }, }, });
+      return reply.status(result.status).send(result.body); return reply.status(200).send(err.envelope);
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      the file registers only ingestion routes: app.post("/raw-information", app.get("/llm-runs/:llmRunId", app.post("/llm-runs/:llmRunId/retry"; no search, provenance, catalog or graph read.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      no flag vocabulary appears; the file's declarations are IngestionRouteDeps, RunLlmExtractionRequestSchema, RawInformationIdParamSchema, LlmRunIdParamSchema
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      the shape is not declared here. The file forwards `partial_run: err.partialRun` and `return reply.status(200).send(body);` without naming its fields.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      no status values are declared or compared. The only status compared is the run's: `if (run.status !== "running")`
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      no entity shape appears in the file; extraction is only delegated via `runLlmExtraction(`
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      the file reads `run.status` and `run.input_raw_information_id` from a row typed in another file (`import { findLlmRunById } from "../repository/llm-run.repository.js";`) and declares no shape for the run
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      no search code in the file; the routes are intake, reads, extraction, retry and the four proposal mirrors
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      no prompt version value or enumeration appears; `ANTHROPIC_API_KEY: string; readonly CONTEXT_MODEL: string;` are passed on untouched
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      no search item shape or ranking in the file
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      aliases are not handled here; `return await proposeNodeService(client, input, runCtx, { catalog });` hands the proposal to the service
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      no similarity computation in the file
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      no match strength computation in the file
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      the file names no default prompt version; document ingestion is not a route here
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      the catalog is only passed along: `orchestratorCatalog,`
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      `readonly CONTEXT_MODEL: string;` is declared in IngestionRouteDeps and forwarded as `env: orchestratorEnv`; no fallback model is stated
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      the preliminary reading is not in this file; it only calls `runLlmExtraction(`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      no document context status is read or written; the file calls `retryLlmRun(client, params.llmRunId)` and `runLlmExtraction(`
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      no status recording in the file
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      no summary handling in the file
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      no summary handling in the file
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      entity resolution is not in this file; proposeNodeService is only invoked
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      no graph expansion in the file
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      the extraction loop is not in this file; `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      no prompt text in the file
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      no prompt text in the file
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      no prompt text in the file
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      no prompt text in the file
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      chunk reading is not in this file; `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      no prompt text in the file
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      no preliminary reading in the file
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      no search weights in the file
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      no search items in the file
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      alias handling is in the service; `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      no normalization in the file
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      node creation is not in the file
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      no prompt-version branching in the file
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      no search items in the file
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      the file does not check a prompt version; the failure arrives as `if (err instanceof ExtractionFatalError) { return reply.status(500).send({`
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      no full-text matching in the file
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      the retry route only delegates: `const body = await retryLlmRun(client, params.llmRunId);`
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      no similarity code in the file
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      alias admission is in the service; `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      resolution is in the service; `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      the route returns whatever the service answers: `return reply.status(200).send(envelope);`
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      extraction behavior is not in the file; `const body = await runLlmExtraction(`
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      directed ingestion is not routed in this file
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      no preliminary reading in the file
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      no preliminary reading in the file
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      the file only delegates the retry and the extraction: `retryLlmRun(client, params.llmRunId)` and `runLlmExtraction(`
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      no chunk count or context status in the file
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      no search code in the file
+looked_past: >-
+  The 11 MiB limit is set only on POST /raw-information, and the other routes in this file take the framework's
+  default limit unless something outside this file sets one. Whether the system-scoped ceiling holds for them is
+  not decidable from this file, and I did not read the files that might settle it. Which of the run-extraction
+  and propose-* routes get registered also depends on `deps.catalog` and `deps.env` being present. That is wiring,
+  not a domain fact.

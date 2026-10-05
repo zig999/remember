@@ -1,0 +1,35 @@
+certified:
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
+        name: takes the proposal, answers its resolution, records no alias and names the alias as not admitted
+      - file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
+        name: does not add to the matched node an alias the source never writes
+    why: >-
+      Three parts of the scenario are exercised. The proposal is taken: a refused envelope
+      throws. Its resolution is answered as created_new with the node identity. "Petrobras" is
+      not among the aliases held by the answered node, and the existing-node test also checks
+      that it is not added to a matched node.
+
+      The source check is not exercised. Whether "Petrobras" occurs in the raw information's
+      content is decided by the test's own store stand-in (answerAdmission). For any query that
+      starts with "SELECT a.alias", the stand-in returns `admitted` computed in JavaScript with
+      dbNorm and includes over the seeded content. The admission query the code issues is never
+      evaluated. If that query stopped looking at the source, for example by admitting every
+      alias of an extraction run, both tests would still pass. A raw information that says only
+      "a estatal" is never shown to keep "Petrobras" out.
+
+      The third "then" is matched loosely. namesNotAdmitted checks that the serialized answer
+      contains the string "Petrobras" and contains ALIAS_NOT_IN_SOURCE somewhere. It does not
+      tie the reason to that alias's entry. An answer that echoed the proposed aliases and
+      carried the reason anywhere else would pass. So "the answer lists 'Petrobras' as not
+      admitted, with the reason ALIAS_NOT_IN_SOURCE" is only partly established.
+    remainder: testable
+    remainder_why: >-
+      Input: an extraction run over a raw information whose content is "a estatal anunciou lucro
+      recorde no trimestre", where the admission query is evaluated as the code issues it (no
+      stand-in), and a node proposal naming the alias "Petrobras". Expected result: the proposal
+      is answered with its resolution; "Petrobras" is not recorded on the knowledge node; and the
+      answer has a not-admitted entry whose alias is "Petrobras" and whose reason is
+      ALIAS_NOT_IN_SOURCE, asserted on that entry's own fields.

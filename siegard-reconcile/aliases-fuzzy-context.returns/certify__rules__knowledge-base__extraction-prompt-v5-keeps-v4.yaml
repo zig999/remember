@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: keeps every instruction line of the v4 system prompt in the v5 system prompt
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: names hoje, ontem and amanhã as relative-date words in the v4 and v5 system prompts
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: asks in the v4 and v5 system prompts to resolve a relative date against the document date and, without one, against the reception date
+    why: >-
+      The fact is about the system prompt each version builds, and that prompt is built from
+      a catalog snapshot. The test that keeps v4's lines builds both prompts from one snapshot
+      only. That snapshot holds one node type and no link types, no link type rules and no
+      attribute keys. Any instruction v4 writes from link types, link type rules or attribute
+      keys and their valid values is therefore never in the v4 text being compared. If v5
+      dropped those instructions, the test would still pass. For a catalog with node types
+      only, the test does fail when a v4 instruction is missing from v5. Even there the check
+      is weak: it asks only whether each v4 line appears somewhere in the whole v5 prompt with
+      spacing collapsed. A v4 line can match inside a longer v5 line that qualifies or
+      reverses it, and a short v4 line can match unrelated v5 text. So "contains the
+      instruction" is checked as "contains the substring". The two relative-date tests each
+      confirm one particular v4 instruction is kept in v5. They check text patterns that both
+      prompts happen to share, and they add nothing outside the lines the first test already
+      compares.
+    remainder: testable
+    remainder_why: >-
+      Build the v4 and v5 system prompts from one catalog snapshot that holds at least one
+      link type, one link type rule and one attribute key with valid values, besides a node
+      type. The expected result is that every v4 instruction line appears in v5 as its own
+      line, not as part of a longer one, and that the list of v4 lines missing from v5 is
+      empty.

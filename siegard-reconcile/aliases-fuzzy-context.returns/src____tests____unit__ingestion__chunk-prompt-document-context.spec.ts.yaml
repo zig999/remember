@@ -1,0 +1,359 @@
+findings:
+  - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+    where: >-
+      function normOf, lines 188-195, used by findExactNode and insertAlias to stand in for the
+      database's alias comparison
+    evidence: |-
+      function normOf(text: string): string {
+        return text
+          .normalize("NFD")
+          .replace(/\p{M}/gu, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+      }
+    cost: >-
+      The normalization of a name (lower-casing, removing accents, trimming, collapsing inner
+      whitespace) is implemented here a second time, in a file the node is not bound to. This copy
+      decides whether the mock store finds an alias in the 4th test. If the node's rule moves,
+      the test keeps its own definition and still passes, and nothing says which of the two was
+      decided.
+    kind: contradicts
+    correction: >-
+      The test would have to compare names without its own copy of the rule, for example by using
+      the identical strings it already feeds the mock. Failing that, the bind of this file to the
+      node is what claims the stand-in.
+    node: rules/knowledge-base/name-normalization
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      the second `it` block, "presents the document content, each chunk's text and the document
+      context shown with each chunk in the user turn, labelled as data and outside the
+      instructions", through isMarkedAsData
+    evidence: |-
+      holding !== undefined &&
+          DATA_LABEL.test(holding) &&
+          !call.system.includes(needle)
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      Looked at the stub model, which sets no timeout and counts no retries:
+      `finalMessage: async (): Promise<Anthropic.Messages.Message> => { await tick(); ...`
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file calls the service directly, `await runLlmExtraction(buildPool(world), RUN_ID, ...)`,
+      and asserts no contract answer or refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance, catalog or graph read appears in the file. Its only reads are
+      routes of the mock pool, such as `[/FROM raw_chunk/, ...]`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag appears; the strings looked at were `uncertain`/`disputed`-free fixtures such as
+      `const CHUNK_REPLY = "done";`.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file only imports the shape and builds values of it: `import { DocumentContextSchema,
+      type DocumentContext, ... } from "../../../modules/ingestion/dto/llm-run.dto.js"`, and
+      `JSON.stringify({ summary: SUMMARY, entities: [DIRECTOR, COMPANY] })`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The status is only a loosely typed row field, `document_context_status: string | null;`, not
+      a declaration of the enumeration.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The shape is imported (`type DocumentEntity`) from the DTO file, and the file only builds
+      values: `const DIRECTOR: DocumentEntity = { node_type: "Person", names: ["João Silva", "o Diretor"] };`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      interface RunRow, a test-local row fixture naming the run's attributes, partially
+    evidence: |-
+      interface RunRow {
+        id: string;
+        model: string;
+        prompt_version: string;
+        started_at: Date;
+        finished_at: Date | null;
+        status: string;
+        attempts: number;
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      Looked at the mock route `[/MAX\(similarity/, () => EMPTY_RESULT]`, which only returns no
+      candidates and declares no match value.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      Versions appear only as fixture values: `promptVersion: "v5",` and
+      `"a v4 run of three chunks": { promptVersion: "v4" }`.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No search item is built or read in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The only alias writer is the mock `insertAlias`, which records every alias without checking
+      the source: `world.store.aliasNorms.push({ nodeId: String(params[0]), norm: normOf(String(params[1])) });`
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The similarity route is stubbed empty: `[/MAX\(similarity/, () => EMPTY_RESULT]`.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The similarity route is stubbed empty: `[/MAX\(similarity/, () => EMPTY_RESULT]`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      Every scenario names its version: `const BASE_SCENARIO: Scenario = { promptVersion: "v5", ... }`.
+      No ingestion without a version is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      Both entities of the reading are of catalogued types, so no entity is dropped: `nodeTypes: [{ id: NODE_TYPE_PERSON_ID, name: "Person" }, { id: NODE_TYPE_ORGANIZATION_ID, name: "Organization" }]`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The context model is only configured, never asserted: `const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", CONTEXT_MODEL } as const;`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the first and second `it` blocks, which run a v5 raw information of three chunks and assert
+      a preliminary reading call plus the context shown with every chunk
+    evidence: >-
+      `world.calls.find((call) => call.isReading)` and
+      `missingFromAChunk: missingFromChunks(world, [...CONTEXT_NEEDLES, ...METADATA_NEEDLES])`
+      expected as `[]`. The 100000-unit ceiling and the reuse of a held context are not exercised.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The run starts with `document_context: null, document_context_status: null` and no scenario
+      starts from a run that already holds a context.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No assertion reads `world.run.document_context_status`; the only observation is
+      `chunksRead` and `showsContext` in the third `it`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The reading's summary is one line: `const SUMMARY = \`Ata do comite financeiro. ${SUMMARY_INJECTION}\`;`
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The reading's summary is one line: `const SUMMARY = \`Ata do comite financeiro. ${SUMMARY_INJECTION}\`;`
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      the fourth `it` block, "resolves a proposal named João Silva made while reading chunk 3 to
+      the knowledge node created while reading chunk 1 ...", with the mock findExactNode
+    evidence: |-
+      nodeProposals: [
+            { node_id: "node-1", resolution: "created_new" },
+            { node_id: "node-1", resolution: "matched_existing" },
+          ],
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      No search item is built or read in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No expansion or score appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      the fourth `it` block (`fragmentAnchors: [[CHUNK_IDS[2]]]`) and the fifth `it` block
+      "anchors the fragment proposed while reading a chunk to that chunk alone ..."
+    evidence: >-
+      `expect(anchors).toEqual([[CHUNK_IDS[0]], [CHUNK_IDS[1]], [CHUNK_IDS[2]]]);`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file never inspects the system prompt's instructions: `system: systemTextOf(req.system)`
+      is only compared against data needles in isMarkedAsData.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The v4 scenario `"a v4 run of three chunks": { promptVersion: "v4" }` is only checked for
+      the absence of the context in the chunk prompts.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No assertion looks for "hoje", "ontem" or "amanhã" in the system prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The system prompts of v4 and v5 are never compared in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the first `it` block, "reads the chunks of a run holding a document context one at a time
+      in index order ...", and its helpers missingFromChunks and tailShownWithChunk
+    evidence: |-
+      expect(observed).toEqual({
+          readOrder: [0, 1, 2],
+          largestNumberOfModelCallsInFlight: 1,
+          missingFromAChunk: [],
+          tailsOfTheSecondAndThirdChunk: [SHOWN_EXACTLY, SHOWN_EXACTLY],
+        });
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file only checks that the document date and the reception time reach each chunk
+      prompt (`METADATA_NEEDLES`), not the instruction to resolve a relative date.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      the third `it` block, shape "a v5 run of three chunks whose preliminary reading failed"
+    evidence: |-
+      "a v5 run of three chunks whose preliminary reading failed": {
+          chunksRead: 3,
+          showsContext: false,
+        },
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No search layer or weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      No search item is built or read in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      Looked at the mock `insertAlias` and the fourth test's `nodesCreated: ["João Silva"]`. No
+      proposal carries aliases, so the rule is not exercised.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      function normOf, lines 188-195, a second implementation of the rule in a mock (see the
+      finding)
+    evidence: |-
+      .normalize("NFD")
+          .replace(/\p{M}/gu, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The mocks `insertNode` and `insertAlias` only record rows. No assertion reads a canonical
+      alias or an admitted alias of a created node.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      the third `it` block, shape "a v4 run of three chunks", covering only the prompt side
+      (no context shown)
+    evidence: >-
+      `"a v4 run of three chunks": { chunksRead: 3, showsContext: false },`. No assertion that
+      no preliminary reading is made or that no status is recorded.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      No search item is built or read in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The approximate lookup is stubbed empty: `[/MAX\(similarity/, () => EMPTY_RESULT]`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No search is run; the only alias lookup is the extraction's mock `findExactNode`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      Only versions the system holds are used (`"v5"`, `"v4"`), and no unknown version is
+      exercised.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      No full-text match is made in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No retry is made; `runLlmExtraction` is called once per scenario.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The similarity route is stubbed empty: `[/MAX\(similarity/, () => EMPTY_RESULT]`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      No node proposal in the file carries an alias: `input: { node_type: "Person", name: "João Silva" }`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      No node proposal in the file carries an alias: `input: { node_type: "Person", name: "João Silva" }`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      No node proposal in the file carries an alias: `input: { node_type: "Person", name: "João Silva" }`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      the fourth `it` block, with SCENARIO_TEXTS and SCENARIO_SCRIPT
+    evidence: >-
+      `"o Diretor Financeiro, João Silva, abriu a reuniao."` in chunk 1, `"o Diretor aprovou o orcamento."`
+      in chunk 3, expecting `nodeProposals` created_new then matched_existing and
+      `fragmentAnchors: [[CHUNK_IDS[2]]]`.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      the third `it` block, shape "a v5 run of three chunks whose preliminary reading failed",
+      covering the three chunks read and no context shown; the run's completion and its status
+      are not asserted
+    evidence: >-
+      `readingError: new Error("provider unavailable"),` with `chunksRead: 3, showsContext: false`.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No assertion checks that the store is empty before the first chunk is read. The
+      `world.store.nodes` is read only after the whole run.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No retry is made and no run starts holding a context: `document_context: null,`.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      the third `it` block, shape "a v5 run of one chunk", covering only the prompt side; the
+      status single-chunk is not asserted
+    evidence: >-
+      `"a v5 run of one chunk": { texts: DEFAULT_TEXTS.slice(0, 1) },` expecting
+      `{ chunksRead: 1, showsContext: false }`.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No search is run in the file.
+looked_past: >-
+  The mock pool's SQL routing, the stub model and the RunRow fixture are test scaffolding, and I
+  took them as code-review matter rather than as facts any node holds.
+candidates_opened:
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/node-resolution

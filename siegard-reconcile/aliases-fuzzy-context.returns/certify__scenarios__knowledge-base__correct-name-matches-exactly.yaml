@@ -1,0 +1,32 @@
+certified:
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+        name: answers the knowledge nodes Petrobras and Petrobrás Distribuidora for petrobras as two node items, each carrying the match exact
+    why: >-
+      The test checks only what happens after the database answers. It confirms that the
+      search returns both nodes as items with the match exact when the stubbed exact route
+      hands back both. It does not check that a search for "petrobras" exactly matches
+      "Petrobras" and "Petrobrás Distribuidora" in the first place. The stub (respondToNodeRoutes)
+      returns store.exact for any SQL containing "FROM node_alias na" and only uses the
+      parameters to cap the row count. The search text never decides which nodes come back
+      or by which route. The stubbed rows also do not carry the names: canonical_name is
+      "Name node-petrobras", and no alias "Petrobrás Distribuidora" exists anywhere. So the
+      test would still pass if the exact route stopped reaching "Petrobrás Distribuidora" for
+      "petrobras". That covers the case where the accent stopped being folded, and the case
+      where only a whole-name match counted. It would also still pass if that node were
+      reached only through the approximate route, because the stub, not the system, decides
+      that PETROBRAS_PAIR_STORE puts both nodes on the exact route. "Both knowledge nodes are
+      returned" and "both items carry the match exact" are therefore checked only for the
+      route the stub chose, never for the query the scenario states. The given condition of
+      an accepted information fragment for each node is also not set up as data: provenance
+      rows are made up for any id that is asked for.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, over real node-layer matching. Set up a knowledge
+      base holding the nodes "Petrobras" and "Petrobrás Distribuidora", each with an accepted
+      information fragment mentioning it. Then search for "petrobras" and assert that exactly
+      those two node items are returned and that each carries the match exact. Any stand-in
+      used must decide the result from the search text and the stored names, not from rows
+      fixed in advance.

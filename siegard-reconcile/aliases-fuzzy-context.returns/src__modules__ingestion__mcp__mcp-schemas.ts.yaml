@@ -1,0 +1,497 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      StartAsyncIngestionMcpInputSchema, lines 48-79, and its content description at line 53-55
+    evidence: >-
+      export const StartAsyncIngestionMcpInputSchema = z.object({ ... .describe("The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary.")
+    cost: >-
+      The file declares the input shape, and the text a tool listing would show, for a tool that starts an ingestion and runs extraction in the background. The candidate constraint says the ingest toolset offers no such tool, and no operation of the ingestion contract names one. A reader looking in the specification would find the opposite of what this schema describes. Whether the toolset registers the schema is outside this file set and was not checked.
+    kind: contradicts
+    correction: >-
+      Whoever owns the file should decide, through the specification, whether the schema has a place. If the constraint stands, the declaration and its description are not held by any node.
+    node: constraints/ingest-toolset-offers-no-async-ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDocumentMcpInputSchema, the model and prompt_version fields, lines 101-114
+    evidence: >-
+      model: z.string().min(1).optional() ... prompt_version: z.string().min(1).optional()
+    cost: >-
+      An empty model or an empty prompt version is refused at the schema as a validation failure. The ingestion contract lists only content length and source type as validation refusals for ingest-document, and says nothing about a model or prompt version stated empty. The refusal lives only here, so the next reader looks for it in the contract and does not find it.
+    kind: unstated
+    correction: >-
+      The contract's ingest-document refusals would have to name an empty model or prompt version, or the schema would have to stop refusing it.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      GetIngestionStatusOutputSchema, the attempts field, line 159
+    evidence: >-
+      attempts: z.number().int().positive(),
+    cost: >-
+      The LLM run node holds attempts as a required integer, and the retry rule only adds one to it. The floor of at least 1 is stated by this schema alone, so a stored run with 0 attempts would fail the output parse here while no node says that 0 is impossible.
+    kind: unstated
+    correction: >-
+      The llm-run node, or a rule on it, would have to hold the lower bound of attempts, or the schema would have to drop it.
+    node: domain/knowledge-base/llm-run
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      GetIngestionStatusOutputSchema, the idempotency_key field, line 161
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+    cost: >-
+      The idempotency-key rule holds this fact, as 64 lowercase hexadecimal characters of a SHA-256 digest. It is bound to another file, not this one. The pattern is implemented a second time here, so a change to the node's format would not reach this file through its bind and the two would disagree without anyone knowing which was decided.
+    kind: contradicts
+    correction: >-
+      The pattern should be read from the one declaration the node is bound to, or this file should be bound to the node. Code cannot read the specification, so the bind is what closes it.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedNodeItemSchema, the node_id description, lines 225-231
+    evidence: >-
+      Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node.
+    cost: >-
+      The ingestion contract answers a pinned identity that names no knowledge node with error code RESOURCE_NOT_FOUND (reason not_found). It uses VALIDATION_INVALID_FORMAT only for a node that exists and is not active (reason inactive). This text, which the system emits to callers, gives one code for both cases, so a caller is told VALIDATION_INVALID_FORMAT for a missing node and receives RESOURCE_NOT_FOUND.
+    kind: contradicts
+    correction: >-
+      The description should say what the contract says: RESOURCE_NOT_FOUND when no node is held at the identity, and VALIDATION_INVALID_FORMAT when the node is not active.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedAttributeItemSchema.valid_from, line 262-264, and IngestDirectedLinkItemSchema.valid_from, line 286-288
+    evidence: >-
+      Optional ISO date when this attribute became valid. Required when the catalog AttributeKey requires it. / Optional ISO date when this link became valid. Required when the catalog LinkType requires it.
+    cost: >-
+      The rule says a proposal that requires a validity start and states none takes the date its source was received, with basis received, when the source has no document date. A directed ingestion records its own raw information with no document date. The text emitted to callers says the start is required of them, which differs from the rule, so a caller may supply dates the system would have filled in itself. The text is also inconsistent with itself, saying Optional and then Required.
+    kind: contradicts
+    correction: >-
+      The two descriptions should state what the rule holds, or stop stating a requirement the node does not place on the caller.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedMcpInputSchema.source_label description, lines 324-326
+    evidence: >-
+      Carried into the run's `metadata.source_label` for audit; not parsed by the server.
+    cost: >-
+      The rule records the label in the raw information's metadata. The LLM run node holds no metadata attribute. The text emitted to callers names the run as the place the label lands, so someone looking for the label on the run, following this text, would not find it where the node puts it.
+    kind: contradicts
+    correction: >-
+      The description should name the raw information's metadata, as directed-source-metadata states.
+    node: rules/knowledge-base/directed-source-metadata
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      In part, in the MCP input schemas IngestDocumentMcpInputSchema, IngestDirectedMcpInputSchema, GetIngestionStatusMcpInputSchema and ListRecentIngestionsMcpInputSchema, in the Propose*McpInputSchema declarations, and in GetIngestionStatusOutputSchema. The other operations of the contract are not carried by this file.
+    evidence: >-
+      export const IngestDocumentMcpInputSchema = z.object({ ... }); export const GetIngestionStatusMcpInputSchema = z.object({ llm_run_id: z.string().uuid() ... }); ProposeFragmentInputSchema.extend(LlmRunIdField) with llm_run_id: z.string().min(1). Findings are filed on the node_id text and on the model and prompt_version fields.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      IngestDirectedMcpInputSchema, lines 294-327
+    evidence: >-
+      fragments: z.array(IngestDirectedFragmentItemSchema).min(1), nodes: z.array(IngestDirectedNodeItemSchema).min(1), attributes: ...optional(), links: ...optional(), source_label: z.string().min(1).max(200).optional()
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes the shape along, imported from ../dto/llm-run.dto.js: document_context: DocumentContextSchema.optional(),
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes the enumeration along, imported from ../dto/llm-run.dto.js: document_context_status: DocumentContextStatusSchema.optional(),
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      INGEST_TOOL_NAMES, lines 40-46
+    evidence: >-
+      export const INGEST_TOOL_NAMES = ["propose_fragment", "propose_node", "propose_link", "propose_attribute"] as const;
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      GetIngestionStatusOutputSchema, lines 152-166, and the llm_run_id field of the Propose*McpInputSchema declarations
+    evidence: >-
+      id, model, prompt_version, started_at, finished_at: z.string().datetime({ offset: true }).nullable(), status, attempts: z.number().int().positive(), input_raw_information_id, idempotency_key: z.string().regex(/^[0-9a-f]{64}$/), summary, document_context_status, document_context. Findings are filed on attempts and on the idempotency key pattern.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      The Propose*McpInputSchema extensions and the directed attribute and link items, lines 24-38 and 246-292
+    evidence: >-
+      export const ProposeLinkMcpInputSchema = ProposeLinkInputSchema.extend(LlmRunIdField); valid_from: IngestDirectedIsoDateSchema.optional(), valid_from_basis: IngestDirectedValidFromBasisSchema.optional()
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      In part, in the content, source_type and metadata fields of IngestDocumentMcpInputSchema, lines 84-100
+    evidence: >-
+      content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, ...), source_type: SourceTypeSchema, metadata: z.record(z.string(), z.unknown()).optional()
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      The status field of GetIngestionStatusOutputSchema, line 158
+    evidence: >-
+      status: z.enum(["running", "completed", "failed"]),
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      GetIngestionStatusSummarySchema, lines 140-150
+    evidence: >-
+      accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error, orphaned_fragments, each z.number().int().nonnegative()
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      IngestDirectedValidFromBasisSchema, line 193
+    evidence: >-
+      const IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      The content field of IngestDocumentMcpInputSchema, lines 85-88
+    evidence: >-
+      content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      IngestDirectedAttributeValueSchema, lines 240-244
+    evidence: >-
+      z.union([z.string().min(1).max(2000), z.number().finite(), z.boolean()])
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      IngestDirectedRefSchema, line 191
+    evidence: >-
+      const IngestDirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      The fragments and nodes fields of IngestDirectedMcpInputSchema, lines 295-306
+    evidence: >-
+      fragments: z.array(IngestDirectedFragmentItemSchema).min(1), nodes: z.array(IngestDirectedNodeItemSchema).min(1)
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      The source_label field of IngestDirectedMcpInputSchema, lines 319-323
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional()
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IngestDirectedIsoDateSchema, lines 184-189
+    evidence: >-
+      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from must be ISO YYYY-MM-DD")
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      The text field of IngestDirectedFragmentItemSchema, lines 199-205
+    evidence: >-
+      text: z.string().min(1).max(1000)
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      The evidence_ref field of the directed attribute and link items, lines 259 and 283. The proposals of the MCP propose tools take it from the imported dto schemas.
+    evidence: >-
+      evidence_ref: IngestDirectedRefSchema.describe("The `ref` of the fragment that evidences this attribute (must appear in `fragments[]`).")
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      The name and aliases fields of IngestDirectedNodeItemSchema, lines 218-237
+    evidence: >-
+      name: z.string().min(1).max(500), aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      The limit field of ListRecentIngestionsMcpInputSchema, lines 172-178
+    evidence: >-
+      limit: z.number().int().min(1).max(50).default(10)
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      The limit field of ListRecentIngestionsMcpInputSchema, line 177
+    evidence: >-
+      .default(10)
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares schemas only and builds no prompt to a model. IngestDocumentMcpInputSchema = z.object({ content: z.string()...
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No call to a language model is made in the file. model: z.string().min(1).optional() only names a model.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search, provenance read, listing or graph read. Its only reads are GetIngestionStatusMcpInputSchema and ListRecentIngestionsMcpInputSchema.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No flag enumeration appears. The file declares only ingestion and run-status schemas.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports DocumentContextSchema and declares no entity shape. document_context: DocumentContextSchema.optional(),
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match enumeration appears. The file declares no search item.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not enumerate versions. prompt_version: z.string().min(1).optional()
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item shape appears. The file declares no search output.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The schema only shapes the alias input, with no source check. aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity is computed or declared in the file.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search strength is computed or declared in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The schema names no default value and the description does not state v5. prompt_version: z.string().min(1).optional().describe("Optional extraction prompt version. Defaults to the current server default.")
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file keeps or drops no context entity. It only imports DocumentContextSchema.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no context model. model: z.string().min(1).optional() is the ingestion model field.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no preliminary reading. It only shapes the status output: document_context: DocumentContextSchema.optional(),
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the status shape. document_context_status: DocumentContextStatusSchema.optional(),
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no status. document_context_status: DocumentContextStatusSchema.optional(),
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file cuts no summary. document_context: DocumentContextSchema.optional(),
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no line limit. The only summary here is the run summary: summary: GetIngestionStatusSummarySchema,
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves nothing. name: z.string().min(1).max(500) is only an input shape.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item or similarity.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search expansion or score.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment to a chunk. The fragment item has only ref and text: const IngestDirectedFragmentItemSchema = z.object({ ref: ..., text: ... });
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk. No chunk or ordering appears.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and resolves no relative date.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no extraction or preliminary reading.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search layer or weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file adds no alias to any node. aliases: z.array(z.string().min(1).max(500)).optional() is only an input shape.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name. name: z.string().min(1).max(500)
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node or alias. IngestDirectedNodeItemSchema only shapes the input.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file takes no decision by version. prompt_version: z.string().min(1).optional()
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search layer or similarity.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search layer.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check the version against the versions held. prompt_version: z.string().min(1).optional()
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no matching or stemming.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no retry. It only reads the status: document_context_status: DocumentContextStatusSchema.optional(),
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search or ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only shapes the alias input and holds no admission behavior. aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no resolution behavior. name: z.string().min(1).max(500)
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias admission behavior or answer of ALIAS_NOT_IN_SOURCE.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction or resolution behavior.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only shapes the alias input and takes no admission step. aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no extraction.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no preliminary reading or proposal.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no retry or extraction.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no extraction and records no status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search.
+looked_past: >-
+  The llm_run_id of the propose tools is accepted as any non-empty string with .min(1), where the contract refuses an identifier that is not well-formed. Whether that refusal is applied in a handler outside this file set was not checked, and no finding is filed.
+candidates_opened:
+  - constraints/ingest-toolset-offers-no-async-ingestion
+  - rules/knowledge-base/idempotency-key
+  - rules/knowledge-base/retry-counts-attempts
+  - rules/knowledge-base/directed-pinned-node
+  - rules/knowledge-base/directed-defaults
+  - rules/knowledge-base/directed-source-metadata
+  - domain/knowledge-base/source-type
+  - rules/knowledge-base/recent-ingestions-order
+  - rules/knowledge-base/default-extraction-model
+  - rules/knowledge-base/document-ingestion-extracts-new-content

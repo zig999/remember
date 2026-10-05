@@ -1,0 +1,285 @@
+findings:
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      the "parses a valid environment" test, lines 28-31 (expectations on the JWKS cache lifetime, the connection pool bounds and the statement timeout)
+    evidence: |-
+      expect(env.NEON_AUTH_JWKS_TTL_S).toBe(600);
+          expect(env.PG_POOL_MIN).toBe(2);
+          expect(env.PG_POOL_MAX).toBe(10);
+          expect(env.PG_STATEMENT_TIMEOUT_MS).toBe(10_000);
+    cost: >-
+      The values 600 seconds, a pool of 2 to 10 and a 10 000 ms statement timeout are asserted as the defaults, but a search of the specification (projections/full-text.md and the constraints and rules directories) found no node that holds them. The only nearby node, constraints/unreachable-store-answers-unavailable, says what a timed-out statement answers and gives no number. The test is now the only place besides the env loader where these defaults are written down. A later reader who looks in the specification for the statement timeout or the pool size will not find them.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether these operational defaults are domain facts and, if they are, give them a node. Otherwise they are configuration the test should not pin as business values.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      the "applies the v2 defaults (chat.back.md v2.0.0 §8)" test, line 211
+    evidence: >-
+      expect(env.CHAT_SUMMARY_AFTER_TURNS).toBe(20);
+    cost: >-
+      The test fixes 20 as the number of turns after which a conversation is summarised. The chat nodes hold the neighbouring defaults: the recent window of 6, the overlap of 40, the enabled flag for summaries, and the chat model. None of them holds the 20, and rules/chat/rolling-summary-overlap states the overlap of 40 and no turn threshold. The business rule for when a summary is refolded therefore lives only in the code and in this assertion, where a reader of the specification will not look.
+    kind: unstated
+    correction: >-
+      The rule that decides when a live turn refolds the rolling summary would need a node stating the turn threshold and its default of 20 where none is configured.
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only exercises loadEnv; nothing in it presents document content to a model. Looked at: `describe("loadEnv", () => {`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No extraction call, wait time or retry count appears in the file. Looked at: `import { EnvValidationError, InvalidOwnerTimezoneError, loadEnv } from "../../config/env.js";`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file asserts no ingestion operation, answer or refusal; it holds only environment parsing.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file asserts no retrieval operation, answer or refusal; it holds only environment parsing.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No assertion flag value appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document context shape. The only reference is the unrelated `describe("loadEnv context model setting", () => {`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      No status value (produced, single-chunk, too-long, failed) appears in the file.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no document entity shape.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLM run attribute or operation; it holds only environment parsing.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No match value (exact, approximate) appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The only prompt versions in the file are chat prompt versions: `expect(env.CHAT_PROMPT_VERSION).toBe("v4");`. They belong to the chat nodes, not to the extraction prompt versions this enumeration lists.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search item shape.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      No alias admission appears in the file.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity appears in the file.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      No match strength appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file's only default prompt version is the chat one, `expect(env.CHAT_PROMPT_VERSION).toBe("v4");`. It is not the document-ingestion default of v5 this rule governs.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No document context entity list or node type catalog appears in the file.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the "loadEnv context model setting" describe block, lines 322-334, which asserts that the default is claude-haiku-4-5 and that a configured value wins
+    evidence: |-
+      expect(env.CONTEXT_MODEL).toBe("claude-haiku-4-5");
+      ...
+      const env = loadEnv({ ...baseEnv, CONTEXT_MODEL: "claude-context-test-model" });
+      expect(env.CONTEXT_MODEL).toBe("claude-context-test-model");
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading, chunk count or content length limit appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      No document context status handling appears in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No document context status handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary line handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No summary line limit appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No expansion or hop scoring appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction or fragment anchoring appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No chunk reading appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No search layer weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No node proposal or alias appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No name normalization appears in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No document context or extraction prompt version appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No node layer or similarity threshold appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No node layer appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt version check. The only prompt version check is on the chat version, `CHAT_PROMPT_VERSION: "v2"` as an override.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      No full-text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No run retry appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      No search candidate cap appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No search ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      No alias similarity appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No scenario step of this node appears in the file.
+looked_past: >-
+  The file's comments cite lineage and rule numbers (TC-01, TC-12, BR-14, BR-44, BR-47, chat.back.md §8, "bumped from v3 to v4") and are prose no running system emits, so they go to the comment route; the chat, owner time zone, local operator token and Anthropic key defaults the tests assert are held by nodes outside this set.
+candidates_opened:
+  - rules/chat/rolling-summary-overlap

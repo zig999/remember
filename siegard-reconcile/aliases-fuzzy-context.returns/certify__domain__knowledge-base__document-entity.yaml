@@ -1,0 +1,40 @@
+certified:
+  - node: domain/knowledge-base/document-entity
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the node type of each listed entity
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back with the names of each listed entity
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back an entity with its one node type and all of its names in the recorded order
+      - file: src/__tests__/unit/ingestion/llm-run-repository-document-context.spec.ts
+        name: reads back the document context with its summary, every entity and its model
+      - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+        name: carries each entity of the document context with its node type and every name in the recorded order over REST
+      - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+        name: carries the whole document context of a run that holds one over REST
+    why: >-
+      The offered tests exercise the entity's shape only as stored and answered. An entity with
+      one node type and several names, in order, is recorded on a run and read back through the
+      repository. It also comes back whole on GET /api/v1/ingest/llm-runs/:id. Three parts of the
+      fact go unexercised. First, nothing in the set exercises the node's responsibility: that
+      while the model reads any one chunk, it is told which names elsewhere in the document
+      denote the same entity. No test extracts a chunk from a run that holds a document context
+      and asserts that the model's input carries the entity's node type and names. A change that
+      stopped handing the entities to the model during per-chunk extraction would leave every
+      offered test passing. Second, `names` being required and many is shown only by
+      well-formed inputs. Nothing submits an entity with no names, or with an empty name list,
+      against a refusal. Third, the single node-type reference is shown only by a free string
+      round-tripping. Nothing submits an entity with no node type, or with one that names no
+      node type, against a refusal.
+    remainder: testable
+    remainder_why: >-
+      Three assertions would close it. (1) One input: a chunk of a multi-chunk document,
+      extracted under a run that holds a document context listing, say, a Person named
+      "Maria Souza", "M. Souza" and "Maria". Expected result: the input handed to the model for
+      that chunk carries that entity with its node type and every one of those names. (2) One
+      input: a document context whose entity has no names or an empty names list. Expected
+      result: a refusal, with nothing recorded on the run. (3) One input: a document context
+      whose entity lacks a node type, or names one that does not exist. Expected result: a
+      refusal, with nothing recorded on the run.

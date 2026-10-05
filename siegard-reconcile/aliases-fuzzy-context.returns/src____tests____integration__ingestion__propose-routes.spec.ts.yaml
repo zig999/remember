@@ -1,0 +1,326 @@
+findings:
+  - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+    where: >-
+      Header comment, lines 3-17 ("Acceptance criteria addressed here"), repeated in the per-test comments at lines 504-505, 532-534, 600-601, 667-669 and 739-740.
+    evidence: >-
+      "POST /llm-runs/:id/propose-node returns 409
+      BUSINESS_RUN_NOT_RUNNING
+      when run exists but is completed"
+      and "POST /llm-runs/:id/propose-link returns 404 RESOURCE_NOT_FOUND when
+      llmRunId is unknown"
+    cost: >-
+      The contract's refusal answers (status and error code per refusal) are written a second time as prose in the test. If a refusal answer changes in the node, this prose keeps saying the old one and nothing reads it, so a later reader can take it for the decided answer.
+    kind: restates
+    correction: >-
+      Remove the comments. The contract holds the answers, and the test's own assertions (expect(res.statusCode).toBe(409), expect(body.error.code).toBe("BUSINESS_RUN_NOT_RUNNING"), and so on) hold them in code.
+    node: contracts/knowledge-base/ingestion
+  - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+    where: >-
+      Comment "Note on the envelope semantics", lines 24-28, and the in-test comment at lines 865-866.
+    evidence: >-
+      "any
+      `ValidationFailure` raised by the propose-* service surfaces as HTTP 200
+      with `{ ok: false, error: ... }`. ZodErrors at the route boundary continue
+      to surface as HTTP 422 via the global error handler"
+    cost: >-
+      The contract's split between refusals answered as HTTP 200 carrying { ok: false, error } and refusals answered as HTTP 422 is restated as prose naming internal types (ValidationFailure, ZodError). Where the node and the prose drift, the prose becomes a second authority that no check reaches.
+    kind: restates
+    correction: >-
+      Remove the comments. The contract holds this split, and the assertions at lines 556 and 867 (expect(res.statusCode).toBe(200)) and line 757 (toBe(422)) hold it in code.
+    node: contracts/knowledge-base/ingestion
+  - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+    where: >-
+      Comment in the second propose-fragment test, lines 536-541 ("Interpretation note (SD-2 in delivery)").
+    evidence: >-
+      "the original criterion referenced
+      "text > 1000 chars" as the trigger; Zod's max(1000) intercepts that
+      before the service runs"
+    cost: >-
+      The 1000-character fragment text limit is written in a test comment as well as in the rule. If the limit moves in the node, this comment still says 1000.
+    kind: restates
+    correction: >-
+      Remove the comment. The limit is held by rules/knowledge-base/fragment-text-length, and the candidate index binds that rule to src/modules/ingestion/mcp/mcp-schemas.ts and src/modules/ingestion/service/directed-ingestion.service.ts.
+    node: rules/knowledge-base/fragment-text-length
+  - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+    where: >-
+      Assertions in the "returns HTTP 409 BUSINESS_RUN_NOT_RUNNING" test, lines 623-624.
+    evidence: >-
+      expect(body.error.details.current_status).toBe("completed");
+      expect(body.error.details.llm_run_id).toBe(RUN_COMPLETED_ID);
+    cost: >-
+      The contract says only that BUSINESS_RUN_NOT_RUNNING "name[s] the run's status". The detail keys current_status and llm_run_id, and the fact that the run's identity is also carried, exist only in this test and in the code it exercises. A client or reader that goes to the specification for the refusal's shape will not find them.
+    kind: unstated
+    correction: >-
+      The analysis that owns the ingestion contract would state the detail keys of the BUSINESS_RUN_NOT_RUNNING refusal (the run's status and the run's identity) in the propose-fragment, propose-node, propose-link and propose-attribute answers.
+    node: contracts/knowledge-base/ingestion
+  - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+    where: >-
+      Comment above the allowed_values assertion, line 879.
+    evidence: >-
+      // allowed_values is lexicographically sorted per TC-02/TC-03 contract.
+    cost: >-
+      The ordering of allowed_values is stated in prose, citing a task-contract number, when the node states it as "in sorted order". If the node's ordering changes, this comment goes on claiming lexicographic order.
+    kind: restates
+    correction: >-
+      Remove the comment. The contract holds the ordering, and the assertion toEqual(["Apollo", "Gemini", "Mercury"]) holds it in code.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file exercises only the propose-* REST mirrors and builds no prompt for a model: `url: `/api/v1/ingest/llm-runs/${RUN_RUNNING_ID}/propose-fragment``.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No model call or retry is made. The only extraction-related line is ANTHROPIC_API_KEY: "test-anthropic-key" in envFixture.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The assertions of the propose-* tests, as exercised refusals and acceptances: lines 520-525, 556-559, 581-584, 616-624, 647-651, 687-690, 717-721, 757 and 783-787, 867-884. The file only asserts this behavior and states no second copy of it.
+    evidence: >-
+      expect(res.statusCode).toBe(409); expect(body.error.code).toBe("BUSINESS_RUN_NOT_RUNNING"); expect(body.result?.resolution).toBe("created_new"); expect(body.error?.details.allowed_values).toEqual(["Apollo","Gemini","Mercury"]);
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file reaches no search, read or traversal route. Every url is of the form `/api/v1/ingest/llm-runs/${...}/propose-*`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag value (uncertain, disputed, low-confidence) is declared or asserted in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The llm_runs row type declares no document_context attribute: `idempotency_key: string;` closes it.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The llm_runs row type declares no document_context_status attribute.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No entity list or document entity appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      The llm_runs type of the FakeStore interface, lines 70-80, which declares part of the run's shape for the fake store.
+    evidence: >-
+      llm_runs: Map<string, { id: string; model: string; prompt_version: string; started_at: Date; finished_at: Date | null; status: "running" | "completed" | "failed"; attempts: number; input_raw_information_id: string; idempotency_key: string; }>;
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No exact or approximate match value appears. The nearest code is the fake's `if (sql.startsWith("SELECT na.node_id") && sql.includes("similarity(na.alias_norm"))`, which returns no rows.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file uses only the literal `prompt_version: "v1"` in the seeded runs and declares no enumeration of versions.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file runs no search and builds no search item.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The fake admits every proposed alias: `rows: proposed.map((alias) => ({ alias, admitted: true, is_name: false }))`. The file does not exercise the rule.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file has no search. The trigram path of the fake returns no rows: `// No trigram candidates — caller will create a new node.`
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no alias similarity value.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise document ingestion. Runs are seeded with `prompt_version: "v1"`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading and no document context appear in the file.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      envFixture carries no context model: `ANTHROPIC_API_KEY: "test-anthropic-key",`.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file never runs an extraction. The comment at line 393 says "Not exercised by these tests (we don't hit `/run`)".
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      No extraction and no reuse of a document context.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No document context status is recorded or asserted.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary of any kind appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No summary of any kind appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The fake returns no existing match, so the resolution is always created_new: `// No existing match — fall through to trigram path.`
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file has no graph expansion or traversal.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file's propose-fragment tests pass chunk_ids by hand (`chunk_ids: [CHUNK_VALID_ID]`) and run no extraction.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunks. The fake answers only the chunk-source count: `SELECT count(*)::text AS n FROM raw_chunk`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file has no search layers or weights.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file has no search items.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No test resolves a proposal to an existing node. The fake answers `return { rows: [], rowCount: 0 };` for the existing-alias lookup.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file implements no normalization. The fake matches SQL text only.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The fake only counts the insert: `if (sql.startsWith("INSERT INTO node_alias")) { return { rows: [], rowCount: 1 }; }`. No test asserts which aliases a new node holds.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file runs no extraction and records no document context.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file has no search. The fake's trigram branch returns no rows.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file does not run an extraction and never exercises an unknown prompt version.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file has no full-text matching.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file has no retry route and no document context status.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file has no word-similarity computation. The fake returns no rows for `similarity(na.alias_norm`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      No test uses an acronym alias. The only alias is `aliases: ["Projeto Apollo"]`, and the fake admits it unconditionally.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      No test makes a second proposal that resolves to an existing node.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The fake sets `admitted: true` for every alias, so the not-admitted answer is never produced or asserted.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No extraction and no document context in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading and no extraction in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No retry and no document context in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file runs no extraction and records no document context status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+looked_past: >-
+  Test-local fixtures (the Person/Project catalog, participates_in, a project_name key closed to Apollo, Gemini and Mercury, the unaccounted AUTH 401 check that contracts/knowledge-base/access holds) and prose citing task, BR and SD numbers or the "deprecated shorthand: STRUCTURAL_INVALID" code are the tests' own setup and prose, not a code judgment's concern here.
+candidates_opened:
+  - rules/knowledge-base/fragment-text-length
+  - rules/knowledge-base/proposal-requires-running-run

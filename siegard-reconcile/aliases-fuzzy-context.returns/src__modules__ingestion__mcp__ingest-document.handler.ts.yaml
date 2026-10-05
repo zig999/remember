@@ -1,0 +1,267 @@
+read:
+  - node: rules/knowledge-base/default-extraction-model
+    held_at: >-
+      the model fallback chain in the body built by ingestDocumentHandler, and the DEFAULT_INGEST_MODEL constant
+    evidence: >-
+      export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6"; ... model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL,
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the prompt_version fallback in the body built by ingestDocumentHandler. The value v5 sits in the imported DEFAULT_PROMPT_VERSION in prompts/index.ts, not in this file.
+    evidence: >-
+      prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      the two branches of ingestDocumentHandler: the noop_existing branch returns without extracting, and the other path calls runExtraction on the new run
+    evidence: >-
+      if (outcome === "noop_existing") { ... outcome: "already_ingested", ... No new extraction was triggered. ... } try { const run = await runExtraction( deps.pool, llm_run_id, ...
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      the handler builds no prompt and marks no content as data; it only passes `content: input.content` to ingestRaw and calls runExtraction
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      the handler states no timeout or retry bound; it only calls `runExtraction(deps.pool, llm_run_id, deps.logger, deps.catalog, buildExtractionDeps(deps))`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the ingest-document answers in ingestDocumentHandler: the ingested and already_ingested results, the two already-ingested messages, and the persist-failure, provider and extraction-failure refusals
+    evidence: >-
+      outcome: "already_ingested", ... run_status: runStatus ?? null, message: completed ? "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered." : `This exact content was already ingested, but its run is '${runStatus ?? "unknown"}' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.`; message: "Failed to persist the document before extraction."; message: "Unexpected error during document ingestion.", details: { llm_run_id, raw_information_id }
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      the file holds no search or read operation; it only ingests and extracts
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      no flag value is named in the file
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      the file declares no document-context shape; it passes only `CONTEXT_MODEL: deps.contextModel` to the extraction deps
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      no document context status is named; the file reads only `run.status` through `getLlmRunById`
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      no entity or name list is named in the file
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      the file declares no LLMRun shape; it passes `model` and `prompt_version` in the intake body and reads `run.status` from another file's service
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      no match kind is named in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      the file imports `DEFAULT_PROMPT_VERSION` from "../prompts/index.js" and declares no version enumeration
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      the file handles no node proposals or aliases
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      the file computes no similarity
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      the file computes no match strength
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      the file receives `catalog: CatalogSnapshot` and only forwards it to `runExtraction`
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      the file takes the context model as given and holds no fallback: `readonly contextModel: string;` ... `CONTEXT_MODEL: deps.contextModel,`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      the preliminary reading is not made here; the file calls `runExtraction(...)`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      the file records no document context status
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      the file records no document context status
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      the file handles no summary text
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      the file handles no summary text
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      the file resolves no entities
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      the file scores no links
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      the file anchors no fragments; it only calls `runExtraction`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      the file reads no chunks; it only calls `runExtraction`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      the file makes no preliminary reading
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      the file weights no layer
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      the file handles no aliases
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      the file normalizes no names
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      the file creates no node
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      the file makes no document context decision
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      the file matches no nodes
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      the file matches no nodes
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      the file does not check the version; the failure it reports comes from `err instanceof ExtractionFatalError` with `code: err.code`
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      the file matches no text
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      the file retries no run
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      the file ranks nothing
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      the file computes no similarity
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      the file handles no aliases
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      the file resolves no proposals
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      the file handles no aliases
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      the file reads no chunks and builds no context
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      the file does no directed ingestion
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      the file makes no preliminary reading
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      the file makes no preliminary reading
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      the file retries no run
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      the file records no document context status
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      the file searches nothing
+looked_past: >-
+  The file's other facts are held by nodes outside the set and agree with them, so they are no finding: rules/knowledge-base/document-ingestion-records-no-storage-reference holds `storage_ref: null` and `metadata: input.metadata ?? {}`, and constraints/unreachable-store-answers-unavailable with the "A backing service is temporarily unavailable." wording of contracts/knowledge-base/access holds the SYSTEM_SERVICE_UNAVAILABLE answer. The contracts/knowledge-base/ingestion row for ingest-document states neither of those two.

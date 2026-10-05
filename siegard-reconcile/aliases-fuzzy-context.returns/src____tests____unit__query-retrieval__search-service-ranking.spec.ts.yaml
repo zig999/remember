@@ -1,0 +1,308 @@
+findings:
+  - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+    where: >-
+      the DECLARED_ITEM_KEYS constant and the test "answers a node, a link and a fragment item with no attribute the search item does not declare" (lines 500-511 and 513-544)
+    evidence: >-
+      const DECLARED_ITEM_KEYS = [
+        "kind",
+        "layer",
+        "id",
+        "score",
+        "hop",
+        "summary",
+        "flags",
+        "provenance",
+        "match",
+        "similarity",
+      ];
+    cost: >-
+      The test states what a search item declares and includes `id`, an attribute the node does not list. The node declares kind, layer, score, hop, summary, flags, match and similarity, plus the provenance association. A search item's identifier is nonetheless relied on by rules/knowledge-base/search-ranking ("then by identifier ascending"). A reader who looks for the item's identity in the specification finds only the ranking rule's passing mention. The test becomes the one place that says the item carries an `id`.
+    kind: unstated
+    correction: >-
+      The analysis would give the search item's identifier an attribute on domain/knowledge-base/search-item. Alternatively it would record that the item deliberately has no `id` attribute of its own, so that this list matches the node.
+    node: domain/knowledge-base/search-item
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only builds a stand-in pool client and calls `searchKnowledgeService`: `query: "termo",`. Nothing in it presents document content to a language model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      `const silentLogger = pino({ level: "silent" });` is the file's only infrastructure. It makes no model call and states no wait or retry bound.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file imports only the search service and the search response type: `import { searchKnowledgeService } from "../../../modules/query-retrieval/service/search.service.js";`. It touches no ingestion operation.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file calls the service function directly: `return searchKnowledgeService(buildClient(world), emptyCatalog, {`. It asserts no accepted answer shape and no refusal, and sees no HTTP code or error code of the contract.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      Only the key name appears, as an allowed key: `"flags",`. No flag value (uncertain, disputed, low-confidence) is stated or asserted.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file has no document context. The `World` fixture holds only `matches`, `approximateMatches`, `links` and `fragment`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file has no run and no status of a document context. The `World` fixture holds only `matches`, `approximateMatches`, `links` and `fragment`.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file has no document entity. The `World` fixture holds only `matches`, `approximateMatches`, `links` and `fragment`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The link fixture sets `created_by_run_id: null,` and the file never models a run, its status, attempts or summary.
+  - node: domain/knowledge-base/node-match
+    held_at: the expectation of the test "answers a node reached by the lexical parse of the query with the match exact and a node reached by the trigram similarity of an alias with the match approximate", line 494-496
+    evidence: >-
+      expect(
+        Object.fromEntries(body.items.map((item) => [item.id, item.match]))
+      ).toEqual({ "node-exact": "exact", "node-approximate": "approximate" });
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version. Its search request is `query: "termo", inEffectOnly: false, includeUncertain: true,`.
+  - node: domain/knowledge-base/search-item
+    held_at: the DECLARED_ITEM_KEYS constant, lines 500-511, with the test that checks every item against it, lines 513-544
+    evidence: >-
+      const DECLARED_ITEM_KEYS = [
+        "kind",
+        "layer",
+        "id",
+        "score",
+        "hop",
+        "summary",
+        "flags",
+        "provenance",
+        "match",
+        "similarity",
+      ];
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The hit fixture sets `matched_alias_ids: [],`. No node proposal and no alias admission is made in the file.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file's stand-in row hard-codes `similarity: APPROXIMATE_SIMILARITY,` with `const APPROXIMATE_SIMILARITY = 0.8;`. No expectation reads the similarity or checks how it is computed.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The stand-in row gives the strength directly: `score: m.score,`. The file never derives a strength from aliases.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version and no document ingestion.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      `const emptyCatalog: CatalogSnapshot = { nodeTypeByName: new Map(), ...` is a catalog stand-in for the search call. No preliminary reading is made.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file names no context model.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file makes no extraction and reads no chunk of a raw information. Its fixture is `interface World { readonly matches: readonly Match[]; ... }`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file has no run and no document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file has no run and no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file has no preliminary reading and no summary of a document context.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file has no summary of a document context. The only summary-like text is the fixture's `canonical_name: \`Name ${id}\`,`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node proposal. Its exact node comes from a stand-in row: `return result(world.matches.map(nodeHitRow));`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The match test asserts only `item.match`. No expectation reads `item.similarity`, and no fixture node meets both ways.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The decay factor is never stated. The expected order of `EVERY_RANKING_KEY_ORDER` only agrees with it, for example `"link-a1", "link-b1"` after `"node-a", "node-b"`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file makes no extraction. The provenance stand-in fixes `raw_chunk_id: "chunk-1",`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and asks no model anything.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and asks no model anything.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and asks no model anything.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and asks no model anything.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunks in extraction order. It has only the provenance stand-in `if (sql.includes("WHERE f.id = ANY")) {`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and resolves no relative date.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      The file has no preliminary reading and no provider failure.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      Scores are supplied to the service directly by the stand-in rows: `score: m.score,` and `score: hit.score,`. No 1.0, 0.9 or 0.6 weight is stated.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file asserts the match only on node items: `.toEqual({ "node-exact": "exact", "node-approximate": "approximate" })`. It never asserts that a link or a fragment item lacks `match` or `similarity`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file records no alias on a node. The hit fixture sets `matched_alias_ids: [],`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file states no normalization. The stand-in answers the parsed query with `return result([{ q: "'termo'" }]);`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file creates no knowledge node. Its nodes are `nodeRow(id)` rows with `canonical_name: \`Name ${id}\`,`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file has no run and names no prompt version.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: the expectation of the test "answers a node reached by the lexical parse of the query with the match exact and a node reached by the trigram similarity of an alias with the match approximate", line 494-496
+    evidence: >-
+      expect(
+        Object.fromEntries(body.items.map((item) => [item.id, item.match]))
+      ).toEqual({ "node-exact": "exact", "node-approximate": "approximate" });
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The threshold is not stated. The stand-in answers the approximate layer without computing it: `if (sql.includes("word_similarity")) { return result((world.approximateMatches ?? []).map(approximateHitRow)); }`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The stand-in answers the exact layer without matching anything: `if (sql.includes("FROM node_alias na")) { return result(world.matches.map(nodeHitRow)); }`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file names no prompt version and makes no extraction.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file states no stemming or accent policy. The stand-in only recognises the SQL text `sql.includes("plainto_tsquery")`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file has no run and no retry.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The cap of 200 is not stated or asserted. The request carries only `limit: RESULT_LIMIT,` with `const RESULT_LIMIT = 100;`.
+  - node: rules/knowledge-base/search-ranking
+    held_at: the describe blocks "approximately matched knowledge nodes", "knowledge links by how they were reached", "within a group" and "the whole order of a result set", lines 296-483, whose expected orders are the node's keys
+    evidence: >-
+      const EVERY_RANKING_KEY_ORDER = [
+        "node-x",
+        "link-mixed",
+        "y-link-t3a",
+        "z-link-t3b",
+        "m-fragment",
+        "b-link-old",
+        "a-node-n",
+        "0-low",
+        "node-a",
+        "node-b",
+        "link-a1",
+        "link-b1",
+      ];
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no trigram similarity. The stand-in only answers rows when `sql.includes("word_similarity")`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file makes no node proposal and admits no alias.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file makes no node proposal and resolves no alias.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file makes no node proposal and has no ALIAS_NOT_IN_SOURCE reason.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file has no document, chunks or extraction. The fixture is `interface World { readonly matches: readonly Match[]; ... }`.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file never searches "petrobras" and uses no such nodes. The query is `query: "termo",` over the invented nodes "node-exact" and "node-approximate".
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file has no preliminary reading and no provider error.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file never searches a misspelled name inside a longer query. Its only query is `query: "termo",`.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file never searches a misspelled name and asserts no similarity or hop 0. Its nearest expectation is `.toEqual({ "node-exact": "exact", "node-approximate": "approximate" })`.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no preliminary reading and no proposal.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file has no run, retry or document context.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file states no alias length. The stand-in returns whichever rows the fixture lists: `(world.approximateMatches ?? []).map(approximateHitRow)`.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file has no document, chunk or extraction.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file never searches a query with an unmatched term, and no alias or word is modelled. Its only query is `query: "termo",`.
+looked_past: >-
+  The stand-in's SQL substring matching (for example `sql.includes("f.status = 'accepted'")`) and the invented fixture row values are test scaffolding for the service's queries, not a domain fact, and belong to a code review.
+candidates_opened:
+  - domain/knowledge-base/item-kind

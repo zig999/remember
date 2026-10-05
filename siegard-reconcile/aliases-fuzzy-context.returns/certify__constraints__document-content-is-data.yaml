@@ -1,0 +1,32 @@
+certified:
+  - node: constraints/document-content-is-data
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: presents the document content, each chunk's text and the document context shown with each chunk in the user turn, labelled as data and outside the instructions
+    why: >-
+      The test runs one shape: a prompt version v5 run of three chunks whose preliminary
+      reading succeeds. In that shape it checks three things. The raw content in the
+      preliminary reading, each chunk's text, and the context summary shown with each chunk
+      each sit in a user-turn block that contains the word "data", and none of them appears
+      in the system prompt. The document context the node names also holds the entities
+      read from the document, and nothing checks where those go. If the entities' node
+      types and names were moved into the system prompt, the test would still pass, because
+      its only context needle is the summary. Nothing checks how chunk text is presented in
+      any other extraction: a v4 run, a v5 run of one chunk, or a v5 run whose preliminary
+      reading failed. Those shapes appear only in the test that checks no context is shown,
+      and that test never looks at how content is marked. The check for being "marked apart
+      from instructions" is also weak. It holds whenever the block containing the content
+      has the word "data" anywhere in it and the content is absent from the system prompt.
+      So instructions placed in that same user block, beside an unmarked document, would
+      still pass. Nothing requires a delimiter that separates the content from instructions.
+    remainder: testable
+    remainder_why: >-
+      For a v5 run of three chunks, use entity names that carry an injection string as
+      needles. Expect each chunk call to hold them in a block labelled as data and nowhere
+      in its system prompt. Then run the same content-is-data check on chunk text for a v4
+      run, a one-chunk run and a run whose preliminary reading failed. Expect each chunk's
+      text to be in a block labelled as data and outside the system prompt. To check the
+      marking apart itself, assert a delimiter around the content that keeps it separate
+      from any instruction text in the same turn. Checking for the word "data" alone does
+      not do this.

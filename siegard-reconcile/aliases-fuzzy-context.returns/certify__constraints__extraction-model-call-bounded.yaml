@@ -1,0 +1,28 @@
+certified:
+  - node: constraints/extraction-model-call-bounded
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: makes every model call of an extraction, the preliminary reading included, through a client bounded to five minutes and two retries
+    why: >-
+      The named test replaces the SDK's default export with a recording class. It asserts the
+      `timeout` and `maxRetries` options passed to that class's constructor, reading an unset
+      option as the SDK's documented default (ten minutes and two retries). The test fails if
+      the client that extraction builds is configured looser than five minutes or two retries.
+      It never shows a call waiting or being retried: no stub model hangs or answers a retryable
+      error, so the bound is checked only as constructor configuration. The recording stub's
+      `stream` ignores any per-request options, so an override such as a ten-minute timeout
+      passed with the request would leave the test passing while a call waits longer than five
+      minutes. A retry loop that the extraction code runs around the model call would also go
+      unseen. The test also states the SDK's default values as its own constants, so a change
+      in those defaults would go unnoticed. It also asserts more than this node states: it
+      requires exactly four model calls for a three-chunk run. That is a claim about the
+      preliminary reading and chunk reading, not about the bounds, and it will break the day
+      the call count legitimately changes while every call is still bounded.
+    remainder: testable
+    remainder_why: >-
+      Two assertions over a real or fetch-level client with fake timers would close it. First, a
+      model call that never answers is abandoned once five minutes pass, and the extraction does
+      not wait on it past that. Second, a model that answers a retryable error on every attempt
+      is called exactly three times (the first attempt and two retries) for one extraction call,
+      and no further time.

@@ -1,0 +1,50 @@
+certified:
+  - node: rules/knowledge-base/search-ranking
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: ranks an approximately matched knowledge node after an exactly matched one whose score is lower
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: ranks an approximately matched knowledge node after an information fragment and a knowledge link that were not reached only through approximate matches
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: ranks a knowledge link reached only through an approximately matched node after every item not reached only through approximate matches
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: ranks a knowledge link reached from both an exactly and an approximately matched node among the items not reached only through approximate matches
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: orders by score descending %s
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: orders items of equal score by recording time descending, a fragment counting as recorded at its creation time
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: orders a knowledge node, counting as never recorded, after a knowledge link and an information fragment of equal score
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: orders items of equal score and equal recording time by identifier ascending
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: orders items reached only through approximate matches last, then by score descending, recording time descending with a fragment at its creation time and a knowledge node as never recorded, then identifier ascending
+    why: >-
+      Several tests exercise putting items reached only through approximately matched knowledge
+      nodes last. This covers a node, a link reached only from an approximate node, and a link
+      reached from both an exact and an approximate node. Score descending is exercised in both
+      groups, because the parametrized "orders by score descending %s" runs once per group.
+      The tie-breakers are not exercised in both groups. Recording time descending, a knowledge
+      node counting as never recorded, and identifier ascending are exercised only among items
+      not reached only through approximate matches. No test puts two items of equal score into
+      the approximately reached group. In the whole-order world, node-a (0.9), node-b (0.7),
+      link-a1 and link-b1 all carry the default recording time. They come from approximate nodes
+      of different scores, so nothing shows their order is settled by a tie-breaker rather than
+      by score. If the recording-time or identifier tie-breaker were dropped inside that group,
+      every named test would still pass, so the fact's "within each group" goes unexercised past
+      score.
+      Separately, the whole-order test compares the entire item list for exact equality. That
+      also asserts which items the result set contains: the expanded neighbour nodes (node-y1,
+      node-y2, node-y3, node-c, node-d) must not appear as items. That is a claim about what a
+      search returns, which this ranking rule does not state. The test will break if a sibling
+      fact legitimately makes those neighbours items. This is an over-assertion, not extra
+      coverage of this node.
+    remainder: testable
+    remainder_why: >-
+      Use one search in which approximately matched knowledge nodes reach two knowledge links of
+      equal score with different recording times, plus a third link and an approximately matched
+      knowledge node of that same score, the third link sharing a recording time with one of the
+      two links. Assert this order within the approximately reached group: the later-recorded
+      link first; then the two links of equal recording time by identifier ascending; and the
+      knowledge node last, as never recorded.

@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/prompt-version-known
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: refuses a prompt version the system does not hold instead of falling back to another one
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: holds exactly the prompt versions v1 to v5, each resolving to a module of its own version
+    why: >-
+      The offered tests only exercise the prompt selector, selectPromptModule. It throws
+      UnknownPromptVersionError for an unheld version (v99), and each held version resolves to a
+      module of that version. The fact is stated over an extraction, and its node constrains
+      domain/knowledge-base/llm-run. Nothing in the set starts an extraction or records an LLMRun,
+      so it is never checked that an extraction cannot carry a prompt version the system does
+      not hold. That stays unchecked if the extraction records the version before selecting it,
+      catches the refusal and falls back, or never goes through the selector. In each case these
+      tests would still pass. The test "holds exactly the prompt versions v1 to v5, ..." also
+      asserts more than this node states. It fixes the held set at exactly v1 to v5, but the fact
+      names no particular versions. That test will fail the day a version is legitimately added,
+      even though the fact still holds.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Request an extraction (an LLMRun) with a prompt
+      version the system does not hold, such as v99. Expect it to be refused, with no extraction
+      run and no LLMRun recorded under that version. Pair it with an extraction under a held
+      version that is recorded with exactly that version.

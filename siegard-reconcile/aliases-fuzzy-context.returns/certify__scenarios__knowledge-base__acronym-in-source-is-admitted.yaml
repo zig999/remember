@@ -1,0 +1,31 @@
+certified:
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
+        name: creates the node with its canonical name and also holds the alias CNPq
+    why: >-
+      The named test uses the scenario's given: a raw information reading "o Conselho Nacional
+      de Desenvolvimento Científico (CNPq) aprovou o projeto", a run holding no node of that
+      name, and a proposal naming "Conselho Nacional de Desenvolvimento Científico" with the
+      alias "CNPq". It asserts the created node holds that name as its canonical alias and
+      "CNPq" as an alias. The first half holds up. Remove or misdirect the canonical-alias or
+      alias insert in the service and the test fails. The second half depends on whether
+      "CNPq" is admitted because it is written in the source. That is never decided by the
+      system under test. In production ALIAS_ADMISSION_SQL in
+      src/modules/ingestion/service/entity-resolution.service.ts makes the decision inside
+      Postgres, comparing norm(alias) against the normalized run content with strpos. The test
+      swaps that query for its own stand-in, answerAdmission. The stand-in works out `admitted`
+      with a local dbNorm and String.includes. So if the real admission predicate stopped
+      finding "CNPq" in this source (a wrong norm, a broken join to the run's raw information,
+      a reversed strpos), the node would stop holding "CNPq" and this test would still pass.
+      The admission half of the fact is exercised against a copy of the rule, not against the
+      rule.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, run with the real admission query against a
+      Postgres that holds the norm function. Input: a run over a raw information whose content
+      is "o Conselho Nacional de Desenvolvimento Científico (CNPq) aprovou o projeto", with no
+      node of that name, and a node proposal naming "Conselho Nacional de Desenvolvimento
+      Científico" with the alias "CNPq". Expected: the created knowledge node holds "Conselho
+      Nacional de Desenvolvimento Científico" as its canonical alias and "CNPq" as an alias.

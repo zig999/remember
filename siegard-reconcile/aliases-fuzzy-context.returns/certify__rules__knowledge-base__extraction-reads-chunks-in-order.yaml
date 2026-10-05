@@ -1,0 +1,49 @@
+certified:
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: >-
+          reads the chunks of a run holding a document context one at a time in index order, showing each the summary, the entities, the source metadata and the last 200 Unicode code points of the chunk before
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: >-
+          shows no document context in any chunk prompt of a run that holds none, whether the prompt version predates v5, the raw information has one chunk or the preliminary reading failed
+    why: >-
+      Several parts of the fact are exercised. The first named test shows that chunks are read
+      one at a time: at most one model call is in flight. It shows that the source type, document
+      date and reception time appear in every chunk prompt of a run that holds a document context.
+      It shows that the summary and entities of the document context appear there too. It shows
+      that exactly the last 200 Unicode code points of the chunk before are shown, with an astral
+      character keeping code points apart from UTF-16 units and the 201st character checked
+      absent. The second named test shows that no chunk prompt carries a document context when
+      the run holds none.
+
+      Three parts are not exercised. First, index order. The fake pool answers every raw_chunk
+      query with rows already in chunk_index order, whatever the SQL asks for. A reading that
+      took the rows in whatever order they arrived, without ordering by index, would still
+      produce read order [0, 1, 2]. Ordering by index is never tested against chunks that arrive
+      out of order.
+
+      Second, the title. TITLE ("Ata do comite") is a substring of SUMMARY ("Ata do comite
+      financeiro. ..."), and the summary is shown with every chunk. A chunk prompt that dropped
+      the source's title would still contain the needle, so showing the title is never
+      independently asserted.
+
+      Third, metadata in a run without a document context. In the second test's runs (prompt
+      version v4, one chunk, failed preliminary reading), nothing checks the source type,
+      document date, title, reception time or tail. Showing those does not depend on a context,
+      but it is only asserted for a run that holds one.
+
+      The "holds none" half is also weaker than it looks. It is decided only by the absence of
+      the literal phrase "document context". A context rendered under any other heading would
+      pass.
+    remainder: testable
+    remainder_why: >-
+      Three assertions would close it, each one input against one expected result. First, a fake
+      pool that returns chunk rows out of index order (for example 2, 0, 1). Each chunk prompt
+      should still be read in order 0, 1, 2, each showing the last 200 code points of its
+      index-predecessor. Second, a source whose title appears nowhere in the summary, entities or
+      chunk text. That title should appear in every chunk prompt. Third, a run that holds no
+      document context. Every chunk prompt should still show the source type, document date,
+      title, reception time and the predecessor's last 200 code points, and should contain none
+      of the summary or entity names that the preliminary reading would have produced.

@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: asks under v5 for every other name the text gives each entity, names an acronym, a short name and another spelling, and excludes a pronoun alone and a role alone
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: holds exactly the prompt versions v1 to v5, each resolving to a module of its own version
+    why: >-
+      The v5 half of the fact is exercised. The named test builds the system text that
+      selectPromptModule("v5") returns. It checks that this text asks for every other name
+      with each node. It checks that the text names an acronym, a short name and another
+      spelling, and that it says a pronoun alone or a role alone is not another name.
+
+      Two parts of the fact are not proven.
+
+      First, the test reads the text the prompt module builds. It does not check what an
+      extraction actually sends. Nothing in the proof runs an extraction under prompt
+      version v5 and looks at the request that reaches the model. So if a v5 run stopped
+      sending this module's system text, the proof would still pass, even though the
+      extraction would no longer ask for other names.
+
+      Second, "and later" is covered only by accident. The test "holds exactly the prompt
+      versions v1 to v5" is there to pin the list of held versions, not this instruction.
+      It fails today if a v6 is added, but only because the list changed. That test claims
+      more than this node states: an exact total over the held versions. It will be
+      updated the day a v6 is legitimately added. After that, nothing checks whether a v6
+      prompt still asks for other names and still excludes a pronoun alone or a role alone.
+    remainder: testable
+    remainder_why: >-
+      Two assertions would close it. First, run an extraction with prompt version v5
+      against a stubbed model client, and assert that the captured request asks for every
+      other name with each node (an acronym, a short name, another spelling) and excludes
+      a pronoun alone and a role alone. Second, run the same check over every held version
+      at or above v5, not only v5, so a later version is checked for the instruction and
+      not just counted.

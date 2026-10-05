@@ -1,0 +1,318 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds a fake pg client (`buildRunStore`) and reads runs back with `findLlmRunById`. It never builds or sends a prompt, so there is no marking of content as data to look at.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const query = async (sql: string, params: unknown[] = []) =>` is an in-memory repository stand-in. No model call, wait or retry appears in the file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls `findLlmRunById(client, RUN_ID)` directly on the repository. It declares no operation, answer or refusal of the contract.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or graph read appears. The file only imports `recordDocumentContext`, `recordDocumentContextStatus` and `findLlmRunById`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `uncertain`, `disputed` or `low-confidence` value appears anywhere in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only uses the shape, as a fixture typed by the imported `type DocumentContext`: `const CONTEXT: DocumentContext = { summary: ..., entities: [...], model: "claude-haiku-4-5" }`. The shape is declared in llm-run.dto.js, not here.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not declare the enumeration. It imports `DocumentContextStatusSchema` and only checks it: `expect(accepted).toEqual(["produced", "single-chunk", "too-long", "failed"]);`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only builds fixtures, `{ node_type: "Person", names: ["Maria Souza", "M. Souza", "Maria"] }`. It declares no entity shape.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's row is an untyped `type StoredRun = Record<string, unknown>;`, a test double for a run row. The shape of the LLM run is declared elsewhere.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `exact` or `approximate` match appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only occurrence is the fixture value `prompt_version: "v5"` in the stored run. The file declares no enumeration of versions.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias admission appears in the file. Aliases are not touched.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity or search appears in the file.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match strength appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: "v5"` is fixture data in `buildRunStore`. The file applies no default to a document ingestion.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records and reads back entities with `node_type` "Person", "Organization" and "Event". It does not filter by catalog, so the rule is not applied here.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `model: "claude-haiku-4-5"` appears only as the fixture's recorded model and is asserted by `expect(run?.document_context?.model).toBe("claude-haiku-4-5")`. The file applies no configured-or-default model choice.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records a context and reads it back with `recordDocumentContext(client, { llm_run_id: RUN_ID, document_context: CONTEXT })`. It decides nothing about when an extraction reads the whole content.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction that reuses a held context appears in the file. It only records and reads back.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file stores a status given to it, `document_context_status: "too-long"`. It does not choose a status from chunk count or content length.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture summary is one line, `summary: "Ata da reuniao do comite sobre a renovacao do contrato."`. No cutting is applied or tested.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No line limit is stated or checked. The summary is only round-tripped as `expect(run?.document_context?.summary).toBe(CONTEXT.summary)`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No graph expansion or score appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment or chunk anchoring appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk reading appears in the file. It only reads back the stored context as `expect(run?.document_context).toEqual(CONTEXT)`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text or date appears in the file apart from the `started_at` fixture.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never makes a preliminary reading. `failed` appears only as one of the status candidates in the enumeration test.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search layer or weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name comparison or normalization appears in the file. Names are only round-tripped as `["Maria Souza", "M. Souza", "Maria"]`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only prompt version the file mentions is the fixture `prompt_version: "v5"`. No version gate is exercised. The null reads, `expect(run?.document_context).toBeNull()`, are about an unrecorded context and not about a prompt version.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check a prompt version against the known ones. `prompt_version: "v5"` is only stored.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports no retry operation. It records a status and reads it back, and does not exercise the retry path, so this node's rule is not exercised here.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not read chunks or resolve a proposal. It only round-trips a context's entities through the stored run.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never runs an extraction or a preliminary reading.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never makes a preliminary reading or a proposal.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not retry a run or run an extraction. Its records and reads come before any retry, as `recordDocumentContext(...)` followed by `findLlmRunById(client, RUN_ID)`.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never runs an extraction. It stores `document_context: null` and `document_context_status: null` in the fixture and does not derive `single-chunk`.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The file is a unit test that round-trips a document context and its status through a fake pg client. Its literals ("Person", "claude-haiku-4-5", "v5", the four status values) are fixtures and expectations over code declared elsewhere, so no domain fact is stated in it that no node holds, and the fake client's SQL parsing is a test-design matter, not a conformance one.

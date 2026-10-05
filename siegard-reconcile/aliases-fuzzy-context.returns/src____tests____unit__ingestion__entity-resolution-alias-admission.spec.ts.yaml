@@ -1,0 +1,267 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only exercises proposeNodeService against a store stand-in; no prompt is built or sent. Every describe block opens with "alias admission — ".
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No model call is made or bounded in the file. The only service called is proposeNodeService, over the stand-in built by `buildClient(store)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the NOT_ADMITTED_REASON constant and the namesNotAdmitted helper, asserted in the alias-absent test, plus the `resolution` assertion
+    evidence: >-
+      `const NOT_ADMITTED_REASON = "ALIAS_NOT_IN_SOURCE";` and `expect(result.resolution, "the resolution is answered").toBe("created_new");` and `text.includes(`"${alias}"`) && text.includes(NOT_ADMITTED_REASON)`. These assert the propose-node answer (resolution plus aliases not admitted with ALIAS_NOT_IN_SOURCE) as the contract states it.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file never calls a search or read operation. The only service called is `proposeNodeService(buildClient(store), input, { llmRunId: runId, rawInformationId: `raw-${runId}` }, { catalog: CATALOG })`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag values (uncertain, disputed, low-confidence) appear anywhere in the file. The only domain vocabulary used is node type "Organization", alias kinds "canonical" and "alias", and the resolutions "created_new" and "matched_existing".
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document-context shape. `FakeRun` carries only `model`, `prompt_version` and `input_raw_information_id`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      `interface FakeRun { readonly model: string; readonly prompt_version: string; readonly input_raw_information_id: string; }` has no document context status.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No entity list or document-entity shape is declared. The file's only interfaces are FakeRun, FakeNode, FakeAlias, FakeStore, StoreAnswer and SourceVariant.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      `FakeRun` is a partial stand-in with three fields, not a declaration of the LLMRun shape. It has no status, attempts, idempotency key or timestamps.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No search item or match (exact, approximate) is produced or asserted. The fuzzy-candidate query is answered `return answerRows([]);`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      `const EXTRACTION_PROMPT_VERSION_VALUE = "v5";` is a fixture value passed through a run stand-in. No enumeration of prompt versions is declared.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No search item is built or read in the file. Its only operation is `proposeInRun`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      the describes "alias absent from the source", "alias the source holds in another spelling or position" and "directed ingestion", exercised through proposeInRun, with the admission stand-in answerAdmission
+    evidence: >-
+      `expect(heldAliases, "the alias is not recorded").not.toContain("Petrobras");` over source `"a estatal anunciou lucro recorde no trimestre"`, and for the directed run `expect(heldBy(store, result.node_id)).toContainEqual({ alias: "Petrobras", kind: "alias" });` over source `"relatório trimestral sem menção à empresa"`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity is computed or asserted. `if (sql.startsWith("SELECT na.node_id") && sql.includes("alias_norm % norm(")) { return answerRows([]); }`.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      No strength or word similarity appears. The fuzzy-candidate query is answered `return answerRows([]);`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      `const EXTRACTION_PROMPT_VERSION_VALUE = "v5";` is a seeded run fixture. No ingestion that names no prompt version is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading or document context is exercised. The catalog is `buildSnapshot({ nodeTypes: [{ id: ORGANIZATION_TYPE_ID, name: ORGANIZATION_TYPE_NAME }], linkTypes: [], linkTypeRules: [], attributeKeys: [] })`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The only model strings are the fixtures "claude-test-model" and "directed". No context model is configured or asserted.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No extraction runs and no chunk is read. Only `proposeNodeService` is called.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file has no document context status and no reuse. `FakeRun` carries `model`, `prompt_version` and `input_raw_information_id` only.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No status is recorded or asserted. `FakeRun` carries `model`, `prompt_version` and `input_raw_information_id` only.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file has no summary or preliminary reading. `MULTI_PARAGRAPH_SOURCE` is only the raw content for an alias occurrence check.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file has no summary or preliminary reading. `MULTI_PARAGRAPH_SOURCE` is only the raw content for an alias occurrence check.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      the describe "admitted acronym resolves a later proposal", and the "proposal resolved to an existing node" describes, with answerExactMatch
+    evidence: >-
+      `expect({ node_id: later.node_id, resolution: later.resolution }).toEqual({ node_id: first.node_id, resolution: "matched_existing", });` with the later proposal `{ node_type: ORGANIZATION_TYPE_NAME, name: "CNPq" }`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      No search item or similarity is produced in the file. The only operation is `proposeInRun`.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No link, hop or score appears. The catalog is `linkTypes: [], linkTypeRules: []`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No fragment is proposed and no chunk is read. Only node proposals are made through `proposeInRun`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt is built or sent. The aliases arrive as test input, `aliases: ["CNPq"]`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt is built or sent. The aliases arrive as test input, `aliases: ["CNPq"]`.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears anywhere in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears anywhere in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No chunk is read. The raw content is held whole in `store.contents` and never split.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No prompt text and no date appear anywhere in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading is made or failed in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No search layer or weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      No search items exist in the file. Its only operation is `proposeInRun`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      the describes "proposal resolved to an existing node" (the admitted alias is added) and "proposal resolved to an existing node, name" (the proposed name is not added)
+    evidence: >-
+      `expect(heldBy(store, EXISTING_NODE_ID)).toContainEqual({ alias: "CNPq", kind: "alias", });` and `expect(holdingTheName).toHaveLength(1);` over the filter `a.node_id === EXISTING_NODE_ID && a.alias_norm === dbNorm(CNPQ_NAME)`, with the proposal named `CNPQ_NAME_UPPERCASE`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      SOURCE_VARIANTS (different case, accents, inner whitespace, surrounding whitespace) exercised through the "alias the source holds in another spelling or position" describes, with the stand-in function dbNorm
+    evidence: >-
+      `{ label: "different accents", source: CNPQ_SOURCE, alias: "Desenvolvimento Cientifico", }` and `return text.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toLowerCase();`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      the describe "alias admission — acronym written in the source"
+    evidence: >-
+      `expect(heldBy(store, result.node_id)).toEqual(expect.arrayContaining([ { alias: CNPQ_NAME, kind: "canonical" }, { alias: "CNPq", kind: "alias" }, ]));`
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading or document context is in the file. The prompt version "v5" appears only as a run fixture, `const EXTRACTION_PROMPT_VERSION_VALUE = "v5";`.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      No search item is produced in the file. The fuzzy-candidate query is answered `return answerRows([]);`.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No search is run. The `alias_norm % norm(` query is answered `return answerRows([]);`, so no approximate candidate is ever presented to resolution.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No search is run. The match exercised is the proposal-resolution lookup, `sql.includes("alias_norm = norm(")`, not the search layer.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version is validated. "v5" and "directed-v1" are fixtures in `seedRun`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      No fragment or chunk text is matched. Alias occurrence is checked by `contentNorm.includes(aliasNorm)` in the stand-in, which is the alias-admission comparison and not prose matching.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No retry and no document context status appear in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No search or ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity is computed. The `alias_norm % norm(` query is answered `return answerRows([]);`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      the describe "alias admission — acronym written in the source", and its constants CNPQ_SOURCE and CNPQ_NAME
+    evidence: >-
+      `const CNPQ_SOURCE = "o Conselho Nacional de Desenvolvimento Científico (CNPq) aprovou o projeto";` with the proposal `name: CNPQ_NAME, aliases: ["CNPq"]` and the assertion of `{ alias: CNPQ_NAME, kind: "canonical" }` and `{ alias: "CNPq", kind: "alias" }`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      the describe "alias admission — admitted acronym resolves a later proposal"
+    evidence: >-
+      `const later = await proposeInRun(store, RUN_B, { node_type: ORGANIZATION_TYPE_NAME, name: "CNPq", });` asserted equal to `{ node_id: first.node_id, resolution: "matched_existing", }`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      the describe "alias admission — alias absent from the source"
+    evidence: >-
+      `expect(result.resolution, "the resolution is answered").toBe("created_new");` and `expect(heldAliases, "the alias is not recorded").not.toContain("Petrobras");` and `namesNotAdmitted(result, "Petrobras")` over `STATE_COMPANY_SOURCE = "a estatal anunciou lucro recorde no trimestre"`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No chunk reading or fragment appears. The one later-proposal test has the later run's content `"outro documento sem relação com o anterior"` and no document context.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      the describe "alias admission — directed ingestion"
+    evidence: >-
+      `seedDirectedRun(store, RUN_A, "relatório trimestral sem menção à empresa");` then `expect(heldBy(store, result.node_id)).toContainEqual({ alias: "Petrobras", kind: "alias", });` and `expect(JSON.stringify(result)).not.toContain(NOT_ADMITTED_REASON);`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading, provider error or run completion appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No retry and no document context appear in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      No chunks, extraction or document context status appear in the file.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The store stand-in carries its own copies of the normalization function (dbNorm) and of the admission and directed-run decisions (answerAdmission, including an empty-alias refusal that no test exercises), which is test-double construction and not a domain fact the tests assert, so I report no finding on it.
+candidates_opened:
+  - rules/knowledge-base/directed-ingestion-run
