@@ -65,6 +65,7 @@ interface IntermediateItem {
   score: number;
   readonly hop: number;
   readonly recordedAtTs: number;
+  readonly approximateOnly: boolean;
   summary: string;
   flags: AssertionFlag[];
   provenance: SearchProvenanceEntry[];
@@ -85,6 +86,12 @@ interface ExpandedLink {
   readonly link: TraversedLink;
   readonly hop: number;
   readonly score: number;
+  readonly reachedExactly: boolean;
+}
+
+interface MatchedNode {
+  readonly score: number;
+  readonly exact: boolean;
 }
 
 interface ExpansionContext {
@@ -189,6 +196,7 @@ export async function searchKnowledgeService(
         score: f.score,
         hop: 0,
         recordedAtTs: f.created_at.getTime(),
+        approximateOnly: false,
         summary: f.text,
         flags,
         provenance,
@@ -225,6 +233,7 @@ export async function searchKnowledgeService(
         score: n.score,
         hop: 0,
         recordedAtTs: 0,
+        approximateOnly: n.match === "approximate",
         summary: n.canonical_name,
         flags,
         provenance,
@@ -250,12 +259,7 @@ export async function searchKnowledgeService(
     ? items
     : items.filter((it) => it.status !== "uncertain");
 
-  filtered.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.recordedAtTs !== a.recordedAtTs)
-      return b.recordedAtTs - a.recordedAtTs;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
+  filtered.sort(compareItems);
 
   const total = filtered.length;
   const sliced = filtered.slice(input.offset, input.offset + input.limit);
@@ -315,14 +319,23 @@ function toApproximateHit(row: ApproximateNodeAliasHitRow): NodeLayerHit {
   return { ...row, match: "approximate" };
 }
 
+function compareItems(a: IntermediateItem, b: IntermediateItem): number {
+  if (a.approximateOnly !== b.approximateOnly) return a.approximateOnly ? 1 : -1;
+  if (b.score !== a.score) return b.score - a.score;
+  if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 function scoreMatchedNodes(
   items: readonly IntermediateItem[]
-): ReadonlyMap<string, number> {
-  const scoreById = new Map<string, number>();
+): ReadonlyMap<string, MatchedNode> {
+  const matchedById = new Map<string, MatchedNode>();
   for (const it of items) {
-    if (it.kind === "node") scoreById.set(it.id, it.score);
+    if (it.kind === "node") {
+      matchedById.set(it.id, { score: it.score, exact: !it.approximateOnly });
+    }
   }
-  return scoreById;
+  return matchedById;
 }
 
 function isBetterPath(candidate: ExpandedLink, current: ExpandedLink): boolean {
@@ -335,34 +348,48 @@ function keepBestPath(
   candidate: ExpandedLink
 ): void {
   const current = reached.get(candidate.link.id);
-  if (current === undefined || isBetterPath(candidate, current)) {
+  if (current === undefined) {
     reached.set(candidate.link.id, candidate);
+    return;
   }
+  const best = isBetterPath(candidate, current) ? candidate : current;
+  reached.set(candidate.link.id, {
+    ...best,
+    reachedExactly: current.reachedExactly || candidate.reachedExactly,
+  });
+}
+
+function traverseFrom(
+  context: ExpansionContext,
+  startId: string
+): Promise<TraverseNodesResult> {
+  return traverseNodes(
+    context.client,
+    {
+      startingNodeIds: [startId],
+      direction: "both",
+      linkTypeIds: context.linkTypeIds,
+      depth: context.input.expandDepth,
+      asOf: context.input.asOf,
+      inEffectOnly: context.input.inEffectOnly,
+    },
+    context.logger
+  );
 }
 
 async function collectExpandedLinks(
   context: ExpansionContext,
-  matchedNodeScores: ReadonlyMap<string, number>
+  matchedNodes: ReadonlyMap<string, MatchedNode>
 ): Promise<ReadonlyMap<string, ExpandedLink>> {
   const reached = new Map<string, ExpandedLink>();
-  for (const [startId, startScore] of matchedNodeScores) {
-    const traversal = await traverseNodes(
-      context.client,
-      {
-        startingNodeIds: [startId],
-        direction: "both",
-        linkTypeIds: context.linkTypeIds,
-        depth: context.input.expandDepth,
-        asOf: context.input.asOf,
-        inEffectOnly: context.input.inEffectOnly,
-      },
-      context.logger
-    );
+  for (const [startId, start] of matchedNodes) {
+    const traversal = await traverseFrom(context, startId);
     for (const link of traversal.links) {
       keepBestPath(reached, {
         link,
         hop: link.hop,
-        score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,
+        score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score,
+        reachedExactly: start.exact,
       });
     }
   }
@@ -397,7 +424,7 @@ function toExpandedLinkItem(
   candidate: ExpandedLink,
   lookups: LinkLookups
 ): IntermediateItem | undefined {
-  const { link, hop, score } = candidate;
+  const { link, hop, score, reachedExactly } = candidate;
   const meta = lookups.metaById.get(link.id);
   if (meta === undefined) return undefined;
 
@@ -428,6 +455,7 @@ function toExpandedLinkItem(
     score,
     hop,
     recordedAtTs: meta.recorded_at.getTime(),
+    approximateOnly: !reachedExactly,
     summary: `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`,
     flags: computeFlags({ kind: "link", status: meta.status }),
     provenance,
