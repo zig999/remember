@@ -36,5 +36,5 @@ Delivered task/document-context/retry-reuses-document-context in df89840: Delive
 - 2026-10-05T23:26:04Z Proved again task/approximate-node-search/search-item-shows-match in ea81d06 (proof-only re-delivery on run/prove-aliases-fuzzy-context-2).
 - 2026-10-05T23:26:05Z Proved again task/approximate-node-search/rank-approximate-reach-last in 395334a (proof-only re-delivery on run/prove-aliases-fuzzy-context-2).
 - 2026-10-05T23:26:07Z Proved again task/alias-admission/admit-aliases-from-source in b34f264 (proof-only re-delivery on run/prove-aliases-fuzzy-context-2).
-- 2026-10-05T23:43:32Z Reviewed again the 11 re-proved tasks in 0170e3f (review/aliases-fuzzy-context-2.md, 125 findings; 15 nodes now decided by a test, 14 certifications refused again with a remainder); deliver.py still refuses the first review, which does not list the test files written after it.
+- 2026-10-05T23:43:32Z Reviewed again the 11 re-proved tasks in 0170e3f (review/aliases-fuzzy-context-2.md, 125 findings; 15 nodes now decided by a test, 10 certifications refused again with a testable remainder, 4 covered but held to reading by conformance findings); deliver.py still refuses the first review, which does not list the test files written after it.
 - 2026-10-05T23:43:32Z Run ended: every step of the route ran once; the third attempt at the refused certifications is the human's decision.
