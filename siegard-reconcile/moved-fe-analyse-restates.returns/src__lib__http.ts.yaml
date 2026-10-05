@@ -1,0 +1,19 @@
+read:
+  - node: rules/application-shell/a-server-error-is-always-a-failure
+    held_at: |-
+      the `if (response.status >= 500)` branch of http(), lines 177-192, with extractEnvelopeCode and extractEnvelopeMessage at lines 221-241
+    evidence: |-
+      if (response.status >= 500) {
+          ...
+          const envelopeCode = extractEnvelopeCode(raw);
+          throw new EnvelopeError({
+            code: envelopeCode ?? "SYSTEM_UPSTREAM",
+            httpStatus: response.status,
+            message:
+              extractEnvelopeMessage(raw) ?? "Algo deu errado. Tente novamente.",
+            details: raw,
+          });
+        }
+      The extractors return a value only when `typeof code === "string"` or `typeof message === "string"`, so the body's own string code and message are used when present. The whole parsed body goes into `details`. SYSTEM_UPSTREAM and the two-sentence message are the fallbacks.
+looked_past: |-
+  The file also states the timeout, the silent refresh with the sign-in redirect, and the SYSTEM_NETWORK, SYSTEM_ABORTED, SYSTEM_INVALID_RESPONSE and SYSTEM_UNKNOWN codes and messages. Nodes outside this set hold each of these, for example a-request-is-cut-off-after-thirty-seconds, a-failed-refresh-ends-the-session, an-answer-below-500-without-json-is-invalid and a-failed-envelope-keeps-its-code. They are not unstated, and judging them belongs to those nodes' own passes.
