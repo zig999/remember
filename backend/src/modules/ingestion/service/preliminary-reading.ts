@@ -179,11 +179,43 @@ async function recordProducedContext(
   }
 }
 
+async function recordFailedReading(
+  request: DocumentContextRequest,
+  err: unknown
+): Promise<void> {
+  request.logger.warn(
+    {
+      llm_run_id: request.run.id,
+      cause_name: err instanceof Error ? err.name : typeof err,
+      cause_message: err instanceof Error ? err.message : String(err),
+    },
+    "document_context_reading_failed"
+  );
+  const client = await request.pool.connect();
+  try {
+    const row = await recordDocumentContextStatus(client, {
+      llm_run_id: request.run.id,
+      document_context_status: "failed",
+    });
+    if (row === null) {
+      throw new InvariantError(`llm_run ${request.run.id} vanished before its failed document context status was recorded`);
+    }
+  } finally {
+    client.release();
+  }
+}
+
 export async function produceDocumentContext(
   request: DocumentContextRequest
 ): Promise<void> {
   if (!shouldReadDocument(request)) return;
-  const context = await readDocumentContext(request);
+  let context: DocumentContext;
+  try {
+    context = await readDocumentContext(request);
+  } catch (err) {
+    await recordFailedReading(request, err);
+    return;
+  }
   await recordProducedContext(request.pool, request.run.id, context);
   request.logger.info(
     {

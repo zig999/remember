@@ -1,6 +1,10 @@
 import { expect, it, vi } from "vitest";
 import pino from "pino";
 import type Anthropic from "@anthropic-ai/sdk";
+import {
+  APIConnectionTimeoutError,
+  InternalServerError,
+} from "@anthropic-ai/sdk";
 import type { Pool, PoolClient } from "pg";
 
 import { buildSnapshot } from "../../../modules/ingestion/catalog/catalog.js";
@@ -125,6 +129,8 @@ interface Scenario {
   promptVersion: string;
   content: string;
   answer: ReadingAnswer;
+  readingError?: Error;
+  readingText?: string;
 }
 
 type RunRow = {
@@ -277,6 +283,16 @@ function recordCall(
   return call;
 }
 
+function readingStream(world: World, model: string): ExtractionMessageStream {
+  const { readingError, readingText, answer } = world.scenario;
+  return {
+    finalMessage: async () => {
+      if (readingError !== undefined) throw readingError;
+      return sdk.messageOf(model, readingText ?? JSON.stringify(answer));
+    },
+  };
+}
+
 function buildModel(world: World): AnthropicLike {
   return {
     messages: {
@@ -284,10 +300,10 @@ function buildModel(world: World): AnthropicLike {
         req: ExtractionMessageRequest | ContextMessageRequest
       ): ExtractionMessageStream => {
         const call = recordCall(world, req);
-        const reply = isReading(call)
-          ? JSON.stringify(world.scenario.answer)
-          : CHUNK_REPLY;
-        return { finalMessage: async () => sdk.messageOf(req.model, reply) };
+        if (isReading(call)) return readingStream(world, req.model);
+        return {
+          finalMessage: async () => sdk.messageOf(req.model, CHUNK_REPLY),
+        };
       },
     },
   };
@@ -525,6 +541,84 @@ it("makes no preliminary reading and records no document context and no status u
       status: null,
     }))
   );
+});
+
+function providerError(): Error {
+  return new InternalServerError(
+    529,
+    { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+    "Overloaded",
+    new Headers()
+  );
+}
+
+function chunkTextsRead(world: World): boolean[] {
+  return CHUNK_TEXTS.map((text) =>
+    world.calls.some((call) => !isReading(call) && call.text.includes(text))
+  );
+}
+
+it("reads every chunk of the raw information when the preliminary reading answers a provider error", async () => {
+  const world = await runExtraction({ readingError: providerError() });
+
+  const read = chunkTextsRead(world);
+
+  expect(read).toEqual([true, true, true]);
+});
+
+it("completes the run when the preliminary reading answers a provider error", async () => {
+  const world = await runExtraction({ readingError: providerError() });
+
+  expect(world.run.status).toBe("completed");
+});
+
+it("records the document context status failed when the preliminary reading answers a provider error", async () => {
+  const world = await runExtraction({ readingError: providerError() });
+
+  expect(world.run.document_context_status).toBe("failed");
+});
+
+it("leaves the run holding no document context when the preliminary reading answers a provider error", async () => {
+  const world = await runExtraction({ readingError: providerError() });
+
+  expect(world.run.document_context).toBeNull();
+});
+
+it("reads the 3 chunks, completes the run and records status failed with no document context when the preliminary reading of a 3-chunk v5 raw information answers a provider error", async () => {
+  const world = await runExtraction({
+    promptVersion: "v5",
+    readingError: providerError(),
+  });
+
+  const outcome = {
+    chunksRead: callKinds(world).filter((kind) => kind === "chunk").length,
+    runStatus: world.run.status,
+    contextStatus: world.run.document_context_status,
+    context: world.run.document_context,
+  };
+
+  expect(outcome).toEqual({
+    chunksRead: 3,
+    runStatus: "completed",
+    contextStatus: "failed",
+    context: null,
+  });
+});
+
+it("records the document context status failed when the preliminary reading answers text that is not a document context", async () => {
+  const world = await runExtraction({
+    readingText: "I could not read this document.",
+  });
+
+  expect(world.run.document_context_status).toBe("failed");
+});
+
+it("records the document context status failed when the model call of the preliminary reading times out", async () => {
+  const world = await runExtraction({
+    readingError: new APIConnectionTimeoutError(),
+  });
+
+  expect(world.run.document_context_status).toBe("failed");
 });
 
 it("makes every model call of an extraction, the preliminary reading included, through a client bounded to five minutes and two retries", async () => {
