@@ -11,3 +11,4 @@ Run resumed on main at a2cd1a5 by a new ask; target backend and slug aliases-fuz
 Planned in b91c925: /plan-work evolution retired task/alias-admission/propose-node-answers-unadmitted-aliases and declared its two remaining nodes uncovered; the survey did not run because the increment only removed a task.
 Delivered task/approximate-node-search/approximate-node-match in 5cac6c1: build and suite green on the first run; the pg_trgm-decided criteria stay unproven for lack of a real-database harness.
 Delivered task/approximate-node-search/search-item-shows-match in 400028d: build and suite green on the first run; transport answers covered by REST and MCP integration tests.
+Delivered task/approximate-node-search/rank-approximate-reach-last in f34b7e4: build and suite green on the first run.
