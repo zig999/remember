@@ -24,3 +24,4 @@ Delivered task/document-context/chunk-prompt-shows-context in 7003bde: build and
 Delivered task/document-context/run-answers-show-document-context in 3af0433: build and suite green on the first run.
 Delivered task/document-context/retry-reuses-document-context in df89840: Delivered task/document-context/retry-reuses-document-context; suite green; last of 14 tasks.
 - 2026-10-05T23:02:09Z Deliverable set empty (14/14 delivered, last df89840/9103407); invoking /review-change over all 14 tasks and the 51-path union of their records' files and tests.
+- 2026-10-05T23:14:33Z /review-change aliases-fuzzy-context over 14 tasks and 51 files: run green, 82 conformance and 96 standard findings, coverage 84 covered / 18 partial / 9 uncovered, 15 of 36 certifications covered; committed 7738ddc.
