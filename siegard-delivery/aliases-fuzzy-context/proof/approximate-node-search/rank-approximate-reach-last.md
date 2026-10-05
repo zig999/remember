@@ -4,9 +4,9 @@ implementation: sha256:b6b1ea6d52438b2fda8a838bd732d174a3639e07ca675532f43ecaeff
 standard:
   at: ../standards/backend-node-service.yaml
   pin: sha256:8c38c4f11796188276d89c2c7ed1710a4eed05f701034f22c68af0a554142c77
-run: run/approximate-node-search-rank-approximate-reach-last-suite
+run: run/prove-aliases-fuzzy-context-2
 title: Proof for ranking approximate reach last
-summary: Tests over the search service, with the store stood in for, prove that items reached only through approximately matched nodes rank last and that each group orders by score, recording time and identifier, with the order decided for the three underdetermined entries.
+summary: Tests over the search service, with the store stood in for, prove that items reached only through approximately matched nodes rank last and that each group orders by score, recording time and identifier, with the order decided for the three underdetermined entries, and that inside the trailing group links of equal score order by recording time then identifier with an equal-score knowledge node last.
 tests:
 - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
   name: ranks an approximately matched knowledge node after an exactly matched one whose score is lower
@@ -54,9 +54,14 @@ tests:
   name: answers a node, a link and a fragment item with no attribute the search item does not declare
   proves: 'domain/knowledge-base/search-item: the ranking adds no attribute to the item. approximateOnly stays internal, and only the declared attributes plus the identifier and provenance reach the response.'
   fails_when: the group flag, or any other internal field, is copied onto the response item of a node, a link or a fragment
+- file: src/__tests__/unit/query-retrieval/search-service-ranking-approximate-group.spec.ts
+  name: orders links of equal score by recording time descending, then by identifier ascending, and a knowledge node of that score last as never recorded
+  proves: 'rules/knowledge-base/search-ranking, the remainder the certification named: in one search whose items are all reached only through approximately matched nodes, two links of equal score with different recording times (January, March) and a third link sharing the March time, plus an approximately matched knowledge node of that same score, order as the later-recorded links first, the two links of equal recording time by identifier ascending (b-link-late, z-link-late), then the earlier link (k-link-old), and the knowledge node (a-node) last as never recorded. This closes within the trailing group what the twelve-item test decides for the group not reached only through approximate matches. It is claimed beside the whole-order test above, which decides the leading group and the remaining clauses.'
+  fails_when: inside the trailing group equal-score links order by recording time ascending or by identifier alone (k-link-old would come before the March links, or z-link-late before b-link-late); links recorded at the same time are not ordered by identifier ascending; or the approximately matched knowledge node is placed ahead of the links of its score, as a descending sort with nulls first or an ordering of it by identifier (a-node sorts first) would do
+  demonstrates: rules/knowledge-base/search-ranking
 not_applicable:
 - edge_case: ties inside the trailing group on recording time and identifier
-  why: The comparator keys are the same in both groups, and the criteria say "within each group". Score order is tested in both groups. Time and identifier are tested in the leading group, and a second representative would show the same evidence twice.
+  why: Now represented by the new approximate-group test, which orders an equal-time pair of links by identifier inside the trailing group.
 - edge_case: a link reached at hop 2 or 3 only through approximate nodes
   why: The group depends on which kind of start node reached the link, not on its hop. Hop and decay are other tasks' obligations, already tested in search-service-expansion.spec.ts.
 - edge_case: an empty result set, or no node matched
@@ -72,6 +77,7 @@ untested:
 - The implementation's inference that a link reached from both kinds of node keeps the score and hop of its best path, even when that path starts at an approximate node. Criterion 3 fixes only the link's group. No node says which score the link carries, so no test asserts it. The tests that involve a mixed link assert only its position relative to items whose position does not depend on that score.
 - 'domain/knowledge-base/search-item as a whole: the types and requiredness of its attributes, the provenance cardinality 1..* across every kind and layer, and the item-kind, search-layer and assertion-flag enumerations it references. No single finite test decides that fact, so the node is not claimed in `demonstrates`. The test written covers only that no undeclared attribute leaks onto the item. The node lists no id attribute, yet every item carries an id, which the tests assume.'
 - That a grouping decision is made on the first key of the comparator, as opposed to a stable multi-pass sort. This is the shape of the code, not behavior, and no test binds it.
+- 'Which nodes the database decides to match approximately, and with what score: the admission SQL, norm(), the trigram similarity threshold and the minimum alias length are evaluated by Postgres. Every test here stands in for the store and hands the service the hit rows it would have returned, and a test reimplementing those rules would assert the stand-in. That decision belongs to the approximate-node-match task, not to this ordering. The new test builds the equal score of a link and a node from the same expression the service uses (TRAVERSAL_DECAY to the first power times the start score), so it depends on that decay only through the shared constant and not on its value.'
 divergences:
 - cites: TST-04
   file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
@@ -81,12 +87,24 @@ divergences:
   file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
   departure: Scores inside the scenario fixtures (0.3, 0.9, 0.5 and so on) are written inline, not as named constants. Times, the shared 0.25 tie score, the depth, the limit and the similarity are named.
   why: Each score is read once by one scenario, so naming each would hide the arrangement the ordering expectation depends on, and a shared name would suggest a value the scenarios do not share.
+- cites: TST-04
+  file: src/__tests__/unit/query-retrieval/search-service-ranking-approximate-group.spec.ts
+  departure: The file sits under src/__tests__/unit/query-retrieval/ beside the other search-service specs, and does not mirror the unit's full path (modules/query-retrieval/service/search.service.ts).
+  why: Every existing spec of this service sits in that directory, and moving one file would split the suite across two layouts. It is a separate file because this re-delivery could not edit the existing spec.
+- cites: TYP-04
+  file: src/__tests__/unit/query-retrieval/search-service-ranking-approximate-group.spec.ts
+  departure: Row-shaped fixture values the ordering never reads (confidence 0.9, chunk offsets, the stand-in's literal ids and names) are written inline in the stand-in rows. The scores, the times, the depth, the limit and the similarity are named.
+  why: The values are inert fixture content of the store's rows, and naming each would add constants no scenario varies. The same stand-in rows sit inline in the sibling spec.
+- cites: MNT-03
+  file: src/__tests__/unit/query-retrieval/search-service-ranking-approximate-group.spec.ts
+  departure: The store stand-in (row builders and the SQL responder) is copied from search-service-ranking.spec.ts in reduced form instead of being imported.
+  why: The helpers in the sibling spec are not exported, and this re-delivery could not edit that file or add a shared fixture. Importing the spec would run its tests a second time.
 ---
 
 ## What it is
 
-Tests over the search service, with the store stood in for, prove that items reached only through approximately matched nodes rank last and that each group orders by score, recording time and identifier, with the order decided for the three underdetermined entries.
+Tests over the search service, with the store stood in for, prove that items reached only through approximately matched nodes rank last and that each group orders by score, recording time and identifier, with the order decided for the three underdetermined entries, and that inside the trailing group links of equal score order by recording time then identifier with an equal-score knowledge node last.
 
 ## Notes
 
-None.
+Proof-only re-delivery for the testable remainders the review aliases-fuzzy-context left; green on run/prove-aliases-fuzzy-context-2.
