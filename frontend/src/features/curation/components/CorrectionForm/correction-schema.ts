@@ -1,28 +1,8 @@
-/**
- * correction-schema — Zod schema mirroring `CorrectItemRequest` (TC-05).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §5 (client validations + pt-BR messages).
- *  - openapi.yaml CorrectItemRequest / CorrectedValues / ValidFromSource.
- *
- * Schema-first per CLAUDE.md "Forms — React Hook Form + Zod":
- *   schema -> z.infer<...> -> useForm<...>. Top-level `z.uuid()` (Zod v4).
- *
- * Single-owner pt-BR messages match §5 exactly:
- *  - "Informe o valor corrigido." (atributo)
- *  - "Selecione o nó-alvo da fusão." (link target — uuid validation)
- *  - "Data inválida. Use o formato AAAA-MM-DD."
- *  - "O início deve ser anterior ao fim."
- *  - "Selecione o fragmento que justifica a data."
- *  - "Informe um motivo para continuar."
- */
 import { z } from "zod";
 import type { CorrectItemRequest } from "../../types";
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Empty string is treated as "not provided" — RHF defaults always render
- *  a controlled string but the request DTO accepts null. */
 const optionalString = z
   .string()
   .optional()
@@ -59,7 +39,6 @@ export const correctionSchema = z
       .min(1, { message: "Informe um motivo para continuar." }),
   })
   .superRefine((data, ctx) => {
-    // Field requirement by kind — see openapi.yaml CorrectedValues "anyOf".
     if (data.itemKind === "attribute") {
       if (data.value === null) {
         ctx.addIssue({
@@ -78,7 +57,6 @@ export const correctionSchema = z
       }
     }
 
-    // Temporal coherence (§5).
     if (data.validFrom !== null && data.validTo !== null) {
       if (data.validFrom >= data.validTo) {
         ctx.addIssue({
@@ -89,7 +67,6 @@ export const correctionSchema = z
       }
     }
 
-    // valid_from_source=stated requires the fragment id (BR-15).
     if (
       data.validFromSource === "stated" &&
       data.validFromFragmentId === null
@@ -104,10 +81,6 @@ export const correctionSchema = z
 
 export type CorrectionFormValues = z.infer<typeof correctionSchema>;
 
-/**
- * Default starting values for `useForm({ defaultValues })`. Empty strings
- * (not undefined) — `Controller` + shadcn `Input` are controlled inputs.
- */
 export interface CorrectionRawDefaults {
   readonly itemKind: "link" | "attribute";
   readonly itemId: string;
@@ -135,13 +108,6 @@ export function buildDefaults(
   };
 }
 
-/**
- * Map validated form values to the `CorrectItemRequest` wire body — the
- * single source of the snake_case shape submitted by CorrectionForm
- * (openapi.yaml CorrectItemRequest / CorrectedValues). `itemKind` selects
- * `value` (attribute) vs `target_node_id` (link); the remaining fields are
- * passed through as the validated (possibly-null) values.
- */
 export function buildCorrectItemRequest(
   itemKind: "link" | "attribute",
   itemId: string,

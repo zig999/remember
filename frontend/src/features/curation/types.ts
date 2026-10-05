@@ -1,28 +1,3 @@
-/**
- * Curation feature — domain types consumed by hooks + UI.
- *
- * Spec references:
- *  - docs/specs/front/features/curadoria.feature.spec.md §1 / §4 (response transforms)
- *  - docs/specs/domains/curation/openapi.yaml (request/response shapes)
- *  - docs/specs/domains/query-retrieval/openapi.yaml (ProvenanceResponse,
- *    AcceptedFragmentList)
- *  - docs/specs/domains/knowledge-graph/openapi.yaml (NodeDetail, LinkHistory,
- *    AttributeHistory)
- *
- * Wire shapes (Wire suffix) mirror snake_case + ISO date strings exactly as
- * the BFF returns them. Domain shapes (no suffix) are the SPA-internal view
- * AFTER `_transforms.ts` applied: ISO timestamp strings become `Date`, and
- * KG/QR envelopes are unwrapped (the curation REST domain is bare-body on
- * 2xx — see curadoria.feature.spec.md §6).
- *
- * Only fields the SPA actually consumes today are declared. Adding a UI
- * binding later is an additive change here.
- */
-
-/* ------------------------------------------------------------------ *
- * Enums (mirror openapi.yaml)                                         *
- * ------------------------------------------------------------------ */
-
 export type ReviewQueueKind = "entity_match" | "disputed";
 export type ItemKind = "link" | "attribute";
 export type EntityMatchDecision = "merge_into" | "keep_separate";
@@ -43,10 +18,6 @@ export type EffectiveStatus =
   | "deleted";
 export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
 export type AttributeValueType = "text" | "date" | "number" | "bool";
-
-/* ------------------------------------------------------------------ *
- * Wire shapes — exact BFF JSON                                        *
- * ------------------------------------------------------------------ */
 
 export interface EntityMatchCandidateWire {
   readonly candidate_node_id: string;
@@ -112,10 +83,6 @@ export interface CurationMetricsWire {
   readonly computed_at: string;
 }
 
-/* ------------------------------------------------------------------ *
- * Domain shapes — `createdAt: Date` instead of ISO string             *
- * ------------------------------------------------------------------ */
-
 export interface EntityMatchCandidate {
   readonly candidateNodeId: string;
   readonly canonicalName: string;
@@ -177,10 +144,6 @@ export interface CurationMetrics {
   readonly disputedQueueCount: number;
   readonly computedAt: Date;
 }
-
-/* ------------------------------------------------------------------ *
- * Mutation request/response (DTOs)                                    *
- * ------------------------------------------------------------------ */
 
 export interface ResolveEntityMatchRequest {
   readonly decision: EntityMatchDecision;
@@ -288,10 +251,6 @@ export interface CorrectItemResponse {
   readonly action_id: string;
 }
 
-/* ------------------------------------------------------------------ *
- * Provenance — wire + domain                                          *
- * ------------------------------------------------------------------ */
-
 export interface ProvenanceRawInformationWire {
   readonly id: string;
   readonly source_type: string;
@@ -350,8 +309,6 @@ export interface ProvenanceResponse {
   readonly fragments: ReadonlyArray<ProvenanceFragment>;
 }
 
-/* ---- Accepted-fragment listing (R2) ---- */
-
 export interface AcceptedFragmentSourceRefWire {
   readonly raw_information_id: string;
   readonly chunk_index: number;
@@ -399,10 +356,6 @@ export interface AcceptedFragmentList {
   readonly offset: number;
   readonly items: ReadonlyArray<AcceptedFragmentItem>;
 }
-
-/* ------------------------------------------------------------------ *
- * Knowledge-graph node detail + history                               *
- * ------------------------------------------------------------------ */
 
 export interface NodeSummaryWire {
   readonly id: string;

@@ -1,11 +1,3 @@
-/**
- * useListConversations — GET /api/v1/conversations.
- *
- * Spec references:
- *  - openapi.yaml `listConversations` (cursor pagination, `include_archived`)
- *  - chat.feature.spec.md §4 (request #1: parallel header mount, staleTime 30s,
- *    on-focus revalidation)
- */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { http } from "@/lib/http";
 import { authHeader } from "./_request";
@@ -17,11 +9,8 @@ import {
 } from "./_transforms";
 
 export interface ListConversationsParams {
-  /** Page size — clamped server-side to [1, 100]. Default 20. */
   readonly limit?: number;
-  /** Opaque cursor returned as `next_cursor` from the previous page. */
   readonly cursor?: string;
-  /** Default false — archived rows excluded. */
   readonly includeArchived?: boolean;
 }
 

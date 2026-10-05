@@ -1,12 +1,3 @@
-/**
- * useGetConversationUsage — GET /api/v1/conversations/:id/usage.
- *
- * Spec references:
- *  - openapi.yaml `getConversationUsage`
- *  - chat.feature.spec.md §4 (request #4: lazy, sequential after #2;
- *    staleTime 30s, manual revalidation)
- *  - §4 transforms: rename `messages` → `messageCount`, flatten to root.
- */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { http } from "@/lib/http";
 import { authHeader } from "./_request";

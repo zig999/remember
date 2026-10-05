@@ -1,71 +1,20 @@
-/**
- * Curation api — internal request helpers.
- *
- * Spec references:
- *  - docs/specs/front/features/curadoria.feature.spec.md §6 — "Curation
- *    domain não usa envelope `{ ok, result }` — retorna body direto em 2xx,
- *    error envelope em 4xx/5xx. Knowledge-graph e query-retrieval usam
- *    envelope `{ ok: true/false, result/error }`."
- *  - docs/specs/domains/curation/openapi.yaml — every 2xx response schema is
- *    declared without an `ok`/`result` wrapper (e.g.
- *    `ReviewQueueList`, `ResolveEntityMatchResponse`). Error bodies DO use
- *    the standard `{ error: { code, message, details? } }` envelope.
- *  - lib/http.ts contract — `http<T>()` unconditionally parses the BFF
- *    envelope; calling it against the curation REST endpoints would surface
- *    `SYSTEM_INVALID_RESPONSE` because `body.ok` is undefined.
- *
- * Design:
- *  - `authHeader()` mirrors the chat/graph feature-local helper. Cross-feature
- *    imports are forbidden (CLAUDE.md "Conventions") so the two-line helper
- *    is intentionally duplicated rather than promoted to a shared module;
- *    the auth store IS the shared surface.
- *  - `httpCuration<T>()` is the curation-specific carve-out:
- *      - On 2xx: parses the bare JSON body and returns it typed as `T`.
- *      - On 4xx/5xx: parses the standard error envelope and throws
- *        `EnvelopeError` so the central `QueryCache.onError` mapper
- *        (`lib/error-routing.ts`) routes the error uniformly.
- *      - On HTTP 401: leverages the same DC silent-refresh story as
- *        `lib/http.ts` would, by re-using `fetchAccessToken()` once and
- *        retrying the request once; on failure clears the store and
- *        surfaces `AUTH_SESSION_EXPIRED`. The `__retried` guard prevents
- *        infinite recursion on a second 401.
- *
- * Why a feature-local helper instead of extending `lib/http.ts`?
- *  - The bare-body shape is a property of the curation REST surface only;
- *    KG/QR remain enveloped. Adding a "skipEnvelope" flag to the global
- *    wrapper would invite drift across features. Keeping the carve-out
- *    scoped to this feature makes the contract visible at the call site
- *    and avoids churn in other features that consume the standard
- *    envelope.
- *  - Documented as a scoped exception in `dev_tc_003-delivery.md`
- *    "Spec divergences" (it is not a divergence — it matches the spec).
- */
-
 import { getEnv } from "@/lib/env";
 import { EnvelopeError } from "@/lib/http";
 import { fetchAccessToken } from "@/features/auth/api/neon-auth";
 import { useAuthStore } from "@/state/auth";
 
-/** Build the `Authorization: Bearer <jwt>` header when a token is present. */
 export function authHeader(): Record<string, string> {
   const token = useAuthStore.getState().accessToken;
   return token !== null ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Curation REST request options. Mirrors `RequestInit` minus the parts the
- *  helper controls (signal composition, redirect). */
 export interface CurationRequestOptions extends Omit<RequestInit, "signal"> {
   readonly signal?: AbortSignal;
-  /** INTERNAL — set by the 401 retry path so the second attempt cannot
-   *  re-enter the silent-refresh branch. Callers MUST NOT set this. */
   __retried?: boolean;
 }
 
-/** Non-ingest cutoff. Mirrors `lib/http.ts` DEFAULT_TIMEOUT_MS. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** Test-only seam — overridable redirect call so unit tests can assert the
- *  session-expired path without standing up jsdom navigation. */
 let redirectImpl: (url: string) => void = (url) => {
   if (
     typeof window !== "undefined" &&
@@ -133,19 +82,6 @@ async function trySilentRefresh(): Promise<boolean> {
   }
 }
 
-/**
- * Issue a request to a curation REST endpoint.
- *
- *  - 2xx → parses the bare JSON body and returns it typed as `T`.
- *  - 4xx/5xx → parses the standard error envelope `{ error: { code,
- *    message, details? } }` and throws `EnvelopeError` so the central
- *    error router (`lib/error-routing.ts`) maps it to UX uniformly. When
- *    the body is not JSON (raw 5xx HTML), `SYSTEM_UPSTREAM` is used.
- *  - HTTP 401 → attempts DC silent refresh once via `fetchAccessToken()`;
- *    on success, retries the original request once with the new JWT.
- *    On failure, clears the auth store + redirects to
- *    `/sign-in?reason=session_expired` and throws `AUTH_SESSION_EXPIRED`.
- */
 export async function httpCuration<T>(
   path: string,
   opts: CurationRequestOptions = {},
@@ -154,8 +90,6 @@ export async function httpCuration<T>(
   const { VITE_BFF_URL } = getEnv();
   const url = joinUrl(VITE_BFF_URL, path);
 
-  // Always wrap in a 30s cutoff (curation calls are sub-second p95 budget;
-  // anything longer is a stalled BFF that should surface as a timeout).
   const timeoutController = new AbortController();
   const timer = setTimeout(() => {
     timeoutController.abort(
@@ -192,11 +126,9 @@ export async function httpCuration<T>(
   }
   clearTimeout(timer);
 
-  // ---- Silent refresh on 401 ----------------------------------------------
   if (response.status === 401 && __retried !== true) {
     const refreshed = await trySilentRefresh();
     if (refreshed) {
-      // Re-inject the fresh token into the next request's headers.
       const nextHeaders = new Headers(
         (init.headers ?? {}) as HeadersInit,
       );
@@ -217,11 +149,8 @@ export async function httpCuration<T>(
     });
   }
 
-  // ---- 2xx — bare body ----------------------------------------------------
   if (response.status >= 200 && response.status < 300) {
     try {
-      // 204 (no content) doesn't apply to curation 2xx responses today
-      // (every endpoint returns a payload) but guard for safety.
       if (response.status === 204) return undefined as unknown as T;
       return (await response.json()) as T;
     } catch (err) {
@@ -234,7 +163,6 @@ export async function httpCuration<T>(
     }
   }
 
-  // ---- 4xx / 5xx — error envelope (no `ok` discriminator on curation) ----
   let raw: unknown = undefined;
   try {
     raw = await response.json();

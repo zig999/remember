@@ -1,15 +1,3 @@
-/**
- * Chat api — pure wire→domain transforms.
- *
- * Spec references:
- *  - docs/specs/front/features/chat.feature.spec.md §4 "Response transforms"
- *    table (date casts; `messages` → `messageCount` rename for usage)
- *
- * Keeping these as pure functions (no React, no fetch) so the hooks stay
- * thin wrappers around `http<T>` + a transform, and so the transforms can
- * be exercised by unit tests in isolation.
- */
-
 import type {
   ChatMessage,
   ChatContentBlock,
@@ -18,11 +6,6 @@ import type {
   Conversation,
   UsageData,
 } from "../types";
-
-/* ---------------------------------------------------------------------- *
- * Wire shapes (mirror openapi.yaml — snake_case timestamps as strings).  *
- * Only the fields the SPA consumes are declared.                         *
- * ---------------------------------------------------------------------- */
 
 export interface ConversationWire {
   readonly id: string;
@@ -68,11 +51,6 @@ export interface CancelWire {
   readonly cancelled: true;
 }
 
-/* ---------------------------------------------------------------------- *
- * Surface shapes for paginated responses — the SPA needs the cursor so   *
- * the consumer of the hook can implement "load older messages".          *
- * ---------------------------------------------------------------------- */
-
 export interface ConversationListResult {
   readonly items: ReadonlyArray<Conversation>;
   readonly nextCursor: string | null;
@@ -80,13 +58,8 @@ export interface ConversationListResult {
 
 export interface MessageListResult {
   readonly items: ReadonlyArray<ChatMessage>;
-  /** ISO string echoed back by the BFF — opaque to the SPA. */
   readonly nextBefore: string | null;
 }
-
-/* ---------------------------------------------------------------------- *
- * Transforms                                                              *
- * ---------------------------------------------------------------------- */
 
 export function toConversation(wire: ConversationWire): Conversation {
   return {

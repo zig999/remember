@@ -1,33 +1,8 @@
-/**
- * useGraphPersistence — per-conversation graph view persistence hook (BR-42).
- *
- * Spec references:
- *  - /home/siegfriedneto/.claude/plans/sleepy-jingling-quiche.md §Frontend
- *  - docs/specs/domains/chat/openapi.yaml (GET/PUT /conversations/:id/graph)
- *
- * Contract:
- *  - Mounted once in ChatWorkspace, driven by the active conversationId.
- *  - RESTORE: on conversationId change, after the existing clear() in
- *    ChatWorkspace, GET the snapshot and hydrate() if present.
- *  - SAVE (debounced ~800ms): subscribe to the store's nodes/positions/
- *    layoutNonce identity — the 3 change points: graph_delta→addNodes,
- *    drag→setNodePosition, Reorganizar→resetLayout.
- *  - GUARDS:
- *    (a) skip save when nodes.size === 0 (never overwrite a saved graph
- *        with empty — also makes the clear() on switch a no-op for saving).
- *    (b) skip the store-write caused by hydrate() itself (justHydrated ref)
- *        so reopening a conversation doesn't immediately re-PUT what was
- *        just loaded.
- */
 import { useCallback, useEffect, useRef } from "react";
 import { http } from "@/lib/http";
 import { authHeader } from "@/features/chat/api/_request";
 import { useGraphStore } from "../state/graph-store";
 
-/** Wire shape of the snapshot stored in chat_graph_view.snapshot.
- *  Discriminated by `version` — TC-02 bumps to v2 with an additive
- *  `layout_algorithm` field. The hook accepts both versions on restore so
- *  pre-TC-02 saved graphs keep working. */
 export type GraphViewSnapshot =
   | {
       readonly version: 1;
@@ -45,22 +20,13 @@ export type GraphViewSnapshot =
       readonly layout_algorithm: "force" | "tree" | "radial";
     };
 
-/**
- * Hook signature: receives the current conversationId string (or undefined
- * when no conversation is selected). Returns void — side-effects only.
- */
 export function useGraphPersistence(
   conversationId: string | undefined,
 ): void {
-  // Guards
   const justHydrated = useRef(false);
   const hydratedFor = useRef<string | undefined>(undefined);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // GET — restore snapshot on conversationId change.
-  // This runs AFTER ChatWorkspace's clear() effect (same dependency array,
-  // declared later in the component — React fires effects in declaration
-  // order within the same render cycle).
   useEffect(() => {
     if (!conversationId) return;
 
@@ -77,10 +43,6 @@ export function useGraphPersistence(
         if (snapshot !== null) {
           justHydrated.current = true;
           hydratedFor.current = conversationId;
-          // The snapshot is validated server-side. Cast nodes/links to their
-          // typed forms — the wire schema and store types are aligned.
-          // v1 and v2 share the common fields; v2 also carries
-          // `layout_algorithm`. The store's `hydrate` accepts both.
           if (snapshot.version === 2) {
             useGraphStore.getState().hydrate({
               version: 2,
@@ -101,9 +63,6 @@ export function useGraphPersistence(
           }
         }
       } catch {
-        // Restore is best-effort — a network error / 404 leaves the graph
-        // in its cleared state (the user sees an empty graph until the next
-        // turn produces a fresh delta). Do not surface the error.
       }
     }
 
@@ -111,18 +70,12 @@ export function useGraphPersistence(
     return () => { cancelled = true; };
   }, [conversationId]);
 
-  // SAVE (debounced) — subscribe to the store's reactive slices.
-  // We listen to nodes/positions/layoutNonce identity: any write to these
-  // indicates a display-visible change worth persisting.
   const handleStoreChange = useCallback(() => {
     if (!conversationId) return;
 
     const { nodes } = useGraphStore.getState();
-    // Guard (a): never overwrite a saved graph with empty state.
     if (nodes.size === 0) return;
 
-    // Guard (b): skip the write that follows hydrate() to avoid a
-    // needless roundtrip re-PUTting what we just loaded.
     if (justHydrated.current) {
       justHydrated.current = false;
       return;
@@ -134,7 +87,6 @@ export function useGraphPersistence(
     debounceTimer.current = setTimeout(() => {
       debounceTimer.current = null;
       const snapshot = useGraphStore.getState().getSnapshot();
-      // nodes.size guard already passed — double-check after debounce.
       if (snapshot.nodes.length === 0) return;
       void http(
         `/api/v1/conversations/${encodeURIComponent(conversationId)}/graph`,
@@ -144,18 +96,12 @@ export function useGraphPersistence(
           body: JSON.stringify(snapshot),
         },
       ).catch(() => {
-        // Save is best-effort — a transient failure is silent. The next
-        // user interaction will trigger another debounced save attempt.
       });
     }, 800);
   }, [conversationId]);
 
   useEffect(() => {
     const unsubscribe = useGraphStore.subscribe((state, prevState) => {
-      // Fire on any of the 3 change points:
-      //   1. addNodes       → nodes Map identity changes
-      //   2. setNodePosition → positions Map identity changes
-      //   3. resetLayout     → layoutNonce increments
       if (
         state.nodes !== prevState.nodes ||
         state.positions !== prevState.positions ||

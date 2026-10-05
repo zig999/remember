@@ -1,48 +1,15 @@
-/**
- * NodeProvenanceChain — Phase C "Ver origem completa" body (dev_tc_001).
- *
- * Renders a `ProvenanceResponse` (Phase C lazy fetch result) inside a
- * `<details>` body. Used by both `NodeAttributeRow` and
- * `NodeRelationshipRow` — kept here as a shared, presentational component
- * with no data layer of its own.
- *
- * Spec references:
- *  - docs/specs/front/components/NodeDetailPanel.component.spec.md §3 — lazy
- *    provenance loading / error / tombstoned states.
- *  - §9 — Phase C transforms: `chunk_index`, `offset_start–offset_end`,
- *    `excerpt`, RawInformation metadata (source_type, received_at, title,
- *    document_date).
- *  - §10 — error → UI mapping (404 / 410 / 500).
- *
- * Accessibility (§8):
- *  - When loading: `aria-busy="true"` on the body and a live region.
- *  - When error: `role="alert"` on the error notice.
- *  - 410 (tombstoned) is permanent — no retry button.
- */
 import { Loader2, AlertTriangle } from "lucide-react";
 import type { FC } from "react";
 
 import { NODE_DETAIL_COPY } from "./NodeDetailPanel.copy";
 import type { ProvenanceResponseView } from "../../api";
 
-/* ---------- error classification ---------- */
-
-/** Error variants surfaced inside the Phase C disclosure body. */
 export type ProvenanceErrorVariant =
   | "not-found"
   | "deleted"
   | "generic"
   | "unknown";
 
-/**
- * Classify a Phase C fetch error into the variant the body renders.
- * Codes are namespaced (`RESOURCE_NOT_FOUND`, `BUSINESS_RAW_INFORMATION_DELETED`,
- * `SYSTEM_*`). Anything else falls back to `generic`.
- *
- * Exported for direct unit-test coverage so a regression that flips a code
- * surface (e.g. tombstone → not-found) is caught by the transforms tests
- * rather than only the panel integration tests.
- */
 export function classifyProvenanceError(err: unknown): ProvenanceErrorVariant {
   if (err === null || typeof err !== "object") return "unknown";
   const code = (err as { code?: unknown }).code;
@@ -52,8 +19,6 @@ export function classifyProvenanceError(err: unknown): ProvenanceErrorVariant {
   return "unknown";
 }
 
-/* ---------- presentational sub-pieces ---------- */
-
 interface ChunkDetailsProps {
   readonly chunkIndex: number;
   readonly offsetRangeLabel: string;
@@ -62,17 +27,9 @@ interface ChunkDetailsProps {
   readonly receivedAtLabel: string;
   readonly title: string | null;
   readonly documentDateLabel: string | null;
-  /**
-   * Raw passthrough of `raw_information.original_input` (TC-04, v2.1):
-   *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
-   *  - `'[REDACTED]'` → render muted redaction indicator.
-   *  - `null` / `undefined` → render nothing.
-   */
   readonly originalInput: string | null | undefined;
 }
 
-/** Sentinel value the BFF writes to `original_input` after a §11
- * `compliance_delete` redacts the row. Must NEVER be rendered verbatim. */
 const REDACTED_SENTINEL = "[REDACTED]";
 
 const ChunkDetails: FC<ChunkDetailsProps> = ({
@@ -125,7 +82,6 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
           </div>
         )}
       </dl>
-      {/* TC-04 (v2.1) — original_input three branches: disclosure / muted indicator / silence. */}
       {typeof originalInput === "string" &&
         originalInput !== REDACTED_SENTINEL && (
           <details
@@ -156,24 +112,14 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
   );
 };
 
-/* ---------- public component ---------- */
-
 export interface NodeProvenanceChainProps {
-  /** TanStack Query state — `isPending` toggles the loading body. */
   readonly isPending: boolean;
-  /** TanStack Query state — `isError` toggles the error body. */
   readonly isError: boolean;
   readonly error: unknown;
   readonly data: ProvenanceResponseView | undefined;
-  /** Retry handler — only invoked for the generic variant. */
   readonly onRetry: () => void;
 }
 
-/**
- * Renders the body of a "Ver origem completa" `<details>` based on the
- * Phase C query state. The `<details>` element itself is owned by the
- * caller (so the open/closed state lives where the user toggles it).
- */
 export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
   isPending,
   isError,
@@ -238,8 +184,6 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
     );
   }
 
-  // Success — render the fragments / chunks list. Defensive: if `data` is
-  // missing despite settled state, render an empty body rather than crashing.
   if (data === undefined || data.fragments.length === 0) {
     return (
       <p

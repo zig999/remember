@@ -1,13 +1,3 @@
-/**
- * Header — fixed top region (z-frame): brand + primary navigation + actions.
- *
- * Spec: front.md §2 (fixed/thin), §2.2 (z-frame), frontend-analise-funcional.md §2
- * (brand · nav between the 5 areas, active highlighted · ⌘K).
- *
- * Navigation uses TanStack Router <Link>; active state is derived from the
- * current pathname (so the highlight is controlled via cn(), not concatenated).
- * ⌘K toggles the command-palette store (the palette UI is wired in a later step).
- */
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Diamond,
@@ -40,12 +30,6 @@ const NAV = [
 ] as const;
 
 export function Header({ className }: HeaderProps) {
-  // Select both pathname and the `?conversation` search param in one
-  // subscription. `select` returns a stable shape so the Header only
-  // re-renders when one of these two values changes (not on every router
-  // tick). The narrow cast on `search` is intentional: the router-level
-  // location is untyped (any route can sit here), and only the /chat route
-  // validates the `conversation` key.
   const { pathname, conversationId } = useLocation({
     select: (l) => ({
       pathname: l.pathname,
@@ -68,7 +52,6 @@ export function Header({ className }: HeaderProps) {
         className,
       )}
     >
-      {/* Brand */}
       <div className="flex shrink-0 items-center gap-xs">
         <Diamond className="size-4 text-primary" aria-hidden="true" />
         <span className="font-sans text-sm font-medium font-bold tracking-tight text-foreground">
@@ -76,7 +59,6 @@ export function Header({ className }: HeaderProps) {
         </span>
       </div>
 
-      {/* Primary navigation */}
       <nav aria-label="Áreas" className="flex items-center gap-xs">
         {NAV.map((item) => {
           const active =
@@ -100,8 +82,6 @@ export function Header({ className }: HeaderProps) {
         })}
       </nav>
 
-      {/* Active-conversation menu — only on /chat (TC-02). The hooks live
-          inside this child so chat-feature traffic stays off other routes. */}
       {onChatRoute ? (
         <HeaderConversationMenu
           activeConversationId={conversationId}
@@ -109,7 +89,6 @@ export function Header({ className }: HeaderProps) {
         />
       ) : null}
 
-      {/* Actions */}
       <div className="ml-auto flex shrink-0 items-center gap-xs">
         <ThemeSelect />
         <Button

@@ -1,17 +1,3 @@
-/**
- * GraphNode — translucent knowledge-graph node (presentational).
- *
- * Source: front.md §7.1 ("each node renders as a React component … design system
- * reused"), frontend-analise-funcional.md §5.1 (type = color + icon; state coded
- * unambiguously). Composed from the design system:
- *   - GlassSurface (level="panel") → the translucent frosted material
- *   - NodeType → lucide icon + `text-node-*` color (the eye reads type first)
- *   - confidence state → GlassSurface `accent` (border + uncertain pulse) + StateBadge selo
- *
- * NO React Flow import here — this is the reusable visual. The React Flow adapter
- * (features/graph) adds `<Handle>`s and renders this. `animate={false}`: positioning
- * and entrance are owned by the graph (d3-force), not by the node.
- */
 import type { FC } from "react";
 import {
   User,
@@ -33,13 +19,10 @@ import type { GraphNodeProps, GraphNodeType } from "./GraphNode.types";
 
 interface TypeStyle {
   icon: LucideIcon;
-  /** pt-BR type name (default subtitle). */
   label: string;
-  /** full literal Tailwind class (so the v4 scanner keeps it). */
   color: string;
 }
 
-/** NodeType → icon + pt-BR label + color (canonical map, tokens.md §6.3). */
 const NODE_STYLE: Readonly<Record<GraphNodeType, TypeStyle>> = Object.freeze({
   person: { icon: User, label: "Pessoa", color: "text-node-person" },
   organization: { icon: Building2, label: "Organização", color: "text-node-organization" },
@@ -53,11 +36,6 @@ const NODE_STYLE: Readonly<Record<GraphNodeType, TypeStyle>> = Object.freeze({
   task: { icon: SquareCheck, label: "Tarefa", color: "text-node-task" },
 });
 
-/**
- * ConfidenceState → GlassSurface accent. Only the *attention* states color the
- * border; `accepted`/`low-confidence` are "active/normal" (front.md §5.1) and
- * fall through to the default theme-primary border (see `useDefaultBorder`).
- */
 const STATE_ACCENT: Readonly<Record<ConfidenceState, GlassAccent>> = Object.freeze({
   accepted: "none",
   uncertain: "uncertain",
@@ -82,14 +60,9 @@ export const GraphNode: FC<GraphNodeProps> = ({
     : state
       ? STATE_ACCENT[state]
       : "none";
-  // Resting/default border is the GlassSurface panel's own glass edge
-  // (`border-border-glass`) — no override here. Attention states (uncertain /
-  // disputed / superseded) recolor it via `accent`; selected uses `focus`.
 
   return (
     <GlassSurface
-      // forward ref only when present (GlassSurface's ref is non-undefined under
-      // exactOptionalPropertyTypes)
       {...(ref ? { ref } : {})}
       level="panel"
       radius="rounded-lg"

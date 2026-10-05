@@ -1,15 +1,3 @@
-/**
- * CorrectionSection — the UI-11 "Corrigir…" affordance inside DecisionPanel.
- *
- * Extracted from DecisionPanel.tsx (300-line limit). Self-contained: owns
- * its own open/closed state and the "Corrigir…" button ref so the parent
- * sheds that bookkeeping. The parent resets this section on item change by
- * giving it a `key` tied to the item id (remount → fresh state), mirroring
- * the previous in-panel `setCorrectionOpen(false)` reset.
- *
- * Spec references: curadoria.feature.spec.md §2 UI-11, §8 (focus restore
- * to "Corrigir…" on cancel/submit).
- */
 import { useRef, useState, type FC } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { CorrectionForm, type CorrectionFormDefaults } from "../CorrectionForm";
@@ -31,8 +19,6 @@ interface CorrectionSectionProps {
   readonly onCorrect: (body: CorrectItemRequest) => void;
 }
 
-/** CorrectionForm only cares about these codes; everything else is handled
- *  by the DecisionPanel-level banner. */
 function correctionServerError(
   serverError: DecisionPanelServerError | null,
 ): DecisionPanelServerError | null {
@@ -61,7 +47,6 @@ export const CorrectionSection: FC<CorrectionSectionProps> = ({
 
   function close(): void {
     setOpen(false);
-    // Restore focus to the "Corrigir…" button per §8.
     requestAnimationFrame(() => {
       correctButtonRef.current?.focus();
     });

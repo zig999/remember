@@ -1,20 +1,3 @@
-/**
- * useNodeRelationships — GET /api/v1/nodes/:id/traverse?depth=1&direction=both
- * (dev_tc_001, Phase B of NodeDetailPanel v2.0).
- *
- * TanStack Query hook returning the relationships of a `KnowledgeNode` for
- * the "Relações" section of `NodeDetailPanel`. Backs the lazy Phase B chain
- * (does NOT fetch attribute provenance — that ships inline with
- * `useNodeDetail`).
- *
- * Spec references:
- *  - docs/specs/front/components/NodeDetailPanel.component.spec.md §9
- *    "useNodeRelationships hook" — query key, staleTime 5min, enabled gate.
- *  - docs/specs/domains/knowledge-graph/openapi.yaml `traverseNode` —
- *    request path + response schema (`TraversalResult`).
- *  - CLAUDE.md "Data layer — TanStack Query" — every server call is a
- *    `features/<x>/api/` hook; `fetch` direct in a component is forbidden.
- */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { http } from "@/lib/http";
 import { authHeader } from "./_request";

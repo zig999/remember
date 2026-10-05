@@ -1,12 +1,3 @@
-/**
- * DateJustification — the "Justificativa da data" fieldset of CorrectionForm
- * (BR-15). Extracted to keep CorrectionForm under the 300-line limit.
- *
- * Owns the R2 accepted-fragment picker and its degradation (flow spec 3o):
- * when `valid_from_source=stated` and a filter is available, it lists
- * accepted fragments; otherwise (no filter, or empty/errored list) it falls
- * back to a plain text input for the fragment id.
- */
 import { type FC } from "react";
 import { Controller, type Control } from "react-hook-form";
 import { Input } from "@/shared/components/ui/input";
@@ -111,10 +102,6 @@ export const DateJustification: FC<DateJustificationProps> = ({
             control={control}
             name="validFromFragmentId"
             render={({ field, fieldState }) => (
-              // Standard dark-theme Select (Radix). Wired to the RHF field
-              // via `value` / `onValueChange`. Radix treats "" as "no value",
-              // so an undefined/"" field value renders the placeholder
-              // from <SelectValue>.
               <Select
                 value={field.value ?? ""}
                 onChange={(v) => field.onChange(v)}

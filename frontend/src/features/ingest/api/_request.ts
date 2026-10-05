@@ -1,70 +1,21 @@
-/**
- * Ingest api — internal request helper.
- *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §1 (consumed
- *    endpoints), §6 (API Error → UI Mapping).
- *  - docs/specs/domains/ingestion/openapi.yaml — every 2xx response sends
- *    the response schema as a **bare body** (no `{ ok, result }` wrapper);
- *    every 4xx/5xx sends the standard envelope `{ error: { code, message,
- *    details? } }`. See `backend/src/modules/ingestion/routes/ingestion.routes.ts`
- *    where each handler calls `reply.send(body)` on success and
- *    `reply.send({ ok: false, error: { … } })` on failure.
- *  - lib/http.ts contract — `http<T>()` unconditionally parses the BFF
- *    envelope; calling it against the ingestion REST endpoints would surface
- *    `SYSTEM_INVALID_RESPONSE` because `body.ok` is undefined on success.
- *
- * Design:
- *  - Mirrors the carve-out pattern from `features/curation/api/_request.ts`
- *    (the curation REST surface is also bare-body on 2xx). Cross-feature
- *    imports are forbidden (CLAUDE.md "Conventions") so the duplication is
- *    intentional; the auth store IS the shared surface.
- *  - `httpIngest<T>()` is the ingest-specific carve-out:
- *      - On 2xx: parses the bare JSON body and returns it typed as `T`.
- *      - On 4xx/5xx: parses the standard error envelope and throws
- *        `EnvelopeError` so the central `QueryCache.onError` mapper
- *        (`lib/error-routing.ts`) routes the error uniformly.
- *      - On HTTP 401: same DC silent-refresh story as `lib/http.ts` —
- *        mint a new JWT once via `fetchAccessToken()` and retry the
- *        original request once; on failure clears the store and surfaces
- *        `AUTH_SESSION_EXPIRED`. The `__retried` guard prevents infinite
- *        recursion on a second 401.
- *  - The `ingest` option, when true, **skips the client-side 30s cutoff**
- *    — required for `runLlmExtraction` per CLAUDE.md "ingest_document
- *    client timeout ≠ failure". The caller's `signal` is forwarded as-is.
- */
-
 import { getEnv } from "@/lib/env";
 import { EnvelopeError } from "@/lib/http";
 import { fetchAccessToken } from "@/features/auth/api/neon-auth";
 import { useAuthStore } from "@/state/auth";
 
-/** Build the `Authorization: Bearer <jwt>` header when a token is present. */
 export function authHeader(): Record<string, string> {
   const token = useAuthStore.getState().accessToken;
   return token !== null ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Ingest REST request options. Mirrors `RequestInit` minus the parts the
- *  helper controls (signal composition, redirect). */
 export interface IngestRequestOptions extends Omit<RequestInit, "signal"> {
   readonly signal?: AbortSignal;
-  /**
-   * When true, skip the client-side 30s cutoff. Required for
-   * `runLlmExtraction` (LLM-bound, minutes per document is acceptable —
-   * CLAUDE.md "ingest_document client timeout ≠ failure"). Default false.
-   */
   readonly ingest?: boolean;
-  /** INTERNAL — set by the 401 retry path so the second attempt cannot
-   *  re-enter the silent-refresh branch. Callers MUST NOT set this. */
   __retried?: boolean;
 }
 
-/** Non-ingest cutoff. Mirrors `lib/http.ts` DEFAULT_TIMEOUT_MS. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** Test-only seam — overridable redirect call so unit tests can assert the
- *  session-expired path without standing up jsdom navigation. */
 let redirectImpl: (url: string) => void = (url) => {
   if (
     typeof window !== "undefined" &&
@@ -132,20 +83,6 @@ async function trySilentRefresh(): Promise<boolean> {
   }
 }
 
-/**
- * Issue a request to an ingest REST endpoint.
- *
- *  - 2xx → parses the bare JSON body and returns it typed as `T`.
- *  - 4xx/5xx → parses the standard error envelope `{ error: { code,
- *    message, details? } }` and throws `EnvelopeError` so the central
- *    error router (`lib/error-routing.ts`) maps it to UX uniformly. When
- *    the body is not JSON (raw 5xx HTML), `SYSTEM_UPSTREAM` is used.
- *  - HTTP 401 → attempts DC silent refresh once via `fetchAccessToken()`;
- *    on success, retries the original request once with the new JWT.
- *    On failure, clears the auth store + redirects to
- *    `/sign-in?reason=session_expired` and throws `AUTH_SESSION_EXPIRED`.
- *  - `ingest: true` skips the client-side 30s cutoff (LLM-bound).
- */
 export async function httpIngest<T>(
   path: string,
   opts: IngestRequestOptions = {},
@@ -154,7 +91,6 @@ export async function httpIngest<T>(
   const { VITE_BFF_URL } = getEnv();
   const url = joinUrl(VITE_BFF_URL, path);
 
-  // Compose abort signal: respect `ingest: true` carve-out (no cutoff).
   let signal: AbortSignal | undefined;
   let cleanup: () => void = () => undefined;
   if (ingestMode === true) {
@@ -198,11 +134,9 @@ export async function httpIngest<T>(
   }
   cleanup();
 
-  // ---- Silent refresh on 401 ----------------------------------------------
   if (response.status === 401 && __retried !== true) {
     const refreshed = await trySilentRefresh();
     if (refreshed) {
-      // Re-inject the fresh token into the next request's headers.
       const nextHeaders = new Headers(
         (init.headers ?? {}) as HeadersInit,
       );
@@ -223,7 +157,6 @@ export async function httpIngest<T>(
     });
   }
 
-  // ---- 2xx — bare body ----------------------------------------------------
   if (response.status >= 200 && response.status < 300) {
     try {
       if (response.status === 204) return undefined as unknown as T;
@@ -238,7 +171,6 @@ export async function httpIngest<T>(
     }
   }
 
-  // ---- 4xx / 5xx — error envelope (no `ok` discriminator on ingest 2xx) --
   let raw: unknown = undefined;
   try {
     raw = await response.json();

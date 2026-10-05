@@ -1,29 +1,8 @@
-/**
- * AppErrorBoundary — single root error boundary wrapping the router outlet.
- *
- * Spec references:
- *  - front.md §5.1 (single boundary wraps __root; header/footer stay visible)
- *  - front.back.md BR-12 (single AppErrorBoundary mounted in __root)
- *
- * Behaviour:
- *  - Catches render-time errors in the workspace; preserves the 3-region
- *    frame (header + footer stay visible because they live OUTSIDE the
- *    boundary's children — see __root.tsx composition).
- *  - Fallback: in-frame message + Reload action.
- *  - All thrown errors are forwarded to `reportError` (dev: console, prod:
- *    stub — front.back.md §7 item 6).
- *
- * Note: React's Error Boundary contract is class-based — no functional
- * replacement exists. We accept the `extends` here and use `override` per
- * the project's `noImplicitOverride` TS flag.
- */
-
 import { Component, type ReactNode, type ErrorInfo } from "react";
 import { reportError } from "@/lib/report-error";
 
 export interface AppErrorBoundaryProps {
   children: ReactNode;
-  /** Optional override of the fallback UI. */
   fallback?: ReactNode;
 }
 

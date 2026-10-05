@@ -1,25 +1,3 @@
-/**
- * Knowledge-graph node detail + history hooks (curation-feature scope).
- *
- * Spec references:
- *  - docs/specs/front/features/curadoria.feature.spec.md §1 (consumed:
- *    `getNodeById`, `getLinkHistory`, `getAttributeHistory`), §4 (staleTime
- *    5min, no refetchOnWindowFocus).
- *  - docs/specs/domains/knowledge-graph/openapi.yaml — REST responses are
- *    enveloped; `lib/http.ts` unwraps the envelope before returning.
- *
- * Note on duplication with `features/graph/api/useNodeDetail`:
- *  - The graph feature has its own `useNodeDetail` hook that transforms
- *    the same wire shape into a UI-specific `NodeDetailView` (with
- *    formatted dates and a derived `badgeState`). The curation feature
- *    needs the RAW DOMAIN shape (Date objects, no UI labels) for the
- *    ComparePane diff calculation. Both can coexist under different
- *    query keys; the graph hook keys under `graphNodeKeys.detail`, this
- *    one keys under `nodeKeys.detail`. The two are NOT shared via a
- *    cross-feature import (CLAUDE.md "Conventions" forbids that).
- *  - Documented as intentional duplication in the delivery file.
- */
-
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { http } from "@/lib/http";
@@ -39,18 +17,11 @@ import type {
   AttributeHistoryResponseWire,
 } from "../types";
 
-const STABLE_STALE_MS = 5 * 60_000; // 5 min
-
-/* ------------------------------------------------------------------ *
- * getNodeById                                                         *
- * ------------------------------------------------------------------ */
+const STABLE_STALE_MS = 5 * 60_000;
 
 export interface UseCurationNodeDetailParams {
-  /** Optional `as_of` (date-time travel) — defaults to current view. */
   readonly asOf?: string;
-  /** When true, only attributes whose `is_in_effect` is true. */
   readonly inEffectOnly?: boolean;
-  /** When false, `uncertain` attributes are omitted. Default true. */
   readonly includeUncertain?: boolean;
 }
 
@@ -64,14 +35,6 @@ function buildNodeQs(params: UseCurationNodeDetailParams): string {
   return qs.length > 0 ? `?${qs}` : "";
 }
 
-/**
- * Returns the node detail (summary + aliases + attributes) for the
- * curation feature. Distinct from `features/graph`'s `useNodeDetail`:
- * this hook returns the raw domain shape (Date objects), the graph hook
- * returns a UI-formatted view.
- *
- * Disabled when `nodeId` is null/undefined/empty.
- */
 export function useCurationNodeDetail(
   nodeId: string | null | undefined,
   params: UseCurationNodeDetailParams = {},
@@ -92,10 +55,6 @@ export function useCurationNodeDetail(
   });
 }
 
-/* ------------------------------------------------------------------ *
- * getLinkHistory                                                      *
- * ------------------------------------------------------------------ */
-
 export function useLinkHistory(
   linkId: string | null | undefined,
 ): UseQueryResult<LinkHistoryResponse> {
@@ -114,10 +73,6 @@ export function useLinkHistory(
     refetchOnWindowFocus: false,
   });
 }
-
-/* ------------------------------------------------------------------ *
- * getAttributeHistory                                                 *
- * ------------------------------------------------------------------ */
 
 export function useAttributeHistory(
   attributeId: string | null | undefined,

@@ -1,17 +1,3 @@
-/**
- * ReasonField — destructive-action reason textarea (TC-05).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §5 ("Informe um motivo para continuar."),
- *    §6 BUSINESS_REASON_REQUIRED (highlight + focus move),
- *    §8 (aria-invalid + aria-describedby).
- *
- * Pure controlled component — owns no state. The DecisionPanel keeps the
- * value and dispatches it with the action. Validation:
- *  - At submit time, the parent calls `ref.current?.validateOnSubmit()`
- *    via the `validateRef` prop; we expose it through a tiny imperative
- *    handle so the parent doesn't need RHF for just one field.
- */
 import { useImperativeHandle, useState, type FC, type Ref } from "react";
 import { cn } from "@/lib/cn";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -19,23 +5,16 @@ import { Label } from "@/shared/components/ui/label";
 
 export interface ReasonFieldHandle {
   readonly value: string;
-  /** Returns true when the value is non-empty (trimmed). When false, sets
-   *  the inline error AND moves focus to the textarea (spec §6). */
   validateOnSubmit(): boolean;
-  /** Surface a server error inline (BUSINESS_REASON_REQUIRED). */
   setServerError(message: string | null): void;
   clear(): void;
 }
 
 export interface ReasonFieldProps {
-  /** Field id used for label+textarea association. */
   readonly id?: string;
-  /** Controlled by the parent (DecisionPanel) so it can dispatch on submit. */
   readonly value: string;
   readonly onChange: (next: string) => void;
-  /** Imperative handle for parent-driven submit validation. */
   readonly validateRef?: Ref<ReasonFieldHandle>;
-  /** Marks the field as required in the label rendering. */
   readonly required?: boolean;
   readonly className?: string;
 }
@@ -59,7 +38,6 @@ export const ReasonField: FC<ReasonFieldProps> = ({
         const trimmed = value.trim();
         if (trimmed.length === 0) {
           setError("Informe um motivo para continuar.");
-          // Move focus to the textarea — §6 BUSINESS_REASON_REQUIRED.
           const el = document.getElementById(id) as HTMLTextAreaElement | null;
           el?.focus();
           return false;

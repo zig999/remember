@@ -1,23 +1,3 @@
-/**
- * IngestPanel — left column of `/ingest` (dev_tc_005).
- *
- * Pure-controlled, presentational component. The state machine
- * (idle → sending → extracting → polling → complete | error | noop) lives in
- * `IngestWorkspace`; this panel just renders the current view and raises the
- * callback the user clicked.
- *
- * Form structure (`ingest.feature.spec.md §2`):
- *  - `<textarea>` (content) + `<select>` (source_type) + `<button>` (Ingerir)
- *  - progress / summary / error region (`aria-live="polite"`, `role="alert"`
- *    on error band)
- *
- * Accessibility (`ingest.feature.spec.md §8`):
- *  - `<label htmlFor>` for both inputs (visible labels)
- *  - `aria-busy="true"` on the progress region while sending/extracting
- *  - `role="alert"` on the error band
- *  - `aria-disabled` reflects `disabled`
- *  - All form controls disabled while the run is in flight
- */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/shared/components/ui/button";
@@ -44,15 +24,12 @@ const SOURCE_TYPE_OPTIONS: ReadonlyArray<{
   { value: "outro", label: "Outro" },
 ];
 
-/** Codes that map to "retryable" errors — show the "Tentar novamente" CTA. */
 const RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
   "SYSTEM_LLM_PROVIDER_UNAVAILABLE",
   "SYSTEM_INTERNAL_ERROR",
   "SYSTEM_UPSTREAM",
   "SYSTEM_TIMEOUT",
   "SYSTEM_NETWORK",
-  // The polling loop ends in `status: 'failed'` — caller surfaces this as
-  // `RUN_FAILED` (synthetic, not in the openapi). Treat it as retryable.
   "RUN_FAILED",
 ]);
 

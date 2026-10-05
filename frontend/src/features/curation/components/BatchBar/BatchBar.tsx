@@ -1,32 +1,3 @@
-/**
- * BatchBar — multi-selection action bar (TC-06, UI-12).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §2 UI-12 (≥2 homogeneous checkboxes selected;
- *    actions per kind; rejeição em lote ≥5 inline confirm).
- *  - curadoria.feature.spec.md §3 (UI-12 transitions:
- *    "Deselecionar até <2 itens" → UI-01/UI-03; ação destrutiva → UI-04;
- *    ação não-destrutiva → UI-05).
- *  - curadoria.flow.md §2 Sub-flow D (batch mode), §4 step 6 (batch reject
- *    ≥5 inline confirm — NOT modal).
- *  - §8 (button targets ≥32px, aria-label per action).
- *
- * Behavior:
- *  - Hidden when `count < 2` — the consumer can render the component
- *    unconditionally; the bar self-occults below the threshold.
- *  - Per-kind actions (homogeneous selection only):
- *      - entity_match → "Manter separados N" (non-destructive)
- *      - uncertain    → "Confirmar N" (non-destructive) + "Rejeitar N" (destructive)
- *      - disputed     → all batch actions disabled with tooltip
- *        ("Disputas devem ser resolvidas individualmente.")
- *  - Rejection ≥5 items → inline confirmation banner replaces the action
- *    row until the curator clicks "Confirmar" or "Cancelar". No modal.
- *
- * Why feature-local (not in components/)?
- *  - BatchBar is only consumed by /curadoria. Promoting it would require a
- *    generic batch-action contract that doesn't exist anywhere else in the
- *    app. Matches `front.md` rule: feature-local components stay feature-local.
- */
 import { useState, type FC } from "react";
 import { X, Check, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -36,26 +7,16 @@ import { Button } from "@/shared/components/ui/button";
 export type BatchKind = "entity_match" | "disputed" | "uncertain";
 
 export interface BatchBarProps {
-  /** Number of items currently checked. Bar self-hides below 2. */
   readonly count: number;
-  /** Homogeneous kind of the selected items. `disputed` disables actions. */
   readonly kind: BatchKind;
-  /** Callbacks per action; the parent wires each one to the appropriate
-   *  mutation hook + UndoToast (for destructive). */
   readonly onConfirm?: () => void;
   readonly onReject?: () => void;
   readonly onKeepSeparate?: () => void;
-  /** Fired by the "X" button — caller clears the selection set. */
   readonly onClear: () => void;
-  /** When true, the bar shows submitting state on every action. */
   readonly submitting?: boolean;
   readonly className?: string;
 }
 
-/**
- * Threshold above which destructive batch actions require a one-step inline
- * confirmation (spec §5: "Você está rejeitando N itens. Confirmar?").
- */
 export const BATCH_REJECT_CONFIRM_THRESHOLD = 5;
 
 export const BatchBar: FC<BatchBarProps> = ({
@@ -68,19 +29,14 @@ export const BatchBar: FC<BatchBarProps> = ({
   submitting = false,
   className,
 }) => {
-  // Confirmation state for ≥5-item reject. Reset whenever the selection
-  // count or kind changes (the parent rebuilds the bar on selection edits).
   const [pendingReject, setPendingReject] = useState(false);
 
-  // Self-hide guard. Returning null keeps consumers free of conditional
-  // mounting boilerplate — they can render <BatchBar count={…} /> always.
   if (count < 2) return null;
 
   const disputedTooltip =
     "Disputas devem ser resolvidas individualmente.";
   const isDisputed = kind === "disputed";
 
-  // Per-kind action availability map.
   const showConfirm = kind === "uncertain";
   const showReject = kind === "uncertain";
   const showKeepSeparate = kind === "entity_match";
@@ -103,10 +59,6 @@ export const BatchBar: FC<BatchBarProps> = ({
   }
 
   return (
-    // GlassSurface §14 narrows `role` to a closed set (no "toolbar"); we
-    // keep the toolbar semantics on an inner wrapper so the surface stays
-    // a region-like group while the action row is still announced as a
-    // toolbar.
     <GlassSurface
       level="ambient"
       role="group"

@@ -1,18 +1,3 @@
-/**
- * NodeDetailPanel — curation target derivation (TC-07; preserved verbatim
- * during the dev_tc_001 progressive-disclosure refactor).
- *
- * The "Curar" button on the panel header surfaces two distinct curation
- * targets, mutually exclusive:
- *  - `needs_review` nodes belong to the **entity_match** queue (BFF emits
- *    one queue row per `needs_review` node — keyed by `node_id`).
- *  - Nodes with at least one `uncertain`/`disputed` attribute have a
- *    contextual `disputed` target (uncertain is a display flag, not a
- *    dedicated queue, so the drawer surfaces it via the disputed family +
- *    the attribute id).
- *
- * Pure function — exported for direct unit-test coverage.
- */
 import type { SelectedItemKind } from "@/features/curation/state/curation-store";
 import type { NodeDetailView } from "../../api";
 

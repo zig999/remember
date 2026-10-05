@@ -1,25 +1,3 @@
-/**
- * CorrectionForm — errata form (TC-05, UI-11).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §2 UI-11 (inline expansion, not modal),
- *    §5 (validation), §6 (BUSINESS_* inline mappings), §8 (focus
- *    management).
- *  - openapi.yaml CorrectItemRequest schema (mirrored in
- *    `correction-schema.ts`).
- *  - flow spec 3o (R2 fragment-picker degradation).
- *
- * Schema-first RHF + Zod (zodResolver). Single-owner pt-BR strings.
- *
- * Composition (extracted to keep this file under the 300-line limit):
- *  - CorrectionFields    — value/target + validity-window inputs.
- *  - DateJustification   — BR-15 date-source fieldset + R2 fragment picker.
- *
- * Focus management (§8):
- *   - On mount, move focus to the first field (value OR targetNodeId).
- *     Caller (DecisionPanel) controls mounting and restores focus to
- *     "Corrigir…" via the `onCancel`/onSubmit completion path.
- */
 import { useEffect, useRef, type FC } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,7 +16,6 @@ import {
 import { CorrectionFields } from "./CorrectionFields";
 import { DateJustification } from "./DateJustification";
 
-/** Translate the server error code into the field path it highlights. */
 function fieldForServerCode(code: string): keyof CorrectionFormValues | null {
   switch (code) {
     case "BUSINESS_TEMPORAL_INCOHERENT":
@@ -76,12 +53,6 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
       validTo: defaults.validTo ?? null,
       validFromSource: defaults.validFromSource ?? "document",
       validFromFragmentId: defaults.validFromFragmentId ?? null,
-      // Double cast: `buildDefaults` returns the discriminated-union input
-      // shape (CorrectionFormInput), while RHF's `defaultValues` is typed as
-      // the resolved output (CorrectionFormValues). The two differ only by
-      // Zod's transform/refine narrowing — runtime shape is identical — so we
-      // cast through `unknown` to bridge the input→output mismatch that TS
-      // cannot prove safe statically.
     }) as unknown as CorrectionFormValues,
     mode: "onBlur",
   });
@@ -96,11 +67,6 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
 
   const validFromSource = watch("validFromSource");
 
-  // -------- focus first field on mount (§8) --------
-  // Use a direct DOM ref instead of RHF setFocus to avoid triggering the
-  // resolver synchronously on mount with empty defaults (which throws an
-  // unhandled rejection under vitest's jsdom — see SignInForm.spec.tsx
-  // header for the same pattern).
   const firstFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(
     null,
   );
@@ -108,7 +74,6 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
     firstFieldRef.current?.focus();
   }, [itemKind]);
 
-  // -------- server-error projection --------
   useEffect(() => {
     if (!serverError) return;
     const field = fieldForServerCode(serverError.code);
@@ -195,9 +160,6 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
           type="submit"
           loading={submitting}
           disabled={
-            // Targeted requirement (spec UI-11 / BDD 5): when stated is
-            // chosen, "Salvar permanece desabilitado até fragmento ser
-            // selecionado". For other sources the schema gates submission.
             validFromSource === "stated" &&
             (watch("validFromFragmentId") ?? "").length === 0
           }

@@ -1,17 +1,3 @@
-/**
- * Shell status hooks — live data for the footer (frontend-analise-funcional.md §2).
- *
- * Direct fetch (NOT lib/http): `/health` and `/api/v1/curation/queue` return
- * their payload RAW (not the `{ ok, result }` envelope), so the envelope parser
- * doesn't apply. We read defensively (`result?.x ?? x`) in case a route is
- * enveloped later. `/health` is public; the curation queue needs the Neon Auth
- * JWT (read from the auth store).
- *
- * Active ingestion run: there is no plain REST list endpoint yet — only the MCP
- * tools `get_ingestion_status` / `list_recent_ingestions`. `useActiveRun`
- * returns null until a runs-list read exists; the footer simply hides the
- * segment (Phase 2b scope note).
- */
 import { useQuery } from "@tanstack/react-query";
 import { getEnv } from "@/lib/env";
 import { useAuthStore } from "@/state/auth";
@@ -27,7 +13,6 @@ async function getJson(path: string, token?: string | null): Promise<unknown> {
   return res.json().catch(() => null);
 }
 
-/** ● System health from `GET /health` (database reachable?). */
 export function useHealth(): HealthStatus {
   const q = useQuery({
     queryKey: ["shell", "health"],
@@ -40,7 +25,6 @@ export function useHealth(): HealthStatus {
   return (d.database ?? d.result?.database) === "ok" ? "ok" : "down";
 }
 
-/** ⚖ Pending curation total (entity_match + disputed) from `GET /api/v1/curation/queue`. */
 export function useCurationCount(): number {
   const token = useAuthStore((s) => s.accessToken);
   const q = useQuery({
@@ -54,7 +38,6 @@ export function useCurationCount(): number {
   return d?.total ?? d?.result?.total ?? 0;
 }
 
-/** ⊕ Active ingestion run — no REST list endpoint yet (MCP-only). */
 export function useActiveRun(): { label: string } | null {
   return null;
 }

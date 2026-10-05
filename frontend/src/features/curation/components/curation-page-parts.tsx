@@ -1,10 +1,3 @@
-/**
- * curation-page-parts — presentational sub-components for CurationPage (TC-04).
- *
- * Extracted from CurationPage.tsx to keep the page component under the
- * 300-line limit. These are page-private, stateless, and carry the same
- * data-testids / aria contracts the page (and its tests) rely on.
- */
 import { type FC } from "react";
 import { CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -13,16 +6,6 @@ import { Button } from "@/shared/components/ui/button";
 import { Alert } from "@/shared/components/ui/alert";
 import { Empty } from "@/shared/components/ui/empty";
 
-/**
- * Polling pill — "N novos" when the queue grows. `role="status"` so AT
- * announces the count. Clicking the pill acknowledges the delta
- * (`updateLastSeen`) so it disappears.
- *
- * Uses the standard `Badge` for the accepted-state pill chrome inside a
- * `<button>` (the click is what acknowledges; the button preserves keyboard
- * activation + focus ring). `role="status"` + `aria-live` stay on the
- * button so AT announces the count change in place.
- */
 export const PollingPill: FC<{
   readonly delta: number;
   readonly onAck: () => void;
@@ -47,7 +30,6 @@ export const PollingPill: FC<{
   );
 };
 
-/** UI-07 — empty queue copy. */
 export const EmptyQueue: FC = () => (
   <Empty
     data-testid="curation-empty-queue"
@@ -57,7 +39,6 @@ export const EmptyQueue: FC = () => (
   />
 );
 
-/** UI-09 — error banner with retry. */
 export const QueueErrorBanner: FC<{ readonly onRetry: () => void }> = ({
   onRetry,
 }) => (

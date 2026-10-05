@@ -1,13 +1,3 @@
-/**
- * CommandPalette — the global ⌘K palette (frontend-analise-funcional.md §9,
- * layout.md §5 z4). Mounted once by the AppShell.
- *
- * - Open state lives in the `command-palette` store (the header ⌘K button also
- *   toggles it).
- * - Global keybind: ⌘K (mac) / Ctrl+K toggles; Esc closes (Dialog default).
- * - Actions: navigate to the five areas. (Opening the as_of time picker from
- *   here will be added with the time-travel wiring.)
- */
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -41,7 +31,6 @@ export function CommandPalette() {
   const toggle = useCommandPaletteStore((s) => s.toggle);
   const navigate = useNavigate();
 
-  // Global ⌘K / Ctrl+K toggle.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -53,7 +42,6 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggle]);
 
-  // Close the palette, then run the action.
   function run(action: () => void) {
     setOpen(false);
     action();

@@ -1,16 +1,3 @@
-/**
- * Form — react-hook-form integration layer (DS port §4.15).
- *
- * The wiring here is load-bearing and copied faithfully from the port guide,
- * remapped to Remember tokens (error text -> `text-destructive`, help -> `text-muted-foreground`):
- *   - FormField provides the field `name` via context and wraps RHF Controller.
- *   - FormItem mints a useId() base and derives the three a11y ids from it.
- *   - useFormField() joins both contexts + RHF state; THROWS if used outside a
- *     FormField (the misuse is silent otherwise — aria wiring would point at
- *     undefined ids).
- *   - FormControl (Slot) injects id / aria-invalid / aria-describedby into the
- *     wrapped input so label, description and message are correctly associated.
- */
 import {
   createContext,
   useContext,
@@ -35,7 +22,6 @@ import type {
   FormItemContextValue,
 } from "./form.types";
 
-/** Form === RHF FormProvider; spread a useForm() return into it. */
 export const Form = FormProvider;
 
 const FormFieldContext = createContext<FormFieldContextValue | null>(null);
@@ -83,7 +69,7 @@ export function useFormField() {
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
-    ...fieldState, // invalid, error, isDirty, isTouched, isValidating, isLoading
+    ...fieldState,
   };
 }
 
@@ -134,7 +120,6 @@ export function FormMessage({
   return (
     <p
       id={formMessageId}
-      // reveals (fade + small rise) when the error appears (front.md §9)
       className={cn("animate-message-in text-xs font-medium text-destructive", className)}
       {...props}
     >

@@ -1,18 +1,3 @@
-/**
- * NodeRelationshipRow — single relationship row with progressive disclosure
- * (dev_tc_001, Phases B inline + C lazy).
- *
- * Renders as a `<li>` inside the "Relações" `<ul>` of `NodeDetailPanel`. The
- * row shows direction arrow, link type, neighbor name, confidence,
- * temporal/effective-status badge, and two stacked disclosures:
- *  - "Proveniência do link" — inline `link.provenance[]` (no extra fetch).
- *  - "Ver origem completa" — lazy `useProvenance('links', linkId)`, enabled
- *    only when expanded.
- *
- * Spec references:
- *  - docs/specs/front/components/NodeDetailPanel.component.spec.md §3 / §7 /
- *    §8 / §9.
- */
 import { useState, type FC } from "react";
 
 import { StateBadge } from "@/components/ds/StateBadge";
@@ -21,8 +6,6 @@ import { NODE_DETAIL_COPY } from "./NodeDetailPanel.copy";
 import { NodeProvenanceChain } from "./NodeProvenanceChain";
 import { useProvenance } from "../../api";
 import type { ProvenanceEntryView, TraversalLinkView } from "../../api";
-
-/* ---------- Phase B — inline link provenance ---------- */
 
 interface LinkInlineProvenanceProps {
   readonly entries: ReadonlyArray<ProvenanceEntryView>;
@@ -69,8 +52,6 @@ const LinkInlineProvenance: FC<LinkInlineProvenanceProps> = ({ entries }) => {
   );
 };
 
-/* ---------- Phase C — lazy full origin (link) ---------- */
-
 interface LazyLinkOriginProps {
   readonly linkId: string;
 }
@@ -102,17 +83,11 @@ const LazyLinkOrigin: FC<LazyLinkOriginProps> = ({ linkId }) => {
   );
 };
 
-/* ---------- public component ---------- */
-
 export interface NodeRelationshipRowProps {
   readonly link: TraversalLinkView;
 }
 
 export const NodeRelationshipRow: FC<NodeRelationshipRowProps> = ({ link }) => {
-  // The wire AssertionStatus enum doesn't include "active" — we pass
-  // "accepted" (the closest analogue for a live link) since the row only
-  // surfaces the effective status badge; the inner assertion status is not
-  // consumed at the row level beyond the disputed/superseded fallback.
   const badgeState = mapAttributeStatusToBadge(link.effectiveStatus, "accepted");
   const directionSr =
     link.direction === "outgoing"

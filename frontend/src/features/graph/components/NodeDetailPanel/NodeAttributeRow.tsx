@@ -1,19 +1,3 @@
-/**
- * NodeAttributeRow — single attribute row with progressive disclosure
- * (dev_tc_001, Phases A + C).
- *
- * Renders as a `<tr>` inside `NodeDetailPanel`'s attributes table. Below the
- * primary row, a second row spans the full table width and hosts two
- * disclosures:
- *  - Phase A — "Proveniência" (inline from `attribute.provenance[]`, no
- *    extra fetch);
- *  - Phase C — "Ver origem completa" (lazy `useProvenance('attributes', id)`,
- *    enabled only when expanded).
- *
- * Spec references:
- *  - docs/specs/front/components/NodeDetailPanel.component.spec.md §1 / §3 /
- *    §7 / §8 / §11.
- */
 import { useState, type FC } from "react";
 
 import { StateBadge } from "@/components/ds/StateBadge";
@@ -23,8 +7,6 @@ import { useProvenance } from "../../api";
 import type { NodeAttributeView, ProvenanceEntryView } from "../../api";
 
 const COLSPAN = 3;
-
-/* ---------- Phase A — inline provenance disclosure ---------- */
 
 interface InlineProvenanceProps {
   readonly entries: ReadonlyArray<ProvenanceEntryView>;
@@ -77,8 +59,6 @@ const InlineProvenance: FC<InlineProvenanceProps> = ({ entries }) => {
   );
 };
 
-/* ---------- Phase C — lazy full origin disclosure ---------- */
-
 interface LazyOriginProps {
   readonly attributeId: string;
 }
@@ -111,16 +91,11 @@ const LazyOrigin: FC<LazyOriginProps> = ({ attributeId }) => {
   );
 };
 
-/* ---------- public component ---------- */
-
 export interface NodeAttributeRowProps {
   readonly attr: NodeAttributeView;
 }
 
 export const NodeAttributeRow: FC<NodeAttributeRowProps> = ({ attr }) => {
-  // Defensive against legacy fixtures or wire payloads missing `provenance` —
-  // the transform fills `[]` by default, but tests may shape `NodeAttributeView`
-  // by hand. A missing `provenance` should hide Phase A, not crash the panel.
   const provenance = attr.provenance ?? [];
   const hasInlineProvenance = provenance.length > 0;
   return (

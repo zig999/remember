@@ -1,35 +1,3 @@
-/**
- * GraphEdgeAdapter — React Flow custom edge (TC-FE-06).
- *
- * Renders the SVG path between two `GraphNodeAdapter`s with:
- *  - Solid stroke when `data.isTemporal === true`; dashed (`4 4`) otherwise
- *    (tokens.md §7 — AC-F.11).
- *  - Confidence-state colour overrides (uncertain / disputed / superseded)
- *    via the `--color-state-*` tokens. When no override is active, the
- *    stroke uses the LinkType colour token (`--color-link-{label}`).
- *  - `opacity-40` when `data.inEffect === false` OR `data.state ===
- *    "superseded"` (out-of-effect / historical edge, GraphEdge.spec §3).
- *  - The catalog-resolved **pt-BR display label** (`data.linkTypeLabel`)
- *    rendered as a small centred label via `EdgeLabelRenderer`, using the
- *    `text-xs` token. The slug (`data.label`) is **never** rendered as
- *    text — it is used only as the stroke-color lookup key
- *    (`LINK_STROKE_CLASS[data.label]`). See GraphEdge.spec §1, §2, §7
- *    scenarios 7 / 8.
- *  - Hover thickens the stroke from `--border-thin` to `--border-2`
- *    (GraphEdge.spec §3 — hover state baseline; rich tooltip is deferred).
- *
- * Out of TC-FE-06 scope (left as Tech Debt for a follow-up TC):
- *  - The hover *tooltip* with pt-BR link name, status, flags (GraphEdge
- *    §3 row "Hover"). The TC contract only requires solid/dashed,
- *    label and ConfidenceState colouring — the tooltip composes
- *    multiple unrelated lookups (link-type map, status formatter,
- *    flag formatter) that warrant their own component spec follow-up.
- *
- * Normative sources:
- *  - docs/specs/front/components/GraphEdge.component.spec.md §1–§3
- *  - docs/specs/front/components/GraphSpace.component.spec.md §7
- *  - tokens.md §7 (link-type colours + temporal/stable stroke distinction)
- */
 import type { FC } from "react";
 import {
   BaseEdge,
@@ -42,19 +10,6 @@ import { cn } from "@/lib/cn";
 import { getEdgeParams } from "../../lib/edge-params";
 import type { GraphEdgeAdapterProps } from "./GraphEdgeAdapter.types";
 
-/**
- * Link-type slug → Tailwind stroke class. Listed as full literal strings so
- * the Tailwind v4 scanner keeps every variant (dynamic class concatenation
- * would silently drop most of them — Tailwind cannot infer them at scan
- * time). The 13 link types are the normative catalog from
- * `remember-modelagem-v7.md §15.2` + tokens.md §7.
- *
- * Slug format is snake_case on the wire (`participates_in`); CSS tokens are
- * kebab-case (`--color-link-participates-in`). The conversion is encoded in
- * this lookup table — never inferred at runtime — so a typo'd slug fails
- * loud (falls through to the neutral fallback) instead of producing a
- * silently-invented class.
- */
 const LINK_STROKE_CLASS: Readonly<Record<string, string>> = Object.freeze({
   participates_in: "stroke-link-participates-in",
   member_of: "stroke-link-member-of",
@@ -71,22 +26,8 @@ const LINK_STROKE_CLASS: Readonly<Record<string, string>> = Object.freeze({
   sponsors: "stroke-link-sponsors",
 });
 
-/** Neutral fallback for unknown link slugs (open ontology — G-B). */
 const FALLBACK_STROKE_CLASS = "stroke-link-related-to";
 
-/**
- * ConfidenceState override → Tailwind stroke class. Returns `null` when the
- * state does NOT override the stroke colour (i.e. `accepted` / `low-confidence`
- * fall through to the LinkType colour above).
- *
- * Mapping per `GraphEdge.component.spec.md §3`:
- *  - uncertain  → `--color-state-uncertain`  (amber)
- *  - disputed   → `--color-state-disputed`   (orange)
- *  - superseded → `--color-state-superseded` (muted grey)
- *  - accepted   → no override
- *  - low-confidence → no override (not normally rendered on edges; the
- *    derivation in lib/map.ts may emit it for diagnostic UIs)
- */
 function stateStrokeClass(state: ConfidenceState | undefined): string | null {
   switch (state) {
     case "uncertain":
@@ -110,25 +51,13 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
   markerEnd,
   selected,
 }) => {
-  // Floating-edge geometry — read live node geometry via React Flow's
-  // internal-node hook. The RF-injected sourceX/Y/targetX/Y values come
-  // from the fixed `<Handle>` offsets and are intentionally NOT used here
-  // (see GraphEdge.spec §1 + §6 Do/Don't). These hooks subscribe to the
-  // RF store and re-render this edge whenever either endpoint node moves
-  // or is re-measured.
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
-  // Defensive: React Flow may briefly call the edge renderer without `data`
-  // during reconciliation (e.g. mid-reveal). Render nothing in that case
-  // instead of crashing.
   if (!data) {
     return null;
   }
 
-  // If either node is unmeasured (still mounting, or zero-sized), render
-  // nothing — `getEdgeParams` returns `null` to signal the unmeasured
-  // state explicitly (no fallback to 0/0 — see GraphEdge.spec §6).
   const params = getEdgeParams(sourceNode, targetNode);
   if (!params) {
     return null;
@@ -143,27 +72,16 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
     targetPosition: params.targetPos,
   });
 
-  // Stroke colour: confidence-state override wins; otherwise link-type token.
   const stateClass = stateStrokeClass(data.state);
   const linkClass = LINK_STROKE_CLASS[data.label] ?? FALLBACK_STROKE_CLASS;
   const strokeColorClass = stateClass ?? linkClass;
 
-  // Dash pattern: per §3, `uncertain` always reads as dashed (uncertainty
-  // supersedes the temporal/stable visual). Otherwise `isTemporal` drives it.
   const isUncertain = data.state === "uncertain";
   const isDashed = isUncertain || !data.isTemporal;
-  // SVG `stroke-dasharray` is an SVG attribute, not a Tailwind class — there
-  // is no token-style class that maps to dasharray. The string values "0" /
-  // "4 4" are the literal SVG-spec values cited in tokens.md §7 / I-1, NOT
-  // arbitrary CSS values — they are part of the SVG path's stroke contract.
   const strokeDasharray = isDashed ? "4 4" : "0";
 
-  // Dim out-of-effect or superseded edges (§3 — "Out of effect" / "Superseded").
   const isDimmed = data.inEffect === false || data.state === "superseded";
 
-  // `BaseEdge`'s `markerEnd` is typed as `string` under
-  // `exactOptionalPropertyTypes` — passing an explicit `undefined` is rejected.
-  // We spread the prop only when React Flow actually provides one.
   const markerProp = markerEnd ? { markerEnd } : {};
 
   return (
@@ -172,13 +90,7 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
         id={id}
         path={edgePath}
         {...markerProp}
-        // `aria-hidden` on the edge — relationship info is announced via
-        // node aria-labels + NodeDetailPanel (§8 accessibility).
         aria-hidden="true"
-        // Stroke colour comes from a Tailwind utility (token-driven). Width
-        // and hover-width use the `--border-*` tokens via Tailwind's
-        // arbitrary syntax (the documented v4 pattern — tokens.md §7.1).
-        // Selected toggles to `--border-thick`.
         className={cn(
           strokeColorClass,
           "[stroke-width:var(--border-thin)]",
@@ -186,26 +98,14 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
           selected && "[stroke-width:var(--border-thick)]",
           isDimmed && "opacity-40",
         )}
-        // SVG-spec attribute (NOT React inline CSS — `style=""` on HTML is
-        // banned, but `strokeDasharray` is an SVG path attribute and is the
-        // only spec-compliant way to set the dash pattern dynamically).
         strokeDasharray={strokeDasharray}
       />
       <EdgeLabelRenderer>
         <div
-          // Position derived by React Flow's getBezierPath label centre. The
-          // transform is a *computed coordinate*, not a styling decision —
-          // it is the documented pattern for EdgeLabelRenderer (tokens.md §14
-          // exception clause: dynamic values with no token equivalent).
           // eslint-disable-next-line react/forbid-dom-props
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            // `none` — the label is purely DECORATIVE (the hover tooltip is
-            // deferred Tech Debt). With `all` the pill intercepts pointer
-            // events where it overlaps a node, blocking node drag/click
-            // (TC-FE drag). `none` lets the pointer fall through to the node
-            // beneath. Restore to `all` only when the interactive tooltip lands.
             pointerEvents: "none",
           }}
           className={cn(

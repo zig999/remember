@@ -1,31 +1,6 @@
-/**
- * Pure helpers for CurationPage (TC-04).
- *
- * Extracted into its own file (no React, no TanStack imports) so unit
- * tests can pin the deep-link + auto-select rules without paying the
- * cost of standing up a router/QueryClient harness. The
- * CurationPage.tsx imports these and uses them verbatim.
- *
- * The two rules locked here:
- *  1. `findItemInQueue` — given a `SelectedItem` (kind:id), is it
- *     present in the current queue? Used for deep-link verification.
- *  2. `deriveInitialSelection` — what should the page select on the
- *     first queue resolve? deep-link wins if it points at a real item,
- *     else first item, else null (UI-07).
- */
-
 import type { ReviewQueueItem, ReviewQueueList } from "../types";
 import type { SelectedItem } from "../state/curation-store";
 
-/**
- * Look up a `SelectedItem` inside a resolved queue. Returns the
- * matching item or `null` when not found.
- *
- * - entity_match: matches by `node_id`.
- * - disputed: matches when any `sides[].itemId` equals `target.id`.
- *   (A dispute item carries multiple sides; the deep-link addresses
- *   a single side, so any-side match counts.)
- */
 export function findItemInQueue(
   list: ReviewQueueList | undefined,
   target: SelectedItem | null,
@@ -42,14 +17,6 @@ export function findItemInQueue(
   return null;
 }
 
-/**
- * Convert a `ReviewQueueItem` into its addressable `SelectedItem` form.
- * Used by keyboard navigation (j/k, 1..9) so the page can map index
- * lookups in the queue back into the selection store.
- *
- * Returns `null` for disputed items with no sides (defensive — the
- * BFF guarantees ≥ 1 side, but we don't crash if that ever drifts).
- */
 export function toSelectedItem(item: ReviewQueueItem): SelectedItem | null {
   if (item.kind === "entity_match") {
     return { kind: "entity_match", id: item.nodeId };
@@ -59,10 +26,6 @@ export function toSelectedItem(item: ReviewQueueItem): SelectedItem | null {
   return { kind: "disputed", id: firstSide.itemId };
 }
 
-/**
- * Return the queue index that matches the current selection — or `-1`
- * when there is no selection / no match.
- */
 export function indexOfSelected(
   list: ReviewQueueList | undefined,
   selected: SelectedItem | null,
@@ -80,12 +43,6 @@ export function indexOfSelected(
   return -1;
 }
 
-/**
- * Find the next/previous queue item relative to the current selection.
- * Wraps around the queue boundaries so j on the last item lands back
- * on the first — matches the spec's "list is a ring" feel (BDD §9
- * Scenario 8 implies wrap-around with `j` on the last item).
- */
 export function neighbour(
   list: ReviewQueueList | undefined,
   selected: SelectedItem | null,
@@ -94,7 +51,6 @@ export function neighbour(
   if (list === undefined || list.items.length === 0) return null;
   const cur = indexOfSelected(list, selected);
   const len = list.items.length;
-  // When nothing is selected, j → first, k → last.
   const idx =
     cur === -1
       ? direction === "next"
@@ -108,11 +64,6 @@ export function neighbour(
   return toSelectedItem(target);
 }
 
-/**
- * 1-indexed item lookup (matches the spec's `1..9` shortcut: "1 =
- * primeiro item"). Returns null if the index is out of range or the
- * queue does not have that many items.
- */
 export function selectByIndex(
   list: ReviewQueueList | undefined,
   oneBasedIndex: number,
@@ -124,16 +75,6 @@ export function selectByIndex(
   return toSelectedItem(target);
 }
 
-/**
- * Decide which item to select on queue resolve.
- *
- *   1. If `deepLink` matches an item in the queue → that item.
- *   2. Else if queue has items → the first one.
- *   3. Else → null (UI-07 EmptyQueue).
- *
- * `undefined` for the list represents "queue still loading" — must
- * return null so the auto-select effect never fires prematurely.
- */
 export function deriveInitialSelection(
   list: ReviewQueueList | undefined,
   deepLink: SelectedItem | null,

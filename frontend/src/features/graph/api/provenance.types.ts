@@ -1,38 +1,10 @@
-/**
- * Provenance — wire + surface shapes for the cross-layer provenance walk
- * (dev_tc_001, Phase C of NodeDetailPanel v2.0).
- *
- * Wire shapes mirror `docs/specs/domains/query-retrieval/openapi.yaml`
- * (schemas `ProvenanceResponse`, `ProvenanceFragment`, `ProvenanceChunk`,
- * `ProvenanceRawInformation`).
- *
- * Endpoint family — three URL shapes, identical body:
- *   GET /api/v1/provenance/links/:link_id
- *   GET /api/v1/provenance/attributes/:attribute_id
- *   GET /api/v1/provenance/fragments/:fragment_id
- *
- * The SPA hook (`useProvenance`) picks the URL via the `kind` argument so
- * the call site stays declarative ("`links` / `attributes` / `fragments`").
- */
-
-/** Discriminator for the three provenance-walk URLs. */
 export type ProvenanceKind = "links" | "attributes" | "fragments";
-
-/* -------------------------------------------------------------------------
- * Wire shapes.
- * ------------------------------------------------------------------------- */
 
 export interface ProvenanceRawInformationWire {
   readonly id: string;
   readonly source_type: string;
   readonly received_at: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
-  /**
-   * Verbatim user turn captured by directed chat ingestion (v2.1 — TC-04).
-   * `null` / absent outside the chat path. `'[REDACTED]'` after a
-   * `compliance_delete` redacted the row. Otherwise, the original operator
-   * text. Display-only — never a write/action target.
-   */
   readonly original_input?: string | null;
 }
 
@@ -58,25 +30,12 @@ export interface ProvenanceResponseWire {
   readonly fragments: ReadonlyArray<ProvenanceFragmentWire>;
 }
 
-/* -------------------------------------------------------------------------
- * Surface shapes.
- * ------------------------------------------------------------------------- */
-
 export interface ProvenanceRawInformationView {
   readonly id: string;
   readonly sourceType: string;
-  /** Pre-formatted pt-BR label `DD/MM/YYYY HH:mm` for `received_at`. */
   readonly receivedAtLabel: string;
-  /** `metadata.title` if present, else `null`. */
   readonly title: string | null;
-  /** `metadata.document_date` (pt-BR `DD/MM/YYYY`) if present, else `null`. */
   readonly documentDateLabel: string | null;
-  /**
-   * Raw passthrough of `wire.original_input` (v2.1 — TC-04). Three meanings:
-   *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
-   *  - `'[REDACTED]'` → render muted redaction indicator.
-   *  - `null` / `undefined` → render nothing.
-   */
   readonly originalInput?: string | null;
 }
 
@@ -85,7 +44,6 @@ export interface ProvenanceChunkView {
   readonly chunkIndex: number;
   readonly offsetStart: number;
   readonly offsetEnd: number;
-  /** `"chars 0–1742"` — pre-formatted offset window (Phase C transform). */
   readonly offsetRangeLabel: string;
   readonly excerpt: string;
   readonly locator: Readonly<Record<string, unknown>>;
@@ -96,7 +54,6 @@ export interface ProvenanceFragmentView {
   readonly id: string;
   readonly text: string;
   readonly confidence: number;
-  /** `"92%"` formatted label. */
   readonly confidenceLabel: string;
   readonly status: string;
   readonly chunks: ReadonlyArray<ProvenanceChunkView>;

@@ -1,18 +1,3 @@
-/**
- * IngestDropzone — keyboard-accessible drag-and-drop area for `.txt` files
- * (TC-04). Also opens a file picker on click / Enter / Space (§8).
- *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §2 (UI-01 dropzone),
- *    §8 (Accessibility — `tabIndex={0}`, `role="button"`, Enter/Space opens
- *    file dialog, `aria-dropeffect="copy"` while a drag is active),
- *    §11 (.txt only — binary out of scope).
- *
- * Out of scope:
- *  - Binary / PDF parsing — only `.txt` files are accepted (text/* MIME also
- *    accepted as a fallback).
- *  - Streaming / chunked upload — the file is read fully via FileReader.
- */
 import { useCallback, useId, useRef, useState } from "react";
 import type {
   ChangeEvent,
@@ -30,11 +15,6 @@ const ACCEPT = ".txt,text/plain";
 const REJECT_MESSAGE =
   "Formato não suportado: envie um arquivo .txt (ou cole o texto abaixo).";
 
-/**
- * Validate that a file is a text file by extension or MIME type. We do not
- * trust the OS-reported MIME alone (Windows sometimes reports
- * `application/octet-stream` for `.txt`) — extension wins as a fallback.
- */
 function isTxtFile(file: File): boolean {
   if (file.type === "text/plain") return true;
   if (file.type.startsWith("text/")) return true;
@@ -65,8 +45,6 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
       const file = files[0];
       if (!file) return;
       if (!isTxtFile(file)) {
-        // Surface the rejection instead of failing silently — a dropped PDF
-        // would otherwise do nothing with no explanation (§6 erro→UI).
         setError(REJECT_MESSAGE);
         return;
       }
@@ -86,7 +64,6 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
   const onInputChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>): void => {
       handleFiles(e.target.files);
-      // Reset value so picking the same file twice still fires onChange.
       e.target.value = "";
     },
     [handleFiles],

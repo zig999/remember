@@ -1,15 +1,3 @@
-/**
- * IngestSummary — compact counts table for `LlmRunSummary` (dev_tc_005).
- *
- * Spec: `ingest.feature.spec.md §2 UI-07` — display
- * `accepted/consolidated/needs_review/uncertain/disputed/rejected/error`
- * (the spec intentionally hides `superseded_previous` and
- * `orphaned_fragments` from v1).
- *
- * No `StateBadge` import — this worktree branched from main and the project
- * `StateBadge` is owned by other TCs not present here. We render the labels
- * inline using semantic tokens (no hardcoded colour / spacing).
- */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
 import type { LlmRunSummary } from "../../api";

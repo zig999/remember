@@ -1,12 +1,3 @@
-/**
- * useUpdateConversation — PATCH /api/v1/conversations/:id.
- *
- * Spec references:
- *  - openapi.yaml `updateConversation` (partial body: title?, archived_at?)
- *  - chat.feature.spec.md §4 request #8
- *  - §3 transition table: on rename success invalidate `detail(id)` + `list()`;
- *    on archive success invalidate `list()` (and the caller navigates).
- */
 import {
   useMutation,
   useQueryClient,
@@ -20,13 +11,7 @@ import type { Conversation } from "../types";
 
 export interface UpdateConversationVariables {
   readonly id: string;
-  /** Pass `null` to clear, omit to leave untouched. */
   readonly title?: string | null;
-  /**
-   * RFC3339 timestamp to archive, `null` to un-archive, or omit. At least
-   * one of `title` or `archivedAt` MUST be present (server enforces — 422
-   * VALIDATION_REQUIRED_FIELD otherwise).
-   */
   readonly archivedAt?: string | null;
 }
 

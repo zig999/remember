@@ -1,32 +1,3 @@
-/**
- * ProvenanceTrail — evidence panel rendering fragment → chunk → raw_info
- * for the currently selected curation item (TC-05).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §1 (consumes getProvenanceByLink /
- *    getProvenanceByAttribute), §2 UI-02 (skeleton while loading),
- *    UI-03 (evidenceViewed gate), §6 (BUSINESS_RAW_INFORMATION_DELETED
- *    inline warning, role=alert, blocks decision-bar), §8 (a11y).
- *  - Hooks come from TC-03 (`features/curation/api/provenance.hooks.ts`).
- *
- * Evidence-viewed tracking:
- *   The trail fires `onEvidenceViewed()` exactly once per mount, the FIRST
- *   time either of these happens:
- *     1. The root sentinel enters the viewport (IntersectionObserver,
- *        threshold 0.25 — enough surface visible to count as "viewing").
- *     2. The root receives keyboard focus (Tab navigation lands on it).
- *   Both events are wired so screen-reader users (who may not scroll) can
- *   still arm the DecisionBar.
- *
- * Why an IntersectionObserver and not a scroll listener: the trail can sit
- * inside a scroll container (drawer, drawer-inside-page) or be visible from
- * the get-go (when the panel is taller than the viewport already). A scroll
- * listener would miss the "already visible" case; IO fires on both mount
- * AND scroll, with a configurable threshold.
- *
- * Reused in TC-07's CurationDrawer — keeps the component decoupled from
- * curationStore (callback prop instead of direct store write).
- */
 import { useEffect, useRef, type FC } from "react";
 import { AlertTriangle, FileText, Quote } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -57,8 +28,6 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("pt-BR");
 }
 
-/** Format a chunk excerpt for the trail. Keeps it short — the user can
- *  click "Abrir no documento" to see the full chunk. */
 function truncate(text: string, max = 280): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1).trimEnd()}…`;
@@ -70,8 +39,6 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
   onEvidenceViewed,
   className,
 }) => {
-  // Both hooks are called unconditionally (React rules of hooks) — TanStack
-  // Query is disabled internally when its id is empty.
   const linkQ = useProvenanceByLink(itemKind === "link" ? itemId : undefined);
   const attrQ = useProvenanceByAttribute(
     itemKind === "attribute" ? itemId : undefined,
@@ -79,20 +46,15 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
   const active = itemKind === "link" ? linkQ : attrQ;
   const { data, isPending, isError, error } = active;
 
-  // Detect the compliance-tombstone case explicitly — keeps the
-  // decision-bar gate closed (caller never sees onEvidenceViewed).
   const rawDeleted =
     isError && error instanceof EnvelopeError &&
     error.code === "BUSINESS_RAW_INFORMATION_DELETED";
 
-  // ---- evidence-viewed tracking ----
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const firedRef = useRef(false);
   const dataReady = !isPending && !isError && data !== undefined;
 
   useEffect(() => {
-    // Only observe when there IS evidence to view (compliance tombstone
-    // case must keep the gate closed — see spec §6 row).
     if (!dataReady || firedRef.current) return;
     const el = sentinelRef.current;
     if (!el) return;
@@ -103,17 +65,12 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
       onEvidenceViewed();
     }
 
-    // Focus path — keyboard users who land on the region via Tab arm the
-    // gate even without scrolling. Use capture so a focused descendant
-    // also counts (e.g. an internal "Abrir no documento" link).
     function onFocus(): void {
       fire();
     }
     el.addEventListener("focusin", onFocus);
 
     let observer: IntersectionObserver | null = null;
-    // IO availability: jsdom does not implement it. Treat absence as
-    // "rely on focus only" rather than crashing in tests.
     if (typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver(
         (entries) => {
@@ -134,8 +91,6 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
       if (observer) observer.disconnect();
     };
   }, [dataReady, onEvidenceViewed]);
-
-  // -------- render branches --------
 
   if (isPending) {
     return (
@@ -186,7 +141,6 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
     );
   }
 
-  // dataReady — render the trail
   const fragments = data?.fragments ?? [];
   if (fragments.length === 0) {
     return (
@@ -201,8 +155,6 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
           className,
         )}
       >
-        {/* Alert lives inside so the ambient surface keeps a non-alert role
-            (GlassSurface §14: never sets role=alert/status). */}
         <p role="alert" className="text-xs">
           Nenhuma proveniência disponível.
         </p>

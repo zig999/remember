@@ -1,18 +1,3 @@
-/**
- * NodeRelationshipsSection — "Relações" section of `NodeDetailPanel`
- * (dev_tc_001, Phase B).
- *
- * Owns the `useNodeRelationships(nodeId)` call and renders the four states
- * declared in the spec:
- *  - loading            → spinner + live copy
- *  - empty (`links=[]`) → "Nenhuma relação encontrada."
- *  - error              → "Não foi possível carregar as relações." + retry
- *  - success            → `<ul>` of `NodeRelationshipRow`s
- *
- * Spec references:
- *  - docs/specs/front/components/NodeDetailPanel.component.spec.md §3
- *    (relationship states), §7 Scenario 2, §8 (a11y), §10 (errors).
- */
 import { Loader2, AlertTriangle } from "lucide-react";
 import type { FC } from "react";
 

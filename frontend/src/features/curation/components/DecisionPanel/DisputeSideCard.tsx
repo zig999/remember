@@ -1,9 +1,3 @@
-/**
- * DisputeSideCard — single side of a disputed item (TC-05).
- *
- * Spec: curadoria.feature.spec.md §10 (feature-local), §11 (full-diff mode
- * lists all sides). Selection sets the `winner_id` for `prefer_one`.
- */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
 import { StateBadge } from "@/components/ds/StateBadge";
@@ -26,9 +20,6 @@ const SOURCE_LABEL: Readonly<
 });
 
 function fmt(d: Date | null): string {
-  // Format in UTC: valid_from/valid_to are DATE-ONLY values parsed to UTC
-  // midnight. Formatting in local time (BR = UTC-3) would shift them back a
-  // day (2026-06-17 → 16/06). UTC keeps the stored calendar date.
   return d === null ? "—" : d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
@@ -38,9 +29,6 @@ export const DisputeSideCard: FC<DisputeSideCardProps> = ({
   onSelect,
   className,
 }) => {
-  // LINK dispute sides carry a target node (no `value`); resolve its canonical
-  // name so the side reads "Apollo (Project)" instead of "—" (R3). ATTRIBUTE
-  // sides carry `value` and pass null here, so the query stays disabled.
   const isLink = side.value === null && side.targetNodeId !== null;
   const nodeQ = useCurationNodeDetail(isLink ? side.targetNodeId : null);
   const targetName = nodeQ.data?.node.canonicalName;
@@ -60,11 +48,7 @@ export const DisputeSideCard: FC<DisputeSideCardProps> = ({
       aria-label={label}
       onClick={() => onSelect(side.itemId)}
       className={cn(
-        // More opaque than the ambient panel behind it so the card reads
-        // as a discrete selectable surface (Group E option a).
         "relative isolate flex w-full flex-col gap-sm rounded-md border p-md text-left bg-surface-glass-panel transition",
-        // Dark scrim under the content so light metadata text stays AA-legible
-        // regardless of the bright backdrop bleeding through the frost.
         "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-scrim-glass",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         selected

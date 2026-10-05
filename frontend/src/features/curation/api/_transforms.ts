@@ -1,29 +1,4 @@
-/**
- * Curation api — pure wire→domain transforms.
- *
- * Spec references:
- *  - docs/specs/front/features/curadoria.feature.spec.md §4 (Response
- *    transforms table — `created_at: string` → `createdAt: Date`, valid_from
- *    / valid_to ISO date → `Date|null`, envelope unwrap for KG/QR).
- *  - Curation REST is bare-body on 2xx (§6) — no unwrap needed on curation
- *    responses.
- *
- * Design notes:
- *  - All functions are pure (no React, no fetch). They are exercised
- *    directly by unit tests in `__tests__/transforms.spec.ts`.
- *  - Dates are parsed with `new Date(iso)`. The BFF only ever emits valid
- *    ISO strings; the `parseIsoDate*` helpers ALSO accept and forward
- *    pre-parsed `Date` values (for tests that fixture domain shapes
- *    directly), but this isn't part of the wire contract.
- *  - "Date-only" fields (`valid_from` / `valid_to`) are parsed as UTC
- *    midnight: the BFF stores DATE without a time component, so picking
- *    local-midnight would shift the displayed day for users west of UTC.
- *    The SPA renders these via `Intl.DateTimeFormat` with `timeZone: 'UTC'`
- *    (NodeDetailPanel adapter sets the precedent — see graph feature).
- */
-
 import type {
-  // queue + metrics
   ReviewQueueListWire,
   ReviewQueueList,
   ReviewQueueItemWire,
@@ -38,7 +13,6 @@ import type {
   DisputedItemSide,
   CurationMetricsWire,
   CurationMetrics,
-  // provenance
   ProvenanceResponseWire,
   ProvenanceResponse,
   ProvenanceFragmentWire,
@@ -53,7 +27,6 @@ import type {
   AcceptedFragmentItem,
   AcceptedFragmentSourceRefWire,
   AcceptedFragmentSourceRef,
-  // KG
   NodeDetailWire,
   NodeDetail,
   NodeSummaryWire,
@@ -70,16 +43,6 @@ import type {
   AttributeHistoryResponse,
 } from "../types";
 
-/* ------------------------------------------------------------------ *
- * Envelope unwrap (KG + QR only — curation REST is bare-body)         *
- * ------------------------------------------------------------------ */
-
-/**
- * The standard BFF envelope shape. `lib/http.ts` already unwraps it on the
- * way out (`http<T>()` returns `result` directly), so this helper is here
- * as a fallback for tests / explicit unwrapping when consumers receive a
- * raw wire body (e.g., MSW handlers that hand back the full envelope).
- */
 export interface OkEnvelope<T> {
   readonly ok: true;
   readonly result: T;
@@ -89,13 +52,7 @@ export function unwrapOk<T>(env: OkEnvelope<T>): T {
   return env.result;
 }
 
-/* ------------------------------------------------------------------ *
- * Helpers                                                             *
- * ------------------------------------------------------------------ */
-
 function parseIso(value: string): Date {
-  // `new Date(iso)` returns `Invalid Date` on malformed input — guard with
-  // a NaN check so the call site doesn't silently propagate NaN getTime().
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
     throw new Error(`Invalid ISO date string: ${value}`);
@@ -107,10 +64,6 @@ function parseIsoOrNull(value: string | null | undefined): Date | null {
   if (value === null || value === undefined) return null;
   return parseIso(value);
 }
-
-/* ------------------------------------------------------------------ *
- * listReviewQueue                                                     *
- * ------------------------------------------------------------------ */
 
 export function toEntityMatchCandidate(
   wire: EntityMatchCandidateWire,
@@ -184,10 +137,6 @@ export function toReviewQueueList(wire: ReviewQueueListWire): ReviewQueueList {
   };
 }
 
-/* ------------------------------------------------------------------ *
- * getCurationMetrics                                                  *
- * ------------------------------------------------------------------ */
-
 export function toCurationMetrics(wire: CurationMetricsWire): CurationMetrics {
   return {
     acceptRate: wire.accept_rate,
@@ -200,10 +149,6 @@ export function toCurationMetrics(wire: CurationMetricsWire): CurationMetrics {
     computedAt: parseIso(wire.computed_at),
   };
 }
-
-/* ------------------------------------------------------------------ *
- * Provenance (getProvenanceBy*)                                       *
- * ------------------------------------------------------------------ */
 
 export function toProvenanceRawInformation(
   wire: ProvenanceRawInformationWire,
@@ -248,8 +193,6 @@ export function toProvenanceResponse(
   };
 }
 
-/* ---- listAcceptedFragments ---- */
-
 export function toAcceptedFragmentSourceRef(
   wire: AcceptedFragmentSourceRefWire,
 ): AcceptedFragmentSourceRef {
@@ -285,10 +228,6 @@ export function toAcceptedFragmentList(
     items: wire.items.map(toAcceptedFragmentItem),
   };
 }
-
-/* ------------------------------------------------------------------ *
- * Knowledge-graph node detail + history                               *
- * ------------------------------------------------------------------ */
 
 export function toNodeSummary(wire: NodeSummaryWire): NodeSummary {
   return {

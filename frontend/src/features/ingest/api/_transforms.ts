@@ -1,31 +1,3 @@
-/**
- * Ingest api — wire types and pure wire→domain transforms.
- *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §4 (Response transforms
- *    table — `ingestRawInformation` extracts `{ outcome, llm_run_id,
- *    chunk_count, affected_nodes? }`; `getLlmRunById` extracts `{ status,
- *    summary, finished_at }`; both used by the UI).
- *  - docs/specs/domains/ingestion/openapi.yaml — `IngestRawInformationResponse`,
- *    `LlmRun`, `LlmRunSummary`, `LlmRunStatus`, `SourceType`,
- *    `RetryLlmRunRequest`, `RunLlmExtractionRequest`.
- *
- * Design:
- *  - All functions are pure (no React, no fetch). Tested directly in
- *    `__tests__/transforms.spec.ts`.
- *  - Dates are parsed with `new Date(iso)` and validated via `getTime()`
- *    NaN check to fail loudly on malformed wire data.
- *  - The spec's `affected_nodes?` field is NOT in the current
- *    `IngestRawInformationResponse` openapi schema; treated as optional
- *    forward-compat (`undefined` if absent). TC-05 (graph assembly) will
- *    surface this divergence to the spec author if the schema is not
- *    extended by then. Recorded under `spec_divergences` in delivery.md.
- */
-
-/* ------------------------------------------------------------------ *
- * Wire types — verbatim from openapi.yaml (snake_case)                *
- * ------------------------------------------------------------------ */
-
 export type SourceTypeWire =
   | "pdf"
   | "email"
@@ -35,8 +7,6 @@ export type SourceTypeWire =
   | "transcricao"
   | "outro";
 
-/** Alias used by `IngestPanel` / `IngestWorkspace` (TC-05). The wire enum and
- *  the surface enum are identical strings — keep a single source of truth. */
 export type IngestSourceType = SourceTypeWire;
 
 export type LlmRunStatusWire = "running" | "completed" | "failed";
@@ -57,17 +27,10 @@ export interface IngestRawInformationRequestWire {
   readonly prompt_version: string;
 }
 
-/** Surface alias — TC-02 hooks pass snake_case directly on the wire, so the
- *  surface request is structurally identical. */
 export type IngestRawInformationRequest = IngestRawInformationRequestWire;
 
-/** Surface alias — the outcome discriminator on the ingest response. */
 export type IngestOutcome = "created" | "noop_existing";
 
-/** Minimal node descriptor for the optional `affected_nodes` field
- *  (spec §4 "Composed models" — used by TC-05 graph assembly). Shape is
- *  forward-declared here; if the BFF starts emitting it, the existing
- *  `node_type` + `canonical_name` fields are the contract. */
 export interface AffectedNodeWire {
   readonly id: string;
   readonly node_type: string;
@@ -82,7 +45,6 @@ export interface IngestRawInformationResponseWire {
   readonly chunks: ReadonlyArray<ChunkRefWire>;
   readonly llm_run_id: string;
   readonly idempotency_key: string;
-  /** Reserved forward-compat; not yet in openapi.yaml — see header note. */
   readonly affected_nodes?: ReadonlyArray<AffectedNodeWire>;
 }
 
@@ -109,8 +71,6 @@ export interface LlmRunWire {
   readonly input_raw_information_id: string;
   readonly idempotency_key: string;
   readonly summary: LlmRunSummaryWire;
-  /** Optional — populated by the BFF once §4 step 4 (graph assembly) is
-   *  wired through. Treated as forward-compat by `toLlmRun`. */
   readonly affected_nodes?: ReadonlyArray<AffectedNodeWire>;
 }
 
@@ -118,13 +78,7 @@ export interface RetryLlmRunRequestWire {
   readonly reason?: string;
 }
 
-/** Empty in v1.0.0 — declared as a type alias so call sites can read the
- *  intent without inventing a fresh `{}` literal. */
 export type RunLlmExtractionRequestWire = Record<string, never>;
-
-/* ------------------------------------------------------------------ *
- * Domain types — camelCase, Date objects                              *
- * ------------------------------------------------------------------ */
 
 export interface AffectedNode {
   readonly id: string;
@@ -140,7 +94,6 @@ export interface IngestRawInformationResult {
   readonly chunks: ReadonlyArray<ChunkRefWire>;
   readonly llmRunId: string;
   readonly idempotencyKey: string;
-  /** `undefined` while the BFF does not emit it (spec forward-compat). */
   readonly affectedNodes?: ReadonlyArray<AffectedNode>;
 }
 
@@ -167,13 +120,8 @@ export interface LlmRun {
   readonly inputRawInformationId: string;
   readonly idempotencyKey: string;
   readonly summary: LlmRunSummary;
-  /** Optional — surfaced via `toLlmRun` when the BFF includes it. */
   readonly affectedNodes?: ReadonlyArray<AffectedNode>;
 }
-
-/* ------------------------------------------------------------------ *
- * Helpers                                                             *
- * ------------------------------------------------------------------ */
 
 function parseIso(value: string): Date {
   const d = new Date(value);
@@ -187,10 +135,6 @@ function parseIsoOrNull(value: string | null | undefined): Date | null {
   if (value === null || value === undefined) return null;
   return parseIso(value);
 }
-
-/* ------------------------------------------------------------------ *
- * Transforms                                                          *
- * ------------------------------------------------------------------ */
 
 export function toAffectedNode(wire: AffectedNodeWire): AffectedNode {
   return {
@@ -212,9 +156,6 @@ export function toIngestRawInformationResult(
     llmRunId: wire.llm_run_id,
     idempotencyKey: wire.idempotency_key,
   };
-  // `exactOptionalPropertyTypes` — only attach the key when the wire
-  // carried it. Empty array is a valid signal (no nodes affected); only
-  // truly-absent is forwarded as `undefined`.
   if (wire.affected_nodes !== undefined) {
     return { ...base, affectedNodes: wire.affected_nodes.map(toAffectedNode) };
   }

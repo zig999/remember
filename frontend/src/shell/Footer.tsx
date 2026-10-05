@@ -1,19 +1,3 @@
-/**
- * Footer — fixed bottom status bar (z-frame).
- *
- * Spec: frontend-analise-funcional.md §2 (status bar — health · as_of · curation
- * pending · active run), front.md §2/§2.2.
- *
- * Phase 2a: presentational. The `as_of` segment is fully wired to the client
- * store (+ a Popover date picker). The other three segments take their state via
- * props with neutral defaults — the live BFF hooks (useHealth / useCurationCount
- * / useActiveRun) are wired in Phase 2b. Hidden when there is nothing to show
- * (curation == 0, no active run), per the spec ("some quando zero").
- *
- * NOTE: writing `as_of` here calls the store directly (in-memory). The canonical
- * write is `navigate({ search: { as_of } })` (front.md §3.2, URL is source of
- * truth) — to be swapped in when the routing search-schema lands.
- */
 import { Link } from "@tanstack/react-router";
 import { Clock, Scale, Upload } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
@@ -27,11 +11,8 @@ export type HealthStatus = "ok" | "down" | "checking";
 
 export interface FooterProps {
   className?: string;
-  /** System health (BFF /health). Defaults to "checking" until wired (2b). */
   health?: HealthStatus;
-  /** Curation queue total (entity_match + disputed). Hidden when 0. */
   curationPending?: number;
-  /** Active ingestion run, if any. Hidden when null. */
   activeRun?: { label: string } | null;
 }
 
@@ -66,13 +47,11 @@ export function Footer({
         className,
       )}
     >
-      {/* System health */}
       <span className="inline-flex items-center gap-xs" data-testid="footer-health">
         <span className={cn("size-2 rounded-pill", h.dot)} aria-hidden="true" />
         {h.label}
       </span>
 
-      {/* Temporal cursor (as_of) */}
       <span className="border-l border-border pl-md">
         <Popover>
           <PopoverTrigger asChild>
@@ -109,7 +88,6 @@ export function Footer({
         </Popover>
       </span>
 
-      {/* Curation pending — hidden when zero */}
       {curationPending > 0 && (
         <Link
           to="/curation"
@@ -119,7 +97,6 @@ export function Footer({
         </Link>
       )}
 
-      {/* Active run — hidden when idle */}
       {activeRun && (
         <Link
           to="/history"

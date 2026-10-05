@@ -1,20 +1,3 @@
-/**
- * useIngestOrchestration — the async state machine behind `/ingest`.
- *
- * Extracted from `IngestWorkspace.tsx` during dev_tc_005_r1 so the screen
- * component stays ≤ 300 lines (u-fe-standards "Component size" rule). The
- * workspace still owns the form values (`content` / `sourceType`) and the
- * graph-store subscriptions; this hook owns:
- *
- *   - the phase machine (idle → ready → sending → … → complete | error)
- *   - the mutation orchestration (ingest → run → assembly)
- *   - the polling fallback when the LLM connection drops
- *   - the retry path
- *   - the noop "Ver grafo existente" CTA wiring
- *
- * The hook is intentionally not generic — it mirrors `ingest.feature.spec.md
- * §3` one-to-one. Lifting to a `useReducer` is deferred until the spec grows.
- */
 import { useCallback, useEffect, useState } from "react";
 import { useGraphStore } from "@/features/graph";
 import {
@@ -76,17 +59,14 @@ export function useIngestOrchestration({
   const retryMutation = useRetryLlmRun();
   const runStatus = useIngestRunStatus({ llmRunId, enabled: isPolling });
 
-  // Assembly drives the graph store directly (calls `replaceNodes` +
-  // `setStatus('revealing')` when all traverses settle).
   const assembly = useIngestGraphAssembly({
     affectedNodes: assemblyEnabled ? affectedNodes : null,
     enabled: assemblyEnabled,
   });
-  void assembly; // exposed status not consumed by the panel today
+  void assembly;
 
   const graphStatus = useGraphStore((s) => s.status);
 
-  // ---- form → phase syncing ------------------------------------------------
   useEffect(() => {
     setPhase((current) => {
       if (current !== "idle" && current !== "ready") return current;
@@ -95,14 +75,12 @@ export function useIngestOrchestration({
     });
   }, [content, sourceType]);
 
-  // ---- effect: revealing → complete ---------------------------------------
   useEffect(() => {
     if (phase === "revealing" && graphStatus === "ready") {
       setPhase("complete");
     }
   }, [phase, graphStatus]);
 
-  // ---- effect: polling settled --------------------------------------------
   useEffect(() => {
     if (!isPolling) return;
     const run: LlmRun | undefined = runStatus.data;
@@ -125,7 +103,6 @@ export function useIngestOrchestration({
     }
   }, [isPolling, runStatus.data]);
 
-  // ---- submit -------------------------------------------------------------
   const handleSubmit = useCallback(() => {
     if (content.length < 1) {
       setValidationMessage(
@@ -160,7 +137,6 @@ export function useIngestOrchestration({
             return;
           }
 
-          // outcome === "created" — fire extraction immediately.
           setPhase("extracting");
           runMutation.mutate(
             { llm_run_id: data.llmRunId },
@@ -178,7 +154,6 @@ export function useIngestOrchestration({
               },
               onError: (err) => {
                 if (isConnectionDropError(err)) {
-                  // Silent fallback to polling — copy changes; no error band.
                   setIsPolling(true);
                   setPhase("polling");
                   return;
@@ -201,7 +176,6 @@ export function useIngestOrchestration({
     );
   }, [content, sourceType, ingestMutation, runMutation]);
 
-  // ---- reset --------------------------------------------------------------
   const handleReset = useCallback(() => {
     resetForm();
     setLlmRunId(null);
@@ -216,16 +190,13 @@ export function useIngestOrchestration({
     useGraphStore.getState().clear();
   }, [resetForm]);
 
-  // ---- noop CTA -----------------------------------------------------------
   const handleAssembleExisting = useCallback(() => {
     setAssemblyEnabled(true);
     setPhase("revealing");
   }, []);
 
-  // ---- retry --------------------------------------------------------------
   const handleRetry = useCallback(() => {
     if (llmRunId === null) {
-      // Re-submit from the form — same content+source still in state.
       handleSubmit();
       return;
     }

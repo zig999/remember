@@ -1,21 +1,11 @@
-/**
- * NodeDetailPanel — shell sub-pieces (header, loading view, error view).
- *
- * Split out of `NodeDetailPanel.tsx` to keep the main shell under the 300-line
- * cap mandated by spec §11. None of these components do data fetching;
- * branching on TanStack Query state remains in the root panel.
- */
 import { Loader2, X, AlertTriangle, Network } from "lucide-react";
 import type { FC } from "react";
 
 import { cn } from "@/lib/cn";
 import { NODE_DETAIL_COPY } from "./NodeDetailPanel.copy";
 
-/* ---------- error code → state mapping --------------------------------- */
 export type ErrorVariant = "not-found" | "deleted" | "generic";
 
-/** Classify a top-level `useNodeDetail` error code into the state row to
- *  render. 404 / 410 are terminal — only `generic` gets a retry button. */
 export function classifyError(err: unknown): ErrorVariant {
   if (err === null || typeof err !== "object") return "generic";
   const code = (err as { code?: unknown }).code;
@@ -24,7 +14,6 @@ export function classifyError(err: unknown): ErrorVariant {
   return "generic";
 }
 
-/* ---------- header (shared across states) ------------------------------ */
 export interface PanelHeaderProps {
   title: string;
   closeRef: React.RefObject<HTMLButtonElement | null>;
@@ -73,7 +62,6 @@ export const PanelHeader: FC<PanelHeaderProps> = ({
   );
 };
 
-/* ---------- loading state --------------------------------------------- */
 export interface LoadingViewProps {
   nodeLabel: string | undefined;
   closeRef: React.RefObject<HTMLButtonElement | null>;
@@ -105,7 +93,6 @@ export const LoadingView: FC<LoadingViewProps> = ({
   );
 };
 
-/* ---------- error states ---------------------------------------------- */
 export interface ErrorViewProps {
   variant: ErrorVariant;
   closeRef: React.RefObject<HTMLButtonElement | null>;

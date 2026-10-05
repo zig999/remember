@@ -1,33 +1,3 @@
-/**
- * DecisionPanel — hero panel for /curadoria (TC-05).
- *
- * Spec references:
- *  - curadoria.feature.spec.md §2 UI-02/UI-03/UI-10/UI-11, §3 transitions,
- *    §6 error map, §8 a11y, §10 (qualifies for component.spec.md), §11
- *    (display-mode heuristic in lib/display-mode.ts).
- *
- * Composition:
- *   - Header (StateBadge + scope/name + relative timestamp + EvidenceChip)
- *   - StaleBanner (UI-10, when stale=true)
- *   - ComparePane (UI-03; mode driven by resolveDisplayMode)
- *   - provenanceSlot (caller-provided — usually <ProvenanceTrail /> below)
- *   - ReasonField (always rendered for destructive actions)
- *   - DecisionBar (UI-02 gated by evidenceViewed, UI-03 armed)
- *   - CorrectionSection (UI-11, expands inline; not a modal)
- *
- * Pure helpers live in `DecisionPanel.helpers.ts`; the UI-11 errata
- * affordance lives in `CorrectionSection.tsx` — both extracted to keep
- * this file under the 300-line limit.
- *
- * Reused in TC-07's CurationDrawer — no store/router dependencies.
- *
- * Server-error projection (§6):
- *   - BUSINESS_REASON_REQUIRED      -> ReasonField highlights + focus.
- *   - BUSINESS_SELF_MERGE_FORBIDDEN -> inline message + ComparePane invalid.
- *   - BUSINESS_TEMPORAL_INCOHERENT  -> forwarded to CorrectionForm.
- *   - BUSINESS_CORRECTION_NO_CHANGES -> forwarded to CorrectionForm.
- *   - Other codes              -> generic inline error banner.
- */
 import { useEffect, useId, useMemo, useRef, useState, type FC } from "react";
 import { cn } from "@/lib/cn";
 import { Alert } from "@/shared/components/ui/alert";
@@ -63,13 +33,8 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   className,
 }) => {
   const badge = useMemo(() => headerBadge(item), [item]);
-  const now = useMemo(() => new Date(), [item]); // refresh on item change
+  const now = useMemo(() => new Date(), [item]);
 
-  // Header subject: for disputes, resolve the SUBJECT node name (the link's
-  // source, or the attribute's node) so the title reads e.g. "Salvar
-  // imagens… · part_of" instead of just the bare relation. entity_match
-  // items already carry their canonical name. While the name loads (or for
-  // entity_match) we fall back to describeScope.
   const subjectId = useMemo(() => {
     if (item.kind !== "disputed") return null;
     return item.itemKind === "link"
@@ -86,7 +51,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
       ? item.canonicalName
       : (subjectQ.data?.node.canonicalName ?? describeScope(item));
 
-  // ---- selection state for ComparePane ----
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(
     null,
   );
@@ -94,15 +58,12 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   const [reason, setReason] = useState("");
   const reasonRef = useRef<ReasonFieldHandle>(null);
 
-  // Reset selections / reason whenever the item changes. (The correction
-  // sub-form resets independently via its `key` below.)
   useEffect(() => {
     setSelectedCandidate(null);
     setSelectedSide(null);
     setReason("");
   }, [item.kind === "entity_match" ? item.nodeId : item.sides.map((s) => s.itemId).join(":")]);
 
-  // ---- server-error projection ----
   const invalidCandidateId =
     serverError?.code === "BUSINESS_SELF_MERGE_FORBIDDEN" ||
     serverError?.code === "BUSINESS_INVALID_TARGET_NODE"
@@ -118,7 +79,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
 
   const blockedHintId = useId();
 
-  // ---- build the action buttons per kind ----
   function dispatch(name: "merge_into" | "keep_separate" | "prefer_one" | "adjust_periods" | "keep_disputed" | "confirm" | "reject"): void {
     if (item.kind === "entity_match") {
       if (name === "merge_into") {
@@ -132,7 +92,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         return;
       }
       if (name === "keep_separate") {
-        // Non-destructive — reason optional.
         actions?.onResolveEntityMatch?.({
           decision: "keep_separate",
           reason: reason || null,
@@ -140,7 +99,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         return;
       }
     } else {
-      // disputed
       if (name === "prefer_one") {
         if (!selectedSide) return;
         if (!reasonRef.current?.validateOnSubmit()) return;
@@ -198,11 +156,9 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           },
         ];
 
-  // Require reason if any destructive button is going to fire.
   const reasonRequired = true;
 
-  // ---- correction form integration ----
-  const canCorrect = item.kind === "disputed"; // entity_match has no item id.
+  const canCorrect = item.kind === "disputed";
   const correctionDefaults: CorrectionFormDefaults | null =
     item.kind === "disputed" ? buildCorrectionDefaults(item) : null;
   const correctionItemId =
@@ -212,14 +168,12 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
 
   const body = (
     <>
-      {/* hidden tooltip text for aria-describedby on blocked buttons (§8) */}
       <span id={blockedHintId} className="sr-only">
         Veja a evidência antes de decidir.
       </span>
 
       {stale && onRefetch && <StaleBanner onReload={onRefetch} className="m-md" />}
 
-      {/* Header */}
       <header className="flex flex-col gap-sm border-b border-border p-md">
         <div className="flex items-center justify-between gap-md">
           <div className="flex items-center gap-md">
@@ -240,7 +194,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         <p className="text-xs text-body">{relative(now, item.createdAt)}</p>
       </header>
 
-      {/* Generic server-error banner for codes we don't field-project */}
       {serverError &&
         ![
           "BUSINESS_REASON_REQUIRED",
@@ -254,16 +207,12 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           </Alert>
         )}
 
-      {/* SELF_MERGE_FORBIDDEN inline (spec §6) — within the panel, not in
-          the toast — so the user picks another candidate without losing
-          context. */}
       {serverError?.code === "BUSINESS_SELF_MERGE_FORBIDDEN" && (
         <Alert variant="destructive" role="alert" className="mx-md">
           Não é possível fundir um nó com ele mesmo.
         </Alert>
       )}
 
-      {/* ComparePane */}
       <ComparePane
         item={item}
         selectedCandidate={selectedCandidate}
@@ -273,10 +222,8 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         invalidCandidateId={invalidCandidateId}
       />
 
-      {/* Evidence (provided by parent) */}
       {provenanceSlot}
 
-      {/* ReasonField */}
       <div className="px-md">
         <ReasonField
           value={reason}
@@ -286,7 +233,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         />
       </div>
 
-      {/* DecisionBar */}
       <DecisionBar
         evidenceViewed={evidenceViewed}
         submitting={submitting}
@@ -294,7 +240,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         blockedHintId={blockedHintId}
       />
 
-      {/* Correção (UI-11) — keyed by item so it resets on item change. */}
       {canCorrect && (
         <CorrectionSection
           key={correctionItemId}
@@ -314,10 +259,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
     </>
   );
 
-  // Outer surface — GlassSurface level="ambient" by default (its own
-  // background/border/blur). When nested inside another glass surface (e.g.
-  // CurationDrawer's modal-glass), the caller passes `surface="plain"` to
-  // skip the surface chrome and avoid double-glass stacking.
   if (surface === "plain") {
     return (
       <section

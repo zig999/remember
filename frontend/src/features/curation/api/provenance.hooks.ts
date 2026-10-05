@@ -1,18 +1,3 @@
-/**
- * Provenance + accepted-fragment hooks (query-retrieval domain).
- *
- * Spec references:
- *  - docs/specs/front/features/curadoria.feature.spec.md §1 (consumed:
- *    `getProvenanceByLink`, `getProvenanceByAttribute`,
- *    `getProvenanceByFragment`), §4 (staleTime 5min, no
- *    refetchOnWindowFocus).
- *  - docs/specs/domains/query-retrieval/openapi.yaml — REST responses are
- *    enveloped (`{ ok: true, result: ProvenanceResponse }`). `lib/http.ts`
- *    unwraps the envelope, so the hooks here can directly request the
- *    inner wire shape.
- *  - listAcceptedFragments: same domain, additive v1.3.0 (R2).
- */
-
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { http } from "@/lib/http";
@@ -29,20 +14,8 @@ import type {
   AcceptedFragmentListWire,
 } from "../types";
 
-/* ------------------------------------------------------------------ *
- * Constants — spec §4 TTL                                             *
- * ------------------------------------------------------------------ */
+const STABLE_STALE_MS = 5 * 60_000;
 
-const STABLE_STALE_MS = 5 * 60_000; // 5 min
-
-/* ------------------------------------------------------------------ *
- * getProvenanceByLink                                                 *
- * ------------------------------------------------------------------ */
-
-/**
- * Returns the provenance trail (fragment → chunk → raw_information) for
- * a `KnowledgeLink`. Disabled when `linkId` is undefined/null/empty.
- */
 export function useProvenanceByLink(
   linkId: string | null | undefined,
 ): UseQueryResult<ProvenanceResponse> {
@@ -61,10 +34,6 @@ export function useProvenanceByLink(
     refetchOnWindowFocus: false,
   });
 }
-
-/* ------------------------------------------------------------------ *
- * getProvenanceByAttribute                                            *
- * ------------------------------------------------------------------ */
 
 export function useProvenanceByAttribute(
   attributeId: string | null | undefined,
@@ -85,10 +54,6 @@ export function useProvenanceByAttribute(
   });
 }
 
-/* ------------------------------------------------------------------ *
- * getProvenanceByFragment                                             *
- * ------------------------------------------------------------------ */
-
 export function useProvenanceByFragment(
   fragmentId: string | null | undefined,
 ): UseQueryResult<ProvenanceResponse> {
@@ -108,12 +73,7 @@ export function useProvenanceByFragment(
   });
 }
 
-/* ------------------------------------------------------------------ *
- * listAcceptedFragments (R2 — CorrectionForm DateJustification picker) *
- * ------------------------------------------------------------------ */
-
 export interface ListAcceptedFragmentsParams {
-  /** At least one of `llmRunId` / `rawInformationId` MUST be set. */
   readonly llmRunId?: string;
   readonly rawInformationId?: string;
   readonly limit?: number;
@@ -131,11 +91,6 @@ function buildFragmentsQs(params: ListAcceptedFragmentsParams): string {
   return qs.length > 0 ? `?${qs}` : "";
 }
 
-/**
- * Returns accepted fragments filtered by source (`llm_run_id` and/or
- * `raw_information_id`). Disabled until at least one filter is supplied
- * — calling with neither would trigger a 422 `VALIDATION_INVALID_FORMAT`.
- */
 export function useListAcceptedFragments(
   params: ListAcceptedFragmentsParams,
 ): UseQueryResult<AcceptedFragmentList> {
