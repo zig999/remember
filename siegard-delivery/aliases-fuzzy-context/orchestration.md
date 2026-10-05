@@ -23,3 +23,4 @@ Delivered task/document-context/skip-preliminary-reading in 7d7da75: suite red o
 Delivered task/document-context/chunk-prompt-shows-context in 7003bde: build and suite green on the first run.
 Delivered task/document-context/run-answers-show-document-context in 3af0433: build and suite green on the first run.
 Delivered task/document-context/retry-reuses-document-context in df89840: Delivered task/document-context/retry-reuses-document-context; suite green; last of 14 tasks.
+- 2026-10-05T23:02:09Z Deliverable set empty (14/14 delivered, last df89840/9103407); invoking /review-change over all 14 tasks and the 51-path union of their records' files and tests.
