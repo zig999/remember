@@ -18,3 +18,4 @@ Run resumed on main by a new ask; migration 0008 applied to the database by the 
 Planned in f62548a: retired task/approximate-node-search/search-answers-show-match, whose behavior search-item-shows-match delivered and proved; no node was exclusive to it, so the epic did not change and no decomposition ran.
 Delivered task/document-context/record-document-context in cd223fd: lint red once on a parse error in the new spec (fixed by the test author), green on suite-2.
 Delivered task/document-context/preliminary-reading in 1363557: build and suite green on the first run.
+Delivered task/document-context/failed-reading-continues in c91d341: build and suite green on the first run.
