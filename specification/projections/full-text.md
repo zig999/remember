@@ -496,6 +496,92 @@ scope: system
 
 None.
 
+=== contracts/application-shell/bff-shell-reads
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/access
+operations:
+- read-health
+- read-pending-curation
+answers:
+- operation: read-health
+  accepted: "GET /health with no bearer, answered with a body whose database or result.database is ok when the store is reachable"
+  refusals:
+  - when: "The request fails or the body is not JSON."
+    answer: "no parsed answer and the health left as verificando…"
+- operation: read-pending-curation
+  accepted: "GET /api/v1/curation/queue?limit=1 with the access token as a bearer, answered with a total or a result.total"
+  refusals:
+  - when: "The answer has no total or no token is held."
+    answer: "0 pending and the segment hidden"
+---
+
+## Description
+
+The two status reads the footer makes.
+
+=== contracts/application-shell/shell-screen
+---
+type: api
+direction: published
+operations:
+- show-failure
+- show-shell
+- show-page-state
+answers:
+- operation: show-failure
+  accepted: "the toast, inline state or redirect the failure routes to, with the wording of its code"
+  refusals:
+  - rule: "rules/application-shell/any-other-system-failure-hides-its-message"
+    answer: "a danger toast reading \"Algo deu errado. Tente novamente.\""
+  - rule: "rules/application-shell/a-forbidden-failure-reads-access-denied"
+    answer: "a danger toast reading \"Acesso negado.\""
+  - rule: "rules/application-shell/an-invalid-format-is-a-form-error"
+    answer: "a form error with the server's message or \"Há campos inválidos no formulário.\""
+  - rule: "rules/application-shell/a-missing-conversation-returns-to-chat"
+    answer: "a warning toast reading \"Conversa não encontrada.\" and the chat address"
+  - rule: "rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state"
+    answer: "an inline state with the server's message or \"Nenhum resultado encontrado.\""
+  - rule: "rules/application-shell/a-gone-resource-reads-removed-for-compliance"
+    answer: "an inline state reading \"Esta fonte foi removida por conformidade.\""
+  - rule: "rules/application-shell/a-network-failure-reads-no-connection"
+    answer: "a warning toast reading \"Sem conexão.\""
+  - rule: "rules/application-shell/a-business-failure-shows-its-message"
+    answer: "a warning toast with the server's message or \"Operação não pôde ser concluída.\""
+  - when: "The session expired failure is raised by the request helper."
+    answer: "the failure \"Sua sessão expirou. Faça login novamente.\" with HTTP status 401"
+- operation: show-shell
+  accepted: "the banner \"Cabeçalho\" with the navigation \"Áreas\", the palette toggle \"Abrir paleta de comandos (⌘K)\" and the theme choice \"Tema\", the workspace, and the footer \"Rodapé\" with the health state, the pending curation total and the as-of date \"Como em: hoje\""
+  refusals:
+  - when: "The access token is missing or expiring."
+    answer: "the sign-in address with the reason session_expired"
+- operation: show-page-state
+  accepted: "the workspace of the address"
+  refusals:
+  - rule: "rules/application-shell/an-unknown-address-says-page-not-found"
+    answer: "\"Página não encontrada.\" with \"O endereço solicitado não existe ou foi removido.\""
+  - rule: "rules/application-shell/a-render-failure-replaces-the-screen"
+    answer: "\"Algo deu errado.\" reading \"A página não pôde ser renderizada. Recarregue para tentar novamente.\" with the action \"Recarregar\""
+  - rule: "rules/application-shell/some-addresses-show-only-a-placeholder"
+    answer: "the title of the area with \"Conteúdo em breve.\""
+  - rule: "rules/application-shell/the-palette-offers-five-destinations"
+    answer: "\"Nada encontrado.\" in the palette"
+---
+
+## Description
+
+What the owner reads around every workspace and when a request fails.
+
+=== contracts/application-shell/shell-screen.log
+---
+entries:
+- field: answers
+  unstated: Which texts of the shell and of the failure routing the owner learns from.
+  decided: The failure, empty, loading and notice wordings and the accessible names of the shell regions are held; navigation and control labels are not
+  why: Policy P1 of the frontend adoption runbook keeps text that changes what the owner learns or does.
+---
+
 === contracts/chat-workspace/bff-conversations
 ---
 type: api
@@ -897,13 +983,13 @@ operations:
 - list-accepted-fragments
 answers:
 - operation: read-node
-  accepted: "GET /api/v1/nodes/{id} with the id path-encoded, read through the { ok, result } envelope as node (id, node_type, canonical_name, status and an optional merged_into_node_id), aliases (id, alias, kind and an optional created_at) and attributes (id, node_id, attribute_key, value_type, value, valid_from, valid_to, recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence and the optional valid_from_source, flags and supersedes_attribute_id)"
+  accepted: "GET /api/v1/nodes/{id} with the id path-encoded, read through the { ok, result } envelope as node (id, node_type, canonical_name, status and an optional merged_into_node_id), aliases (id, alias, kind and an optional created_at) and attributes (id, node_id, attribute_key, value_type, value, valid_from, valid_to, recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence and the optional valid_from_source, flags read as an empty list when absent, and supersedes_attribute_id)"
 - operation: read-link-history
   accepted: "GET /api/v1/links/{id}/history read as versions each with id, source_node_id, target_node_id, link_type, link_inverse_name, valid_from, valid_to, recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence and the optional valid_from_source and supersedes_link_id"
 - operation: read-attribute-history
   accepted: "GET /api/v1/attributes/{id}/history read as versions each shaped as an attribute of the node detail"
 - operation: read-link-provenance
-  accepted: "GET /api/v1/provenance/links/{id} read as fragments each with id, text, confidence, status and chunks, each chunk with id, chunk_index, offset_start, offset_end, excerpt, an optional locator and its raw information (id, source_type, received_at and optional metadata)"
+  accepted: "GET /api/v1/provenance/links/{id} read as fragments each with id, text, confidence, status and chunks, each chunk with id, chunk_index, offset_start, offset_end, excerpt, an optional locator read as an empty object when absent and its raw information (id, source_type, received_at and optional metadata read as an empty object when absent)"
 - operation: read-attribute-provenance
   accepted: "GET /api/v1/provenance/attributes/{id} read as the link provenance is read"
 - operation: read-fragment-provenance
@@ -915,6 +1001,15 @@ answers:
 ## Description
 
 The reads of the knowledge base the curation screen makes to show evidence and history.
+
+=== contracts/curation-workspace/bff-curation-reads.log
+---
+entries:
+- field: answers
+  unstated: The node says metadata, locator and flags are optional and not what an absent one reads as.
+  decided: An absent flags reads as an empty list and an absent locator or metadata as an empty object.
+  why: The running reader normalises them that way so that every consumer sees a list or an object.
+---
 
 === contracts/curation-workspace/bff-curation.log
 ---
@@ -1058,6 +1153,138 @@ entries:
   unstated: The material does not say which boundary holds the notices, banners and toasts the owner reads on the curation screen.
   decided: The curation screen is a published api whose caller is the owner, and every notice that tells the owner what happened or was refused is an answer of it.
   why: A notice changes what the owner learns, while a control label, a heading or a placeholder keeps the control doing what it did.
+---
+
+=== contracts/graph-explorer/bff-graph-view
+---
+type: api
+direction: consumed
+upstream: contracts/chat/conversations
+operations:
+- read-graph-view
+- save-graph-view
+answers:
+- operation: read-graph-view
+  accepted: "GET /api/v1/conversations/{id}/graph with the id URL-encoded, answered with a saved view or null"
+  refusals:
+  - when: "The request fails."
+    answer: "nothing shown to the owner and the pane left as it was"
+- operation: save-graph-view
+  accepted: "PUT /api/v1/conversations/{id}/graph with a JSON body holding the version, nodes, links, positions, pinned nodes and layout algorithm"
+  refusals:
+  - when: "The request fails."
+    answer: "nothing shown to the owner and no retry"
+---
+
+## Description
+
+The saved graph view the pane reads when a conversation opens and writes when the graph changes.
+
+=== contracts/graph-explorer/bff-node-reads
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/retrieval
+operations:
+- read-node
+- traverse
+- read-link-provenance
+- read-attribute-provenance
+answers:
+- operation: read-node
+  accepted: "GET /api/v1/nodes/{id} with the id URL-encoded, read through the { ok, result } envelope as node, aliases and attributes"
+  refusals:
+  - when: "The request fails."
+    answer: "the failure the request helper raises, with its code, unchanged"
+- operation: traverse
+  accepted: "GET /api/v1/nodes/{id}/traverse?depth=1&direction=both read as starting_node_id, nodes and links, each link with its inverse name, effective status and confidence"
+  refusals:
+  - when: "The request fails."
+    answer: "the failure the request helper raises, with its code, unchanged"
+- operation: read-link-provenance
+  accepted: "GET /api/v1/provenance/links/{id} with the id URL-encoded, read as fragments with their chunks and raw information"
+  refusals:
+  - when: "The request fails."
+    answer: "the failure the request helper raises, with its code, unchanged"
+- operation: read-attribute-provenance
+  accepted: "GET /api/v1/provenance/attributes/{id} with the id URL-encoded, read as fragments with their chunks and raw information"
+  refusals:
+  - when: "The request fails."
+    answer: "the failure the request helper raises, with its code, unchanged"
+---
+
+## Description
+
+The node, relationship and origin reads the node detail panel makes against the knowledge base.
+
+=== contracts/graph-explorer/graph-screen
+---
+type: api
+direction: published
+operations:
+- show-graph
+- show-node-detail
+- show-relationships
+- show-origin
+answers:
+- operation: show-graph
+  accepted: "the region named \"Grafo de conhecimento\" holding the canvas with the nodes revealed so far, the layout picker named \"Algoritmo de layout do grafo\" and the reorganize control named \"Reorganizar o layout do grafo\""
+  refusals:
+  - rule: "rules/graph-explorer/empty-status-without-nodes-shows-only-the-empty-state"
+    answer: "\"A memória aparecerá aqui conforme você conversa.\" with no canvas"
+  - when: "The graph is being fetched."
+    answer: "the overlay \"Carregando grafo\" reading \"Buscando na memória…\" over the canvas"
+  - when: "The graph failed and the pane has an error message."
+    answer: "the overlay \"Erro do grafo\" over the canvas reading that message, with no action"
+  - when: "The graph failed and the pane has no error message."
+    answer: "the overlay \"Erro do grafo\" over the canvas reading \"Não foi possível carregar o grafo agora.\", with no action"
+- operation: show-node-detail
+  accepted: "the complementary region \"Detalhes do nó: <label>\" with the close button \"Fechar detalhes do nó\", the node's name, type and state badge, its aliases and its attributes, and the action \"Curar\" where the node needs curation"
+  refusals:
+  - when: "The node detail is loading."
+    answer: "the text \"Carregando detalhes…\" with a spinner"
+  - rule: "rules/graph-explorer/a-node-failure-is-classified-by-its-code"
+    answer: "an alert reading \"Nó não encontrado.\" for RESOURCE_NOT_FOUND, \"Este nó foi removido por conformidade.\" for BUSINESS_NODE_DELETED and \"Não foi possível carregar os detalhes. Tente novamente.\" with the action \"Tentar novamente\" for any other failure"
+  - when: "The node has no aliases."
+    answer: "\"Nenhum alias adicional.\""
+  - when: "The node has no attributes."
+    answer: "\"Nenhum atributo registrado.\""
+- operation: show-relationships
+  accepted: "the section named \"Relações\" with one row per link showing its direction arrow, link type, neighbour, confidence and status badge"
+  refusals:
+  - when: "The relationships are loading."
+    answer: "\"Carregando relações…\""
+  - when: "The node has no links."
+    answer: "\"Nenhuma relação encontrada.\""
+  - rule: "rules/graph-explorer/a-failed-relationships-read-always-offers-a-retry"
+    answer: "an alert \"Não foi possível carregar as relações.\" with the action \"Tentar novamente\""
+- operation: show-origin
+  accepted: "the fragments with their confidence, status and text, each chunk with its index, offsets, excerpt and source, and the original text of the operator in a disclosure"
+  refusals:
+  - when: "The origin is loading."
+    answer: "\"Carregando origem…\""
+  - when: "The origin read finds no fragments or the item is not found."
+    answer: "\"Origem não encontrada.\" with the action \"Tentar novamente\" when it was a failure"
+  - when: "The origin read fails with BUSINESS_RAW_INFORMATION_DELETED."
+    answer: "an alert \"Documento original removido por conformidade.\" with no retry"
+  - when: "The origin read fails with any other code."
+    answer: "an alert \"Não foi possível carregar a origem.\" with the action \"Tentar novamente\""
+  - rule: "rules/graph-explorer/a-redacted-original-input-is-never-shown"
+    answer: "\"Texto original redigido.\" in place of the original text"
+---
+
+## Description
+
+What the owner reads and can do in the graph pane and in a node's detail.
+The chat screen that hosts the pane belongs to the chat workspace.
+
+=== contracts/graph-explorer/graph-screen.log
+---
+entries:
+- field: answers
+  unstated: Which interface texts the owner learns from, and which are only control labels.
+  decided: Failure, empty, loading and outcome texts and the accessible names of regions and controls are held; headings and column labels are not
+  why: policy P1 of the frontend adoption runbook keeps text that changes what the owner learns or does and leaves control labels as surface
 ---
 
 === contracts/ingest-workspace/bff-ingestion
@@ -2228,6 +2455,270 @@ type: capability
 
 An external identity provider recognises the owner by e-mail address and password and issues the access token the application's back end verifies.
 
+=== domain/application-shell/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The application shell holds what every screen of the owner's client shares: how a request is sent and its failure told, who is signed in, where each address leads and the frame around the workspaces.
+
+## Responsibility
+
+It sends requests with the owner's token, turns failures into what the owner sees, guards the addresses and shows the status of the system around the workspaces.
+
+=== domain/application-shell/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether the application shell is where the business differs or a solved problem.
+  decided: supporting
+  why: The shell carries every workspace and the transport beneath it and adds no business difference of its own.
+---
+
+=== domain/application-shell/application-shell
+---
+type: aggregate-root
+attributes:
+- name: health
+  type: shell-health
+  required: true
+- name: curation_pending
+  type: integer
+  required: true
+- name: as_of
+  type: string
+- name: palette_open
+  type: boolean
+  required: true
+- name: address
+  type: string
+  required: true
+- name: reason
+  type: string
+operations:
+- open-address
+- toggle-palette
+- choose-as-of
+- show-failure
+---
+
+## Description
+
+The frame around the workspaces, with its header, footer and command palette.
+
+## Responsibility
+
+It guards the addresses and shows the system's status around the workspace.
+
+=== domain/application-shell/conversation-menu
+---
+type: aggregate-root
+attributes:
+- name: include_archived
+  type: boolean
+  required: true
+- name: rename_draft
+  type: string
+- name: delete_pending
+  type: boolean
+  required: true
+operations:
+- create
+- select
+- rename
+- archive
+- unarchive
+- delete
+---
+
+## Description
+
+The menu from which the owner manages conversations.
+
+## Responsibility
+
+It lets the owner pick, create, rename, archive and delete conversations.
+
+=== domain/application-shell/failure-action
+---
+type: enumeration
+values:
+- redirect
+- toast-and-navigate
+- boundary
+- set-error
+- inline-empty
+- inline-gone
+- toast
+- silent
+---
+
+## Description
+
+What the client does with a failure so that the owner sees it.
+
+## Responsibility
+
+None.
+
+=== domain/application-shell/failure-router
+---
+type: aggregate-root
+attributes:
+- name: action
+  type: failure-action
+  required: true
+- name: tone
+  type: toast-tone
+- name: message
+  type: string
+operations:
+- route-failure
+- apply-action
+---
+
+## Description
+
+The decision of what the owner sees for each failure.
+
+## Responsibility
+
+It maps a failure code to one action and one text.
+
+=== domain/application-shell/message-bubble
+---
+type: aggregate-root
+attributes:
+- name: role
+  type: domain/chat/message-role
+  required: true
+- name: streaming
+  type: boolean
+  required: true
+- name: errored
+  type: boolean
+  required: true
+- name: stop_notice
+  type: string
+operations:
+- show-message
+---
+
+## Description
+
+One message of a conversation drawn as a bubble.
+
+## Responsibility
+
+It shows the message text, its tool calls and why a reply stopped.
+
+=== domain/application-shell/owner-session
+---
+type: aggregate-root
+attributes:
+- name: access_token
+  type: string
+- name: subject
+  type: string
+- name: expires_at
+  type: integer
+- name: name
+  type: string
+- name: email
+  type: string
+operations:
+- set-token
+- clear
+- check-freshness
+---
+
+## Description
+
+The access token the owner's browser holds and what it says about the owner.
+
+## Responsibility
+
+It tells the client whether the owner may open a guarded address.
+
+=== domain/application-shell/request-helper
+---
+type: aggregate-root
+attributes:
+- name: base_url
+  type: string
+  required: true
+- name: failure_code
+  type: string
+operations:
+- send-request
+- refresh-token
+---
+
+## Description
+
+The one way the client sends a request to the back end.
+
+## Responsibility
+
+It sends the request with the owner's token and turns whatever comes back into an answer or one failure.
+
+=== domain/application-shell/shell-health
+---
+type: enumeration
+values:
+- ok
+- down
+- checking
+---
+
+## Description
+
+The states the footer tells the owner the system is in.
+
+## Responsibility
+
+None.
+
+=== domain/application-shell/state-badge
+---
+type: aggregate-root
+attributes:
+- name: state
+  type: domain/graph-explorer/confidence-state
+  required: true
+- name: icon_only
+  type: boolean
+  required: true
+operations:
+- show-state
+---
+
+## Description
+
+The mark that tells the owner how much to trust an item.
+
+## Responsibility
+
+It names a confidence state in words and for assistive technology.
+
+=== domain/application-shell/toast-tone
+---
+type: enumeration
+values:
+- warning
+- danger
+---
+
+## Description
+
+How strongly a toast tells the owner of a failure.
+
+## Responsibility
+
+None.
+
 === domain/chat-workspace/_context
 ---
 strategic: supporting
@@ -2310,6 +2801,15 @@ The phases the screen shows a turn in.
 ## Responsibility
 
 It names the one phase the owner is told about.
+
+=== domain/chat-workspace/chat-status.log
+---
+entries:
+- field: values
+  unstated: A survey found the screen compares tool_running where the enumeration holds tool-running, and nothing said which spelling the business decided.
+  decided: tool-running stays the value and tool_running is its derived code form.
+  why: The element schema keeps enumeration values in kebab-case and derives code forms, and the status never crosses the wire.
+---
 
 === domain/chat-workspace/message-list-state
 ---
@@ -3144,6 +3644,303 @@ The queue item the owner is looking at, named by its review queue kind and an id
 ## Responsibility
 
 It lets the address, the list and the decision panel agree on which item is open.
+
+=== domain/graph-explorer/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The graph explorer holds the pane where the owner sees the knowledge graph a conversation showed and reads, node by node, what the knowledge base holds about it.
+
+## Responsibility
+
+It draws the graph the assistant showed, lets the owner arrange it, and opens a node's detail, relationships and origin.
+
+=== domain/graph-explorer/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether the graph explorer is where the business differs or a solved problem.
+  decided: supporting
+  why: The pane draws what the knowledge base already holds and carries no business difference of its own.
+---
+
+=== domain/graph-explorer/confidence-state
+---
+type: enumeration
+values:
+- accepted
+- uncertain
+- low-confidence
+- disputed
+- superseded
+---
+
+## Description
+
+How much trust a node or link of the graph is drawn with.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/confidence-state.log
+---
+entries:
+- field: values
+  unstated: The survey lists five confidence states shown but the specification held no enumeration for them.
+  decided: accepted, uncertain, low-confidence, disputed and superseded, spelled as the screen spells them
+  why: the shown spelling uses a hyphen in low-confidence where the back end's flag uses an underscore, and the enumeration records what the screen shows
+---
+
+=== domain/graph-explorer/graph-link-view
+---
+type: value-object
+attributes:
+- name: id
+  type: string
+  required: true
+- name: source
+  type: string
+  required: true
+- name: target
+  type: string
+  required: true
+- name: label
+  type: string
+  required: true
+- name: link_type_label
+  type: string
+  required: true
+- name: is_temporal
+  type: boolean
+  required: true
+- name: in_effect
+  type: boolean
+- name: state
+  type: confidence-state
+---
+
+## Description
+
+One link as the graph pane draws it.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/graph-node-view
+---
+type: value-object
+attributes:
+- name: id
+  type: string
+  required: true
+- name: type
+  type: string
+  required: true
+- name: label
+  type: string
+  required: true
+- name: state
+  type: confidence-state
+- name: subtitle
+  type: string
+---
+
+## Description
+
+One node as the graph pane draws it.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/graph-pane
+---
+type: aggregate-root
+attributes:
+- name: nodes
+  type: graph-node-view
+  many: true
+- name: links
+  type: graph-link-view
+  many: true
+- name: positions
+  type: string
+- name: user_pinned
+  type: string
+  many: true
+- name: reveal_queue
+  type: string
+  many: true
+- name: revealed
+  type: string
+  many: true
+- name: status
+  type: graph-pane-status
+  required: true
+- name: error_message
+  type: string
+- name: received_delta_this_turn
+  type: boolean
+  required: true
+- name: layout_algorithm
+  type: domain/chat/graph-layout
+  required: true
+- name: layout_nonce
+  type: integer
+  required: true
+- name: last_turn_end
+  type: turn-end
+- name: snapshot_version
+  type: graph-snapshot-version
+operations:
+- add-delta
+- replace-delta
+- remove-nodes
+- move-node
+- reorganize
+- choose-layout
+- settle-turn
+- restore-view
+- clear
+---
+
+## Description
+
+The knowledge graph the owner is looking at, from the nodes drawn to the arrangement and the phase the pane is in.
+
+## Responsibility
+
+It keeps the nodes, the links, their positions and the status so that the pane shows one consistent graph.
+
+=== domain/graph-explorer/graph-pane-status
+---
+type: enumeration
+values:
+- empty
+- loading
+- revealing
+- ready
+- error
+---
+
+## Description
+
+The phases the graph pane is shown in.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/graph-pane.log
+---
+entries:
+- field: operations
+  unstated: The survey names the graph store's actions but no domain operation names.
+  decided: add-delta, replace-delta, remove-nodes, move-node, reorganize, choose-layout, settle-turn, restore-view and clear
+  why: each is one action of the store the survey describes and the rules constrain, so a reader of the aggregate can find which action a rule governs
+---
+
+=== domain/graph-explorer/graph-snapshot-version
+---
+type: enumeration
+values:
+- "1"
+- "2"
+---
+
+## Description
+
+The versions a saved graph view is written in.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/node-detail
+---
+type: aggregate-root
+attributes:
+- name: node_id
+  type: string
+  required: true
+- name: label
+  type: string
+- name: curation_open
+  type: boolean
+  required: true
+- name: failure
+  type: node-detail-failure
+- name: origin_failure
+  type: origin-failure
+operations:
+- open-detail
+- close-detail
+- open-curation
+---
+
+## Description
+
+The panel that replaces the graph with what the knowledge base holds about one node.
+
+## Responsibility
+
+It shows the node, its aliases, attributes, relationships and the origin of each item, and offers curation where the node needs it.
+
+=== domain/graph-explorer/node-detail-failure
+---
+type: enumeration
+values:
+- not-found
+- deleted
+- generic
+---
+
+## Description
+
+The ways reading a node's detail can fail, as the panel tells them apart.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/origin-failure
+---
+type: enumeration
+values:
+- not-found
+- deleted
+- generic
+- unknown
+---
+
+## Description
+
+The ways reading the full origin of an item can fail, as the panel tells them apart.
+
+## Responsibility
+
+None.
+
+=== domain/graph-explorer/turn-end
+---
+type: enumeration
+values:
+- done
+- error
+---
+
+## Description
+
+How a turn ends, as the graph pane settles it.
+
+## Responsibility
+
+None.
 
 === domain/ingest-workspace/_context
 ---
@@ -5561,6 +6358,1485 @@ The kinds a failed sign-in falls into, each with its own message to the owner.
 
 It names the one category of failure the owner is told about.
 
+=== rules/application-shell/a-401-is-answered-with-one-silent-refresh
+---
+type: invariant
+statement: "A first-attempt 401 MUST make the helper ask the identity provider once for a fresh access token with the session cookie, whether the request is an ingestion or not."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-bubble-shows-its-tool-chips-first
+---
+type: invariant
+statement: "A bubble given tool calls MUST show one chip per call above the text in the order given, each chip showing only the tool's name, pending when ok is null, ok when true and error when false, by colour only."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-bubble-shows-plain-text
+---
+type: invariant
+statement: "A bubble MUST show its message text as plain text exactly as given with its line breaks kept, accepting an empty text."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-bubble-state-is-resolved-in-order
+---
+type: invariant
+statement: "A bubble's state MUST be resolved in the order error, streaming, stopped and idle."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-bubble-takes-one-role
+---
+type: invariant
+statement: "A message bubble MUST take exactly one message role and the role MUST decide the side and the fill of the bubble."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-business-failure-shows-its-message
+---
+type: invariant
+statement: "Any BUSINESS_ code MUST show a warning toast with the server's message when non-empty and \"Operação não pôde ser concluída.\" otherwise."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-conversation-resource-is-recognised-by-its-key
+---
+type: invariant
+statement: "A read or write MUST count as a single conversation's when its key has at least two elements, the first being conversations and the second a non-empty string other than list, and a write without a key MUST NOT."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-conversation-row-labels-its-actions
+---
+type: invariant
+statement: "A conversation row MUST label its actions Renomear, Arquivar, Reativar and Excluir, and its rename confirmation and cancellation Confirmar renomeação and Cancelar renomeação."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failed-envelope-keeps-its-code
+---
+type: invariant
+statement: "A failed envelope MUST be a failure with its own code, message and details, and SYSTEM_UNKNOWN when it has no code."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failed-menu-action-does-not-navigate
+---
+type: invariant
+statement: "A failed create, archive or delete MUST NOT navigate and the menu MUST declare no failure handling."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failed-refresh-ends-the-session
+---
+type: invariant
+statement: "A failed refresh MUST clear the stored token, replace the page with the sign-in address and the reason session_expired and give the caller AUTH_SESSION_EXPIRED."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failure-carries-code-status-message-and-details
+---
+type: invariant
+statement: "A failure MUST carry its code, status and message and its details only when present."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failure-to-complete-is-timeout-abort-or-network
+---
+type: invariant
+statement: "A request that fails to complete MUST be a timeout when it timed out, an abort when the caller aborted and a network failure otherwise, each with status 0."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-field-outside-a-form-is-a-developer-error
+---
+type: invariant
+statement: "Reading a form field's wiring outside a form field MUST raise an error that no owner sees."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-forbidden-failure-reads-access-denied
+---
+type: invariant
+statement: "AUTH_FORBIDDEN MUST be routed as a boundary and shown as a danger toast reading \"Acesso negado.\"."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-fresh-owner-skips-sign-in
+---
+type: invariant
+statement: "The sign-in address opened with a fresh token MUST redirect to the chat address and show no form, and a freshness check that fails MUST count as not fresh."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-gone-resource-reads-removed-for-compliance
+---
+type: invariant
+statement: "RESOURCE_GONE MUST be an inline removed state reading \"Esta fonte foi removida por conformidade.\" and never the server's message."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-graph-node-names-its-type
+---
+type: invariant
+statement: "A graph node MUST take one of ten node types, each with a fixed pt-BR name that is its default subtitle unless the caller overrides it, and be named by that name, a colon and its label."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-graph-node-shows-its-state-by-an-icon
+---
+type: invariant
+statement: "A node with a confidence state MUST show it as an icon-only state badge and one without MUST show no badge, a selected node showing the selection in its border instead of the state's colour."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-loading-workspace-says-so-politely
+---
+type: invariant
+statement: "The chat, ingest and curation addresses MUST show a polite status line while their workspace loads, reading Carregando conversa…, Carregando ingestão… and Carregando curadoria…."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-missing-conversation-returns-to-chat
+---
+type: invariant
+statement: "RESOURCE_NOT_FOUND on a single conversation MUST show a warning toast reading \"Conversa não encontrada.\" and navigate to the chat address with empty search without reloading."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state
+---
+type: invariant
+statement: "RESOURCE_NOT_FOUND anywhere else MUST be an inline empty state with the server's message when non-empty and \"Nenhum resultado encontrado.\" otherwise and no toast."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-network-failure-reads-no-connection
+---
+type: invariant
+statement: "SYSTEM_NETWORK MUST show a warning toast reading \"Sem conexão.\" and SYSTEM_ABORTED MUST show nothing."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-read-is-retried-once
+---
+type: invariant
+statement: "A read MUST be retried once after any failure before the failure is routed and a write MUST NEVER be retried."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-read-stays-fresh-five-minutes-by-default
+---
+type: invariant
+statement: "A read MUST stay fresh for 5 minutes by default, MUST NOT be repeated when the window regains focus and MAY override the freshness with 0 milliseconds."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-refreshed-token-repeats-the-request
+---
+type: invariant
+statement: "A successful refresh MUST store the new token and send the request once more with the same options and a fresh cutoff."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-rename-sends-the-trimmed-title
+---
+type: invariant
+statement: "Enter or the confirm control MUST send the field's text with outer whitespace trimmed, sending nothing and closing silently when it is empty, with no length limit."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-render-failure-is-reported-and-announced
+---
+type: invariant
+statement: "A render failure MUST be reported with its source and component stack and announced assertively as an alert."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-render-failure-replaces-the-screen
+---
+type: invariant
+statement: "A render failure under the root MUST replace the whole screen with the failure notice and a Recarregar action that reloads the page."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-repeated-request-never-refreshes-again
+---
+type: invariant
+statement: "A repeated request MUST NOT trigger a second refresh and a 401 on it MUST be judged like any answer below 500."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-reported-error-stays-in-the-console
+---
+type: invariant
+statement: "A reported error MUST be written to the console only in development and MUST NOT make any network request."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-request-goes-to-the-back-end-address
+---
+type: invariant
+statement: "Every request MUST go to the configured back end address joined with its path, a path that starts with http:// or https:// being used as given."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+---
+type: invariant
+statement: "A request that is not an ingestion request MUST be cut off after 30000 milliseconds with a timeout reading Request timed out after 30s."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-request-is-judged-in-a-fixed-order
+---
+type: invariant
+statement: "A request MUST be judged in this order, its failure to complete, a 401 on the first attempt, a status of 500 or more, a body that is not JSON and then the envelope's ok."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-row-offers-its-actions
+---
+type: invariant
+statement: "Every row MUST offer rename and delete, a conversation not archived MUST also offer archive and an archived one reactivate instead."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-row-shows-its-title-and-archived-mark
+---
+type: invariant
+statement: "Each row MUST show the conversation's title or Conversa sem título when null, treat a conversation as archived when its archived instant is not null and then show Arquivada hidden from assistive technology and be named with the suffix (arquivada)."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-server-error-is-always-a-failure
+---
+type: invariant
+statement: "An answer with status 500 or more MUST be a failure with the body's own string code and message when it has them, the whole body as details, and SYSTEM_UPSTREAM and the message made of \"Algo deu errado\" and \"Tente novamente\", each ending in a full stop, otherwise."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-server-error-is-always-a-failure.log
+---
+entries:
+- field: statement
+  unstated: The request helper tells the owner a fixed message when a server error body carries none, and the rule states only the code that stands in.
+  decided: The message is Algo deu errado followed by Tente novamente, each ending in a full stop.
+  why: It is the wording the running helper uses and the curation contracts already hold the same wording for their own helpers.
+---
+
+=== rules/application-shell/a-state-badge-animates-promotion-supersession-and-merge
+---
+type: invariant
+statement: "A state badge MUST animate a promotion when its state changes from uncertain to accepted, a supersession when it changes into superseded and a merge where its caller marks one."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-state-badge-has-five-states-with-labels
+---
+type: invariant
+statement: "The badge MUST show one of five confidence states with the labels Aceito, Incerto, Baixa confiança, Em disputa and Superado, a caller being able to override the label."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-state-badge-is-always-named
+---
+type: invariant
+statement: "The badge MUST be named Estado de confiança followed by its label even when icon-only, showing the visible label unless icon-only and the icon always hidden from assistive technology."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-streaming-bubble-is-busy
+---
+type: invariant
+statement: "A streaming bubble MUST be marked busy to assistive technology with a cursor hidden from it after the text, removed when streaming ends."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-toast-keeps-its-tone
+---
+type: invariant
+statement: "A danger toast MUST be shown as an error toast and a warning toast as a warning toast."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-token-is-fresh-with-thirty-seconds-to-spare
+---
+type: invariant
+statement: "A token MUST be fresh only when one is held and either it expires more than 30 seconds from now or it carries no readable expiry."
+constrains:
+- domain/application-shell/owner-session
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-user-bubble-may-be-streaming
+---
+type: invariant
+statement: "A bubble MUST NOT refuse a user role marked as streaming."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-answer-below-500-without-json-is-invalid
+---
+type: invariant
+statement: "An answer below status 500 with no body or a body that is not JSON MUST be a failure SYSTEM_INVALID_RESPONSE."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+---
+type: invariant
+statement: "AUTH_UNAUTHORIZED, AUTH_TOKEN_EXPIRED and AUTH_TOKEN_INVALID MUST clear the stored token and send the owner to the sign-in address with the reason session_expired."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-avatar-is-named-by-the-full-name
+---
+type: invariant
+statement: "An avatar MUST be named by the full name and show the initials of the first and last word, the first two letters of a single word, uppercased, and a question mark for a blank name."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-error-message-replaces-other-text
+---
+type: invariant
+statement: "A field's error message MUST replace any other message text and nothing MUST be shown when there is neither."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-errored-bubble-adds-no-wording
+---
+type: invariant
+statement: "An errored bubble MUST add no wording and show the error only by its border accent."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-ingestion-request-has-no-cutoff
+---
+type: invariant
+statement: "A request marked as ingestion MUST have no client cutoff and carry only the caller's own signal."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-invalid-field-is-described
+---
+type: invariant
+statement: "A field in error MUST be marked invalid to assistive technology and described by its help text and its error message, and a field not in error by its help text only."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-invalid-format-is-a-form-error
+---
+type: invariant
+statement: "VALIDATION_INVALID_FORMAT MUST be routed as a form error with the server's message when non-empty and \"Há campos inválidos no formulário.\" otherwise, passing on the server's details and showing no toast."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-uncertain-state-badge-pulses
+---
+type: invariant
+statement: "An uncertain state badge MUST pulse."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-unknown-address-says-page-not-found
+---
+type: invariant
+statement: "The not-found address and any address that matches no route MUST show \"Página não encontrada.\" with \"O endereço solicitado não existe ou foi removido.\", the unmatched address without guard or shell."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/any-other-code-shows-a-danger-toast
+---
+type: invariant
+statement: "Any other code MUST show a danger toast with the server's message when non-empty and the standard failure message otherwise."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/any-other-system-failure-hides-its-message
+---
+type: invariant
+statement: "Any other SYSTEM_ code MUST show a danger toast with the standard failure message and never the server's message."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/archive-and-reactivate-need-no-confirmation
+---
+type: invariant
+statement: "Archiving and reactivating MUST act at once with no confirmation and close the menu."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/archived-conversations-are-opt-in
+---
+type: invariant
+statement: "The menu MUST hide archived conversations by default, offer the Mostrar arquivadas switch at its foot and only report the new value without storing it."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/archiving-stamps-the-browser-clock
+---
+type: invariant
+statement: "Archiving MUST send the browser clock's current instant as an ISO string and, when the archived conversation was the active one, navigate on success to the chat address without a conversation."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/as-of-starts-at-today
+---
+type: invariant
+statement: "The as-of date MUST start empty meaning today, the footer reading Como em: hoje and otherwise Como em: followed by the date in pt-BR form."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/chat-and-curation-keep-one-search-key
+---
+type: invariant
+statement: "The chat address MUST accept the optional search key conversation and the curation address the optional search key item, each kept verbatim only when a non-empty string and otherwise dropped."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/choosing-a-destination-closes-the-palette-first
+---
+type: invariant
+statement: "Choosing a palette destination MUST close the palette and then navigate."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/choosing-a-row-selects-it
+---
+type: invariant
+statement: "Choosing a row MUST select that conversation and close the menu."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/choosing-or-creating-a-conversation-opens-it
+---
+type: invariant
+statement: "Choosing a conversation MUST navigate to the chat address naming it and creating one MUST send no fields and, on success, navigate to the new one."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/clearing-the-token-forgets-it
+---
+type: invariant
+statement: "Clearing the token MUST remove it from memory and from session storage."
+constrains:
+- domain/application-shell/owner-session
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/client-needs-two-urls
+---
+type: invariant
+statement: "The client MUST read exactly two configuration values, the back end address and the identity provider address, each a valid URL, and read no other key."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/deleting-asks-first
+---
+type: invariant
+statement: "Deleting MUST close the menu and open a confirmation dialog titled Excluir conversa."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/deleting-the-active-conversation-leaves-it
+---
+type: invariant
+statement: "Deleting MUST send a delete by id and, when the deleted conversation was the active one, navigate on success to the chat address without a conversation."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/every-failure-goes-to-the-router
+---
+type: invariant
+statement: "Every read and write failure MUST go to the central routing and a failure that is not an envelope failure MUST be reported and shown as a danger toast with the standard failure message."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/every-other-address-is-guarded
+---
+type: invariant
+statement: "Every declared address other than sign-in MUST sit under one guarded layout that shows the application shell."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/failure-routing-lives-in-one-function
+---
+type: invariant
+statement: "All routing from a failure code to a screen action MUST live in one function that matches exact codes before prefixes and BUSINESS_ before SYSTEM_."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+---
+type: invariant
+statement: "The health and the pending curation total MUST each be asked every 20 seconds and not retried on failure, health without the token."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/health-is-judged-by-the-database-field
+---
+type: invariant
+statement: "Health MUST be online when the answer's database equals ok, banco inacessível for any other parsed answer and verificando… while no answer was parsed, an unreachable or non-JSON answer parsing nothing."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/invalid-configuration-stops-the-client
+---
+type: invariant
+statement: "An invalid configuration MUST write the failed issues to the console and raise an error naming the two keys and each issue as its path and message."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/leaving-a-rename-sends-nothing
+---
+type: invariant
+statement: "Escape, the cancel control or closing the menu while renaming MUST drop the rename and send nothing."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/one-client-serves-reads-and-writes
+---
+type: invariant
+statement: "There MUST be one client for reads and writes created once when the module loads."
+constrains:
+- domain/application-shell/failure-router
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/only-a-cancelled-reply-shows-a-notice
+---
+type: invariant
+statement: "A bubble MUST show a notice below it only for the stop reason cancelled, reading Resposta interrompida, and none for any other, unknown or absent stop reason."
+constrains:
+- domain/application-shell/message-bubble
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/only-ok-true-returns-the-result
+---
+type: invariant
+statement: "The result MUST be returned only when the envelope's ok is exactly true, and any other envelope MUST be a failure even under a 2xx status."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/only-the-confirmation-deletes
+---
+type: invariant
+statement: "Only the confirm action MUST send the delete and cancelling or dismissing the dialog MUST send nothing."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/reduced-motion-stops-the-state-badge-animating
+---
+type: invariant
+statement: "A state badge MUST NOT animate while the owner prefers reduced motion."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/renaming-and-reactivating-stay-where-they-are
+---
+type: invariant
+statement: "Renaming MUST send the new title and reactivating MUST send an archive moment of null, neither navigating."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/renaming-opens-a-field-with-the-title
+---
+type: invariant
+statement: "Renaming MUST replace the row with a text field starting with the current title or empty when null."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/session-expired-failure-carries-no-details
+---
+type: invariant
+statement: "The session expired failure MUST carry no details."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/setting-a-token-decodes-its-claims
+---
+type: invariant
+statement: "Setting the token MUST decode its sub, exp, name and email claims without checking the signature, keeping each only when it has the expected type and none when the token does not have three dot-separated parts."
+constrains:
+- domain/application-shell/owner-session
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/sign-in-hands-the-attempt-to-its-panel
+---
+type: invariant
+statement: "The sign-in page MUST pass the sign-in attempt's submit, in-flight flag and failure to the sign-in panel."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+---
+type: invariant
+statement: "The sign-in page MUST show the session expired notice exactly when its address has the reason session_expired, read once per mount, and none when the address cannot be read."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/sign-in-sits-outside-the-guarded-shell
+---
+type: invariant
+statement: "The sign-in address MUST sit outside the guarded subtree and be shown without the header, footer or command palette."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/some-addresses-show-only-a-placeholder
+---
+type: invariant
+statement: "The graph, search and history addresses MUST show only a placeholder with the titles Grafo, Busca and Histórico and the line \"Conteúdo em breve.\"."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-active-ingestion-segment-is-never-shown
+---
+type: invariant
+statement: "The footer's active ingestion segment MUST never be shown because there is no active run, and when present it would link to the history address."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-active-row-is-only-highlighted
+---
+type: invariant
+statement: "The active conversation's row MUST be marked only by a highlighted background and keep its accessible name."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-areas-live-at-fixed-addresses
+---
+type: invariant
+statement: "The areas Chat, Grafo, Buscar, Ingerir, Curar and Histórico MUST live at /chat, /graph, /search, /ingest, /curation and /history, and the not-found area at /not-found."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-areas-live-at-fixed-addresses.log
+---
+entries:
+- field: statement
+  unstated: The rules name the areas and the not-found address without their paths, and other nodes state only /chat, /curation and /sign-in.
+  decided: The six areas live at /chat, /graph, /search, /ingest, /curation and /history and the not-found area at /not-found.
+  why: These are the addresses the router declares and the header and palette link to.
+---
+
+=== rules/application-shell/the-as-of-date-lives-in-memory
+---
+type: invariant
+statement: "The as-of date MUST be held in memory only, never written to the address nor persisted, and no read MUST be sent with it."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-backdrop-is-decoration
+---
+type: invariant
+statement: "The backdrop MUST be hidden from assistive technology and its image MUST have an empty alternative text."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-conversation-menu-shows-on-chat-only
+---
+type: invariant
+statement: "The conversation menu MUST appear in the header only on the chat address or beneath it, and the header's only actions MUST be the theme choice and the command palette toggle."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-cutoff-ends-with-the-headers
+---
+type: invariant
+statement: "The cutoff timer MUST be cleared as soon as the response headers arrive and reading the body MUST have no cutoff."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-delete-dialog-offers-cancel-and-confirm
+---
+type: invariant
+statement: The delete confirmation dialog MUST offer the buttons Cancelar and Confirmar.
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-delete-dialog-warns-that-deleting-cannot-be-undone
+---
+type: invariant
+statement: The delete confirmation dialog MUST warn that deleting cannot be undone by reading "Tem certeza?" and then "Esta ação não pode ser desfeita".
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-first-entry-creates-a-conversation
+---
+type: invariant
+statement: "The first entry of the menu MUST create a conversation with no title and close the menu."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-first-signal-aborts-the-request
+---
+type: invariant
+statement: "A caller's signal and the cutoff MUST be combined so that whichever fires first aborts the request."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-first-valid-configuration-is-kept
+---
+type: invariant
+statement: "The first valid configuration MUST be frozen and cached and every later read MUST return it without checking again."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-footer-shows-one-of-three-health-states
+---
+type: invariant
+statement: "The footer MUST show the system health as online, banco inacessível or verificando…, starting at verificando…."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-footer-shows-pending-curation
+---
+type: invariant
+statement: "The footer MUST show the pending curation total as the number followed by pendentes, linked to the curation address, and hide it when the total is 0."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-guard-needs-a-fresh-token
+---
+type: invariant
+statement: "The guard MUST let the owner through only while the access token is fresh and otherwise send the owner to the sign-in address with the reason session_expired, carrying no destination."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-header-lists-six-areas
+---
+type: invariant
+statement: "The header MUST list the areas Chat, Grafo, Buscar, Ingerir, Curar and Histórico in this order, marking as current the area whose address equals or begins the current address."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-header-menu-lists-without-archived-by-default
+---
+type: invariant
+statement: "The header's conversation listing MUST be requested without archived conversations unless the owner includes them, and the active title MUST be that of the listed conversation named by the address, none when it is not listed."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-header-shows-the-product-name
+---
+type: invariant
+statement: "The header MUST show the product name Remember before its list of areas."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-menu-lists-as-received
+---
+type: invariant
+statement: "The menu MUST list the conversations in the order received without sorting, filtering or capping, still listing those already held while loading, showing a placeholder when loading with none and Nenhuma conversa ainda when not loading with none."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-menu-trigger-names-the-active-conversation
+---
+type: invariant
+statement: "The menu trigger MUST show Nova conversa with no active conversation and otherwise the active title or Conversa sem título when null, and be named Conversas — followed by the active title or Nova conversa."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-owner-picks-the-as-of-date
+---
+type: invariant
+statement: "The owner MUST pick the as-of date from a date input in the footer popover titled Recorte temporal, with no minimum or maximum, and emptying it or choosing Voltar para hoje MUST set it back to today."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-palette-field-invites-a-search
+---
+type: invariant
+statement: "The palette's search field MUST read \"Buscar áreas e ações…\" while it is empty."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-palette-field-invites-a-search.log
+---
+entries:
+- field: statement
+  unstated: The palette search field reads a text promising actions although the palette offers only destinations, and no node holds the text.
+  decided: The field reads Buscar áreas e ações… as the running screen shows it.
+  why: The text is what the owner reads today and no material says it should change, so the specification records it rather than correcting it.
+---
+
+=== rules/application-shell/the-palette-lives-inside-the-shell
+---
+type: invariant
+statement: "The palette and its shortcut MUST be mounted only within the guarded shell."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-palette-offers-five-destinations
+---
+type: invariant
+statement: "The palette MUST offer one group Ir para with the destinations Grafo, Buscar, Ingerir, Curar and Histórico in this order, filtered by label and reading \"Nada encontrado.\" when none matches."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-palette-starts-closed-in-memory
+---
+type: invariant
+statement: "The palette MUST start closed and its open state MUST be held in memory only."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-pending-total-needs-a-token
+---
+type: invariant
+statement: "The pending curation total MUST be the queue listing's total requested with limit 1 and the access token as a bearer, no request being made without a token and an answer without a total counting as 0."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-root-address-leads-to-chat
+---
+type: invariant
+statement: "The root address MUST always redirect to the chat address after the freshness guard has run."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-shell-regions-have-names
+---
+type: invariant
+statement: "The header MUST be a banner named Cabeçalho with a navigation named Áreas, a palette toggle named Abrir paleta de comandos (⌘K) and a theme choice named Tema, and the footer a contentinfo named Rodapé with the date input named Data do recorte."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-shortcut-toggles-the-palette
+---
+type: invariant
+statement: "Pressing the command key and K or Control and K anywhere in the shell MUST open or close the command palette and suppress the browser's default action."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-ten-node-types-are-named-in-portuguese
+---
+type: invariant
+statement: "The node types person, organization, project, event, role, category, concept, location, document and task MUST be named Pessoa, Organização, Projeto, Evento, Papel, Categoria, Conceito, Local, Documento and Tarefa."
+constrains:
+- domain/application-shell/state-badge
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-token-is-mirrored-to-session-storage
+---
+type: invariant
+statement: "The access token MUST be held in memory and mirrored to the tab's session storage under the key remember.auth.token, read once when the application loads and kept in memory only when storage cannot be written."
+constrains:
+- domain/application-shell/owner-session
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/the-trigger-is-off-while-loading
+---
+type: invariant
+statement: "The menu trigger MUST be disabled while the listing is loading and show a spinner in place of the chevron."
+constrains:
+- domain/application-shell/conversation-menu
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/transport-failures-read-their-wording
+---
+type: invariant
+statement: "The helper's own failures MUST read \"Tempo limite excedido na requisição.\" for a timeout, \"Requisição cancelada.\" for an abort, \"Falha de rede ao contactar o servidor.\" for a network failure, \"Resposta do servidor não é JSON válido.\" for an invalid answer and \"Erro desconhecido do servidor.\" for an unknown one."
+constrains:
+- domain/application-shell/request-helper
+---
+
+## Description
+
+None.
+
 === rules/chat-workspace/a-turn-is-never-resent-by-the-screen
 ---
 type: invariant
@@ -6840,6 +9116,18 @@ statement: "A text_delta frame MUST append its delta to the streamed answer and 
 constrains:
 - domain/chat-workspace/chat-session
 - domain/chat-workspace/chat-status
+---
+
+## Description
+
+None.
+
+=== rules/chat-workspace/the-empty-composer-invites-a-question
+---
+type: invariant
+statement: "The message field MUST read \"Pergunte algo…\" while it is empty."
+constrains:
+- domain/chat-workspace/chat-session
 ---
 
 ## Description
@@ -9004,6 +11292,18 @@ constrains:
 
 None.
 
+=== rules/curation-workspace/a-dispute-side-captions-its-fields
+---
+type: invariant
+statement: "A dispute side MUST caption its validity Vigência, its basis Fonte reading \"Declarada\", \"Doc.\" or \"Receb.\" for a stated, document or received basis, and its confidence Confiança."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
 === rules/curation-workspace/acceptance-rate-shows-as-a-whole-percentage
 ---
 type: invariant
@@ -9023,6 +11323,18 @@ statement: "The active tab MUST live only on the page, start at all each time th
 constrains:
 - domain/curation-workspace/curation-session
 - domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/an-entity-match-entry-has-the-link-item-kind
+---
+type: invariant
+statement: "A queue entry of kind entity-match MUST have the item kind link."
+constrains:
+- domain/curation-workspace/curation-session
 ---
 
 ## Description
@@ -9966,7 +12278,7 @@ None.
 === rules/curation-workspace/evidence-indicator-pulses-until-viewed
 ---
 type: invariant
-statement: "The evidence indicator MUST read Ver evidência and pulse until the evidence is viewed and then read Evidência vista."
+statement: "The evidence indicator MUST read Ver evidência and pulse until the evidence is viewed and then read Evidência vista, the same words being its accessible name."
 constrains:
 - domain/curation-workspace/curation-session
 ---
@@ -9974,6 +12286,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/curation-workspace/evidence-indicator-pulses-until-viewed.log
+---
+entries:
+- field: statement
+  unstated: The indicator carries an accessible name of Veja a evidência antes de decidir that differs from its visible words, and no node says what its accessible name is.
+  decided: The accessible name of the indicator is the same words it displays.
+  why: The rule already fixes the visible words, and a name differing from them would let a screen reader hear a wording the node does not hold.
+---
 
 === rules/curation-workspace/evidence-viewed-is-supplied-by-the-caller
 ---
@@ -11375,6 +13696,84 @@ constrains:
 
 None.
 
+=== rules/curation-workspace/the-correction-reason-field-asks-why
+---
+type: invariant
+statement: "The reason field of the correction form MUST read \"Explique brevemente por que a correção é necessária.\" while it is empty."
+constrains:
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/the-page-names-its-heading-and-regions
+---
+type: invariant
+statement: "The curation page MUST be headed Curadoria and name its queue region Fila de curadoria and its decision region Painel de decisão."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/the-page-selects-the-addressed-item-or-the-first-entry
+---
+type: invariant
+statement: "The curation page MUST select the item its address names when the loaded queue holds it and otherwise the first entry of the loaded queue, again whenever the loaded queue or the tab changes."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/the-page-selects-the-addressed-item-or-the-first-entry.log
+---
+entries:
+- field: statement
+  unstated: The curation page derives its selection on every mount and whenever the queue or the tab changes, replacing a kept selection, and no node says when the selection is derived.
+  decided: The page selects the addressed item when the loaded queue holds it and otherwise the first entry, again on a queue or tab change.
+  why: The running page does this and the kept-state rule speaks only of leaving the page, so deriving on entry does not contradict it.
+---
+
+=== rules/curation-workspace/the-queue-tab-group-is-named-by-its-filter
+---
+type: invariant
+statement: "The queue tab group MUST be named Filtrar fila por tipo."
+constrains:
+- domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/the-undo-button-is-announced-as-undoing-the-action
+---
+type: invariant
+statement: "The undo button MUST read Desfazer and be announced as Desfazer ação."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/the-undo-button-is-announced-as-undoing-the-action.log
+---
+entries:
+- field: statement
+  unstated: The undo button is announced as Desfazer ação while the visible word is Desfazer, and no node holds the announced name.
+  decided: The button reads Desfazer and is announced as Desfazer ação.
+  why: The announced name contains the visible word, so a reader who sees the button and one who hears it are not told different actions.
+---
+
 === rules/curation-workspace/trail-keeps-the-answered-order
 ---
 type: invariant
@@ -11643,6 +14042,2100 @@ type: invariant
 statement: "A wired shortcut other than help MUST stop the key's default behaviour."
 constrains:
 - domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+---
+type: invariant
+statement: "On a graph change a save MUST require an active conversation, then at least one node, then skip the first change after a restore, so a change that leaves the pane empty does not use up the skip."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-chunk-offset-window-is-shown-as-chars
+---
+type: invariant
+statement: "A chunk's offset window MUST be shown as the word chars followed by its start, an en dash and its end."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-chunk-shows-its-index-offsets-and-excerpt
+---
+type: invariant
+statement: "Each chunk MUST show chunk # followed by its index, its offset range and its excerpt."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-chunk-shows-its-source
+---
+type: invariant
+statement: "Each chunk MUST show its source as \"Tipo:\" with the source type and \"Recebido em:\" with the received-at label, \"Título:\" only with a title and \"Data do documento:\" only with a document date."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-chunk-without-locator-has-an-empty-one
+---
+type: invariant
+statement: "A chunk with no locator MUST get an empty locator."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-counter-change-places-every-node-again
+---
+type: invariant
+statement: "A layout run caused by a change of the layout counter MUST ignore every position and place every node again."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-delta-carries-its-source-tool-unchanged
+---
+type: invariant
+statement: "A graph delta MUST carry the tool that produced it unchanged together with its nodes and links in arrival order."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-delta-without-state-for-a-node-leaves-it-off
+---
+type: invariant
+statement: "A graph delta MUST leave out a node whose status the node-state mapping gives no state and MUST show a kept node with its id, mapped type, canonical name as label and derived state."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-failed-node-panel-carries-no-message-in-its-header
+---
+type: invariant
+statement: "The header of a failed node detail panel MUST carry no message."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-failed-node-panel-carries-no-message-in-its-header.log
+---
+entries:
+- field: statement
+  unstated: The failed node panel heads itself with the not-found wording whatever the variant, while the alert below shows the variant own message, and no node says what the header shows.
+  decided: The header of a failed panel carries no message.
+  why: A header message of a fixed variant contradicts the rule that each variant shows only its own message, and the loading view already heads the panel with no message of its own.
+---
+
+=== rules/graph-explorer/a-failed-node-read-is-an-alert
+---
+type: invariant
+statement: "A failed node detail read MUST be announced as an alert with a retry offered only for the generic failure that reads the node again."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-failed-relationships-read-always-offers-a-retry
+---
+type: invariant
+statement: "Any failed relationships read MUST be announced as an alert reading \"Não foi possível carregar as relações.\" with the action Tentar novamente and no error code examined."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-fragment-shows-confidence-status-text-and-chunks
+---
+type: invariant
+statement: "Each fragment MUST show its confidence label, its status and its text followed by its chunks."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-fragment-status-is-free-text
+---
+type: invariant
+statement: "A fragment's status MUST be passed through as free text without being checked against a closed list."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-gap-change-applies-from-the-next-reveal
+---
+type: invariant
+statement: "A change to the reveal gap while a reveal runs MUST take effect from the next reveal."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-gap-of-zero-or-less-is-zero
+---
+type: invariant
+statement: "A reveal gap of zero or less MUST be treated as 0 milliseconds and the reveal MUST stay asynchronous."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+---
+type: invariant
+statement: "A layout run caused by a change of nodes or links MUST keep every node that already has a position at that position and place only nodes without one."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-kept-link-carries-its-slug-label-and-state
+---
+type: invariant
+statement: "A kept delta link MUST carry its link type slug, its visible label, whether it is temporal and a state derived from its status and flags, and its in-effect flag only when the answer included it."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-late-restore-answer-is-discarded
+---
+type: invariant
+statement: "A restore answer that arrives after the active conversation changed MUST be discarded."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-coloured-by-its-type
+---
+type: invariant
+statement: "A link's colour MUST follow its link type for the 13 known types and an unknown type MUST take the colour of related_to."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-dashed-unless-temporal-and-sure
+---
+type: invariant
+statement: "A link MUST be dashed 4 4 when its state is uncertain or it is not temporal and solid otherwise."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-dimmed-when-out-of-effect
+---
+type: invariant
+statement: "A link and its label MUST be dimmed to 40% opacity when it is marked not in effect or its state is superseded."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-hidden-from-assistive-technology
+---
+type: invariant
+statement: "A link MUST be hidden from assistive technology."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-kept-only-with-visible-ends
+---
+type: invariant
+statement: "A delta link MUST be kept only when each endpoint is a kept node of the delta or a node already in the pane."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node
+---
+type: invariant
+statement: "A link MUST be outgoing when its source is the starting node the answer names and incoming otherwise, so a link from the node to itself is outgoing."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-meets-each-node-at-its-border
+---
+type: invariant
+statement: "A link's endpoints MUST sit where the line between the two node centres crosses each node's border, the side being checked in the order left, right, top, bottom within 1 unit after rounding and bottom when none matches."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-needs-both-measured-nodes-to-be-drawn
+---
+type: invariant
+statement: "A link MUST be drawn only when both its nodes exist and have a measured non-zero width and height."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-needs-data-and-measured-nodes
+---
+type: invariant
+statement: "A link MUST NOT be drawn while it has no data or while either endpoint node is unmeasured."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-link-shows-the-catalog-label
+---
+type: invariant
+statement: "A link's label MUST show the link type's display label and never the slug."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-linkless-node-is-still-placed
+---
+type: invariant
+statement: "A node with no links MUST still be placed and a coordinate that cannot be computed MUST become 0."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-click-only-reports-the-node-id
+---
+type: invariant
+statement: "The pane MUST pass a node click to its caller as the node id and do nothing else with it."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-failure-is-classified-by-its-code
+---
+type: invariant
+statement: "A node detail failure MUST be generic for a non-object error, not-found for RESOURCE_NOT_FOUND checked first, deleted for BUSINESS_NODE_DELETED and generic for any other code."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-failure-reads-its-wording
+---
+type: invariant
+statement: "Each variant of a node detail failure MUST show its own message, never the message of another variant."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-is-drawn-with-its-type-label-state-and-selection
+---
+type: invariant
+statement: "A graph node MUST be drawn with its type, label, optional confidence state, optional subtitle and selected flag."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-s-link-endpoints-are-inert
+---
+type: invariant
+statement: "A node's link endpoints MUST be unconnectable, hidden from assistive technology, invisible and inert."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-node-without-position-sits-at-the-origin
+---
+type: invariant
+statement: "A node with no computed position MUST be placed at (0, 0)."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-pending-save-is-dropped-on-leaving
+---
+type: invariant
+statement: "A save still waiting MUST be dropped when the active conversation changes or the screen closes."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-provenance-answer-is-a-list-of-fragments
+---
+type: invariant
+statement: "A full provenance answer MUST be read as fragments each with its id, text, confidence, status and chunks, each chunk with its id, index, offsets, excerpt, locator and raw information."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-read-needs-a-non-empty-identity
+---
+type: invariant
+statement: "A node, relationships or provenance read MUST NOT be requested unless its id is a non-empty string, and a provenance read MUST NOT be requested until the caller enables it."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-read-stays-fresh-five-minutes
+---
+type: invariant
+statement: "A node detail, relationships or full provenance read MUST stay fresh for 5 minutes and MUST NOT be repeated when the window regains focus."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-redacted-original-input-is-never-shown
+---
+type: invariant
+statement: "An original input that is exactly [REDACTED] MUST show \"Texto original redigido.\" named \"Texto original redigido por conformidade.\" and never the sentinel."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-relationship-badge-follows-its-effective-status
+---
+type: invariant
+statement: "A relationship row's badge MUST come from the link's effective status with the assertion status taken as accepted."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-relationship-row-shows-arrow-type-neighbour-confidence-and-status
+---
+type: invariant
+statement: "A relationship row MUST show in order a direction arrow hidden from assistive technology, the link type label, the neighbour's name, the confidence label and an icon-only status badge."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-relationship-row-shows-its-validity
+---
+type: invariant
+statement: "When a validity bound is known the relationship row MUST show from → to with a dash for a missing bound."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-relationship-shows-fixed-fields
+---
+type: invariant
+statement: "A relationship MUST be shown with its link type, effective status, in-effect flag, confidence, confidence label, validity labels, flags and provenance and MUST NOT show its status, is_current, recorded_at, superseded_at, hop or score."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-save-follows-a-graph-change
+---
+type: invariant
+statement: "A save MUST be triggered when the pane's nodes, positions or layout reset change."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-save-is-a-put-of-json
+---
+type: invariant
+statement: "The save MUST be sent as a PUT of the graph view with a JSON body and a JSON content type."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-save-waits-800-milliseconds
+---
+type: invariant
+statement: "A save MUST wait 800 milliseconds after the last change, each new change restarting the wait."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-saved-view-holds-positions-and-pins
+---
+type: invariant
+statement: "A saved view MUST hold a version, nodes, links, a position for each node id and the pinned node ids, version 2 adding the layout algorithm."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-snapshot-carries-its-version-and-fields
+---
+type: invariant
+statement: "A saved graph view MUST be version 2 with nodes, links, positions, pinned nodes and layout algorithm, and a version 1 view MUST carry the same without the layout algorithm."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-source-date-time-is-short-pt-br
+---
+type: invariant
+statement: "A raw information's received-at instant MUST be shown as a short pt-BR date with a short time in the owner's local time zone, the raw text when it cannot be read."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-source-shows-its-id-type-dates-and-title
+---
+type: invariant
+statement: "A raw information MUST be shown with its id, source type, received-at label, title and document-date label."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-successful-detail-shows-the-node
+---
+type: invariant
+statement: "A loaded node detail MUST show the canonical name, the node type and the node's state badge in its header."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-validity-date-is-shown-day-month-year
+---
+type: invariant
+statement: "A validity date given as year-month-day MUST be shown as day, month and year with slashes in pt-BR formatted in UTC, an absent date MUST get no label and a date that cannot be read MUST be shown as the raw text."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/a-weak-state-overrides-the-type-colour
+---
+type: invariant
+statement: "An uncertain, disputed or superseded state MUST replace the link-type colour, the state being checked before the type, and accepted, low-confidence and no state MUST keep it."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/add-keeps-links-whose-nodes-are-missing
+---
+type: invariant
+statement: "Adding a delta MUST keep every link, including a link whose endpoints are not in the pane."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/add-marks-a-delta-received
+---
+type: invariant
+statement: "Adding a delta MUST mark that a delta was received this turn even when every id was already known."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/add-merges-by-identity
+---
+type: invariant
+statement: "Adding a delta MUST merge its nodes and links into the pane by id, a node or link already present being overwritten by the newer one."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/add-queues-only-unseen-nodes
+---
+type: invariant
+statement: "Adding a delta MUST queue for reveal only the nodes that are neither revealed nor already in the pane."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/aliases-are-listed-as-received
+---
+type: invariant
+statement: "Aliases MUST be listed in the order received in a list named Aliases, the canonical one marked (canônico) and, with none, the text \"Nenhum alias adicional.\"."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-absent-original-input-shows-nothing
+---
+type: invariant
+statement: "An original input that is null or absent MUST show nothing."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-attribute-hides-its-bookkeeping-fields
+---
+type: invariant
+statement: "An attribute MUST be shown with its id, key, value, value type, effective status, in-effect flag, badge, validity labels and provenance and MUST NOT show its is_current, confidence or node_id."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-attribute-row-shows-key-value-state-and-validity
+---
+type: invariant
+statement: "An attribute row MUST show its key, its value and an icon-only state badge, and when a validity bound is known also from → to with a dash for a missing bound."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+---
+type: invariant
+statement: "An attribute whose answer has no provenance list MUST get an empty one."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-empty-graph-has-no-positions
+---
+type: invariant
+statement: "An empty graph MUST have no positions."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-inline-entry-hides-what-it-lacks
+---
+type: invariant
+statement: "An inline provenance entry MUST show its fragment id and text with its confidence, its label, its raw information id, source type and excerpt each null when missing, and a missing or non-finite confidence MUST give no label rather than 0%."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-inline-entry-shows-its-date-only
+---
+type: invariant
+statement: "The received-at instant of an inline provenance entry MUST be shown as a pt-BR date with a two-digit day and month in the owner's local time zone, nothing for a missing instant and the raw text for one that cannot be read."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
+---
+type: invariant
+statement: "A failed origin read MUST be announced as an alert and offer a retry that reads again for every variant except deleted."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-origin-failure-is-classified-by-its-code
+---
+type: invariant
+statement: "An origin read failure MUST be unknown for a non-object error, not-found for RESOURCE_NOT_FOUND checked first, deleted for BUSINESS_RAW_INFORMATION_DELETED, generic for a code starting SYSTEM_ and unknown for any other."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-origin-failure-reads-its-wording
+---
+type: invariant
+statement: "A not-found origin failure MUST read \"Origem não encontrada.\", a deleted one \"Documento original removido por conformidade.\" and a generic or unknown one \"Não foi possível carregar a origem.\"."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-origin-without-fragments-says-not-found
+---
+type: invariant
+statement: "A successful origin read with no fragments MUST show \"Origem não encontrada.\"."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-original-input-is-shown-verbatim
+---
+type: invariant
+statement: "An original input that is a string other than [REDACTED] MUST be shown verbatim with its whitespace in a disclosure named Texto original do operador."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+---
+type: invariant
+statement: "A link or fragment confidence that cannot be formatted MUST be shown as 0%."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/attribute-badge-follows-a-fixed-precedence
+---
+type: invariant
+statement: "An attribute's badge MUST be disputed for effective status disputed, otherwise uncertain for uncertain, otherwise superseded for inactive, otherwise superseded when its assertion status is superseded, and accepted when none applies."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/attributes-are-listed-as-received
+---
+type: invariant
+statement: "Attributes MUST be listed in the order received in a table of attribute, value and state and, with none, the text \"Nenhum atributo registrado.\"."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/attributes-in-effect-come-first-by-key
+---
+type: invariant
+statement: "Attributes in effect MUST come before those not in effect and each group MUST be ordered by key compared in pt-BR ignoring case and accents, equal keys keeping the answered order."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/choosing-a-layout-releases-the-pins
+---
+type: invariant
+statement: "Choosing a different layout algorithm MUST set it, clear the owner's pins and advance the layout counter, and choosing the one already in use MUST change nothing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/closing-the-drawer-returns-focus-to-curar
+---
+type: invariant
+statement: "When the curation drawer closes focus MUST return to the Curar control on the next animation frame."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/confidence-is-a-rounded-percentage
+---
+type: invariant
+statement: "A confidence from 0 to 1 MUST be shown as its value times 100 rounded to a whole number followed by a percent sign."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/curar-needs-a-target
+---
+type: invariant
+statement: "The Curar control MUST appear only when a curation target exists."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/curar-opens-the-drawer-for-the-target
+---
+type: invariant
+statement: "Curar MUST open the curation drawer with the target kind, item id and the node's canonical name as its label without changing the address."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/curation-target-follows-the-node
+---
+type: invariant
+statement: "The curation target MUST be the entity-match item keyed by the node id when its status is needs_review, otherwise the disputed item keyed by the first attribute whose effective status is uncertain or disputed, otherwise none."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/direction-picks-the-link-wording
+---
+type: invariant
+statement: "An outgoing link MUST be labelled with its link type and the arrow → and an incoming link with its inverse name and the arrow ←."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/empty-reveal-queue-ends-revealing
+---
+type: invariant
+statement: "A pane that is revealing MUST become ready when its reveal queue is empty, and the reveal step MUST change no other status."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/empty-state-tells-where-memory-will-appear
+---
+type: invariant
+statement: "The empty state MUST read \"A memória aparecerá aqui conforme você conversa.\" with no spinner and no action."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/empty-status-without-nodes-shows-only-the-empty-state
+---
+type: invariant
+statement: "The pane MUST show only the empty state with no canvas when its status is empty and it holds no nodes, and MUST show the canvas when it is empty and holds nodes."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/ending-a-turn-resets-the-delta-mark
+---
+type: invariant
+statement: "Ending a turn, whether with done or error, MUST reset the mark that a delta was received this turn."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/error-overlay-shows-the-message-or-the-default
+---
+type: invariant
+statement: "The error overlay MUST show the pane's error message and, when there is none, \"Não foi possível carregar o grafo agora.\", and MUST offer no action."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/escape-closes-the-panel
+---
+type: invariant
+statement: "Escape anywhere in the node detail panel MUST close it."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/every-item-offers-its-full-origin
+---
+type: invariant
+statement: "Every attribute and every relationship row MUST offer a disclosure Ver origem completa whose provenance is read, by attribute or by link, only while it is open."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/fit-and-recenter-take-300-milliseconds
+---
+type: invariant
+statement: "Fitting MUST fit all rendered nodes over 300 milliseconds with 0.1 padding and recentering MUST reset the viewport to x 0, y 0 and zoom 0.75 over 300 milliseconds."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/focusing-a-node-centres-it-at-zoom-one
+---
+type: invariant
+statement: "Focusing a node MUST centre the viewport on its middle at zoom 1 over 300 milliseconds and do nothing when the node is not on the canvas."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/force-layout-keeps-nodes-270-apart
+---
+type: invariant
+statement: "The force layout MUST give each node a footprint of 270 canvas units, a collision radius of 135, a link distance of 270, a charge strength of -300 and a centre at (0, 0)."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/force-layout-runs-a-hundred-silent-ticks
+---
+type: invariant
+statement: "The force layout MUST run 100 synchronous ticks without animation."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/full-provenance-is-cached-by-kind-and-id
+---
+type: invariant
+statement: "Full provenance MUST be cached under its kind and id."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/graph-view-requests-carry-the-same-token-header-as-chat
+---
+type: invariant
+statement: "The graph view save and restore MUST build their authorization header with the chat feature's helper, which carries the bearer access token when the auth store holds one and no header when it holds none."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/inline-entries-show-text-and-what-they-have
+---
+type: invariant
+statement: "Each inline provenance entry MUST show its fragment text and its confidence label, source type and received-at label each only when present."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/inline-provenance-needs-an-entry
+---
+type: invariant
+statement: "The inline provenance disclosure MUST appear only when the item has at least one provenance entry, summarised as Proveniência followed by the count in parentheses with the word entrada for one and entradas otherwise, and for a link as Proveniência do link."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/layout-controls-need-nodes-and-a-handler
+---
+type: invariant
+statement: "The layout controls MUST appear top-right only when at least one node is visible and at least one control is wired."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/layout-defaults-to-force
+---
+type: invariant
+statement: "The layout algorithm MUST be force by default and an unrecognized algorithm MUST fall back to force."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/layout-reruns-on-graph-or-counter-change
+---
+type: invariant
+statement: "The layout MUST re-run when the nodes, the links or the layout counter change and MUST NOT re-run when a node is moved by hand."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/link-state-follows-a-fixed-precedence
+---
+type: invariant
+statement: "A link's confidence state MUST be superseded when its status is superseded, otherwise disputed when it carries the disputed flag, otherwise low-confidence for the low_confidence flag, otherwise uncertain for the uncertain flag, and accepted when none applies."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/link-text-is-the-catalog-label-or-the-spaced-slug
+---
+type: invariant
+statement: "A link's shown text MUST be the untrimmed link_type_label when it is present and not blank, and otherwise the link type with each underscore replaced by a space."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/link-type-slug-is-kept-apart-from-its-text
+---
+type: invariant
+statement: "A mapped link MUST keep its link type slug as its label, and the slug MUST never be the text shown."
+constrains:
+- domain/graph-explorer/graph-link-view
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+---
+type: invariant
+statement: "Links whose endpoints are not both in the graph MUST be left out of every layout."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/lists-keep-the-answered-order
+---
+type: invariant
+statement: "Relationships, fragments, chunks, nodes and links MUST keep the order the answer or the delta gives them."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/loading-and-error-overlay-the-canvas
+---
+type: invariant
+statement: "The pane MUST put a loading overlay over the canvas while loading and an error overlay while in error, none while revealing or ready, and the nodes already shown MUST stay on the canvas under the overlay."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/loading-overlay-says-it-is-searching
+---
+type: invariant
+statement: "The loading overlay MUST show a spinner and the text \"Buscando na memória…\"."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/merged-or-deleted-node-has-no-state-and-is-left-off
+---
+type: invariant
+statement: "A node whose status is merged, deleted or unknown MUST get no confidence state and MUST be left off the pane without any error."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/missing-flags-and-provenance-are-empty-lists
+---
+type: invariant
+statement: "A link with no flags or provenance list MUST get an empty list for each."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/moving-a-node-pins-it
+---
+type: invariant
+statement: "Moving a node by hand MUST fix it at the dropped position and record it as pinned by the owner, and moving a node that is not in the graph MUST change nothing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/node-badge-follows-the-node-status
+---
+type: invariant
+statement: "A node's badge MUST be accepted for active, uncertain for needs_review and superseded for merged and for deleted."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/node-detail-has-no-merged-into-by-default
+---
+type: invariant
+statement: "A node detail with no merged-into node MUST treat it as none and each alias MUST keep its id, text and kind unchanged."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/node-detail-reads-share-a-key-by-node
+---
+type: invariant
+statement: "A node detail MUST be cached by node id, with a placeholder id when there is none, and a node's relationships under a separate key by node id that the node detail key does not cover."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/node-state-follows-its-status-alone
+---
+type: invariant
+statement: "A node's confidence state MUST be accepted for status active and uncertain for status needs_review, and never superseded, disputed or low-confidence."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/node-type-is-trimmed-lowercased-and-falls-back-to-concept
+---
+type: invariant
+statement: "A node's type MUST be its slug trimmed and lower-cased when that is one of the ten known node types and concept otherwise, and mapping MUST never fail."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/nodes-drag-only-when-a-commit-is-wired
+---
+type: invariant
+statement: "Nodes MUST be draggable only when a position commit is wired and every position change during a drag MUST be committed with the node id and coordinate."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/only-a-version-2-view-restores-its-layout
+---
+type: invariant
+statement: "A saved view's layout algorithm MUST be restored only for version 2 with a layout algorithm and every other view MUST restore as force without failing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/only-revealed-nodes-are-shown
+---
+type: invariant
+statement: "When a reveal set is supplied only revealed nodes MUST be shown and a link only when both its endpoints are revealed, and with no reveal set every node and link MUST be shown."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/original-input-is-carried-only-when-answered
+---
+type: invariant
+statement: "A raw information's original input MUST be carried only when the answer includes the field, including when it is null, and passed through unchanged."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/pane-is-a-region-named-after-the-graph
+---
+type: invariant
+statement: "The graph pane MUST be a region whose accessible name is Grafo de conhecimento and MUST take its nodes, links, status and error message from its caller without writing them."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/pane-is-busy-only-while-loading-or-revealing
+---
+type: invariant
+statement: "The pane MUST be marked busy only while its status is loading or revealing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/pane-starts-and-clears-empty
+---
+type: invariant
+statement: "A graph pane that starts or is cleared MUST hold no nodes, links, positions, pins, queued or revealed nodes and no error message, MUST have status empty, no delta received this turn, layout counter 0 and layout algorithm force."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/radial-layout-puts-the-root-at-the-centre
+---
+type: invariant
+statement: "The radial layout MUST put the root at (0, 0) with angle 0 pointing to the top and an angular gap of 1 between siblings and 2 between other neighbours divided by depth."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/radial-rings-take-the-largest-radius
+---
+type: invariant
+statement: "Each radial ring's radius MUST be the largest of depth times 200, 270 divided by twice the sine of pi over the ring count for a ring of two or more nodes, and the previous ring's radius plus 200, ring 0 having radius 0."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/read-failures-pass-through-unchanged
+---
+type: invariant
+statement: "A failed node detail, relationships or full provenance read MUST surface the request helper's own error with its code unchanged."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/reduced-motion-reveals-everything-at-once
+---
+type: invariant
+statement: "When the owner prefers reduced motion every queued node MUST be revealed at once with no stagger, and where the preference cannot be read motion MUST be assumed on."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/relationship-rows-keep-the-answered-order
+---
+type: invariant
+statement: "Relationship rows MUST be listed in the order received."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/relationships-are-a-named-busy-section
+---
+type: invariant
+statement: "The relationships section MUST be named Relações and marked busy while its read is pending and MUST check pending first, then failure, then no links, then the list."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/relationships-are-read-at-depth-one-both-ways
+---
+type: invariant
+statement: "A node's relationships MUST be requested at depth 1 and in direction both."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/relationships-say-loading-or-none
+---
+type: invariant
+statement: "While pending the relationships section MUST show the polite text \"Carregando relações…\" and with no links \"Nenhuma relação encontrada.\"."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/removing-nodes-removes-everything-about-them
+---
+type: invariant
+statement: "Removing nodes MUST drop them with their positions, revealed marks, pins, queued reveals and every link that touches one, and an empty list MUST change nothing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/reorganizing-releases-the-pins
+---
+type: invariant
+statement: "Reorganizing MUST clear the owner's pins and advance the layout counter without clearing positions beforehand."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/replace-keeps-only-the-delta
+---
+type: invariant
+statement: "Replacing with a delta MUST keep only its nodes and the links whose two endpoints are among them, clear positions, pins and revealed nodes, queue every node in delta order, mark a delta received and leave the status untouched."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/restore-reads-the-saved-view-of-the-conversation
+---
+type: invariant
+statement: "When a conversation is active its saved graph view MUST be read, a present view MUST replace the pane's contents and an absent one MUST change nothing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/restore-restores-the-layout-of-a-version-2-view
+---
+type: invariant
+statement: "A saved view of version 2 MUST be restored with its layout algorithm and any other version MUST be restored as version 1 without one."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/restoring-keeps-orphan-positions
+---
+type: invariant
+statement: "Restoring a saved view MUST keep the positions it holds for ids that are not among its nodes."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/restoring-shows-every-node-at-once
+---
+type: invariant
+statement: "Restoring a saved view MUST restore nodes, links, positions and pins, mark every node revealed, empty the queue, set the status ready even for a view with no nodes and clear the error message and the delta mark."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/reveal-goes-one-node-at-a-time-in-queue-order
+---
+type: invariant
+statement: "Queued nodes MUST be revealed one at a time from the head of the queue, 90 milliseconds apart by default."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/reveal-marks-nodes-only
+---
+type: invariant
+statement: "The reveal step MUST mark nodes only and MUST NOT decide which links are visible."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/revealing-a-revealed-node-changes-nothing
+---
+type: invariant
+statement: "Revealing a node that is already revealed MUST change nothing."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/screen-readers-hear-the-direction
+---
+type: invariant
+statement: "Screen readers MUST hear direção: destino for an outgoing link and direção: origem for any other."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/setting-a-status-keeps-the-error-message-only-for-error
+---
+type: invariant
+statement: "Setting any status other than error MUST clear the error message and setting error MUST keep the message it is given."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/several-components-hang-under-a-virtual-root
+---
+type: invariant
+statement: "With two or more components their roots MUST hang under a virtual root with the id __super_root__ that is never given a position."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/stopping-the-reveal-keeps-what-it-reached
+---
+type: invariant
+statement: "Stopping the reveal MUST cancel the pending step and leave revealed nodes revealed and queued nodes queued."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-attributes-section-is-headed-atributos
+---
+type: invariant
+statement: "The attributes section of a node detail MUST be headed Atributos."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-canvas-opens-at-three-quarters-zoom
+---
+type: invariant
+statement: "The canvas MUST open at x 0, y 0 and zoom 0.75 and fit its content with 0.1 padding on every change."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-canvas-stays-mounted-outside-the-empty-state
+---
+type: invariant
+statement: "The canvas MUST stay mounted through loading, revealing, ready and error so that pan and zoom survive, and be unmounted only for the empty state."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-close-button-takes-focus
+---
+type: invariant
+statement: "The panel's close button MUST be named Fechar detalhes do nó and take focus when the panel mounts and whenever the node id changes."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-first-node-id-key-is-a-placeholder
+---
+type: invariant
+statement: "A read with no node id MUST use the placeholder id __noop__ in its key."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-layout-picker-needs-the-algorithm-and-its-setter
+---
+type: invariant
+statement: "The layout picker MUST appear only when both the current algorithm and its setter are supplied, offer force, tree and radial in that order labelled Força, Árvore and Radial, and be named Algoritmo de layout do grafo."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-loading-view-says-it-is-loading
+---
+type: invariant
+statement: "While loading the panel MUST show the label given on click or nothing in its header and a spinner with the polite text \"Carregando detalhes…\" in its body."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-neighbour-is-the-other-end
+---
+type: invariant
+statement: "A relationship's neighbour MUST be the endpoint that is not the starting node, named and typed from the answer's nodes and shown by its id with an empty type when absent from them."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-origin-body-checks-pending-failure-then-data
+---
+type: invariant
+statement: "The origin body MUST check pending first, then failure, then no fragments, then the list, be marked busy while pending and say \"Carregando origem…\" politely."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-overlay-is-a-polite-status-region
+---
+type: invariant
+statement: "The overlay MUST be a polite status region whose card is named Erro do grafo in the error variant and Carregando grafo in the loading variant."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-overlay-lets-the-pointer-through
+---
+type: invariant
+statement: "The overlay MUST NOT capture the pointer so that pan, zoom and click still reach the canvas."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-overlay-message-is-two-lines-at-most
+---
+type: invariant
+statement: "The overlay message MUST be clamped to at most 2 lines."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-owner-cannot-draw-links
+---
+type: invariant
+statement: "The owner MUST NOT be able to draw links on the canvas, elements MUST be selectable and panning by drag and zooming by scroll MUST be on."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-pane-reveals-at-the-hooks-default-gap
+---
+type: invariant
+statement: "The pause between revealing one node and the next MUST default to the reveal step's own default gap."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-pane-wires-the-owner-s-arrangement-to-the-store
+---
+type: invariant
+statement: "The pane MUST wire node dragging to moving a node, the reorganize control to reorganizing and the algorithm picker to choosing the layout algorithm."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-panel-checks-pending-then-failure-then-data
+---
+type: invariant
+statement: "The node detail panel MUST check pending first, then failure, then data, and show the loading view when there is no data and no failure."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-panel-is-a-region-named-after-the-node
+---
+type: invariant
+statement: "The node detail panel MUST be a complementary region named Detalhes do nó followed by the loaded canonical name, else the label given on click, else carregando."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-panel-reads-the-node-by-id
+---
+type: invariant
+statement: "The node detail panel MUST read the node's detail by its id."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/the-reorganize-control-needs-its-handler
+---
+type: invariant
+statement: "The reorganize control MUST appear when a reset handler is supplied, call it, read Reorganizar and be named Reorganizar o layout do grafo."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/title-and-document-date-come-from-metadata
+---
+type: invariant
+statement: "The title MUST be the metadata title and the document date the metadata document_date shown day, month, year, each only when a non-empty string and null otherwise."
+constrains:
+- domain/graph-explorer/node-detail
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/tree-and-radial-layouts-share-one-spanning-tree
+---
+type: invariant
+statement: "The tree and radial layouts MUST lay out one spanning tree built breadth-first over undirected links, ignoring self-links, counting duplicates once, taking component roots by highest degree with ties to the smaller id and visiting neighbours in ascending id order."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/tree-layout-grows-left-to-right
+---
+type: invariant
+statement: "The tree layout MUST run depth along x and siblings along y, 110 canvas units between siblings and 340 between layers."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/turn-done-after-a-delta-makes-the-pane-ready
+---
+type: invariant
+statement: "A turn that ends with done after a delta arrived that turn MUST make the pane ready with no error message."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/turn-done-without-a-delta-leaves-the-status
+---
+type: invariant
+statement: "A turn that ends with done and no delta that turn MUST leave the pane's status as it was."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/turn-error-ends-a-busy-pane-in-error
+---
+type: invariant
+statement: "A turn that ends with error while the pane is loading or revealing MUST put it in error with no error message from that path, and from empty, ready or error MUST leave its status as it was."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/graph-explorer/view-failures-are-silent
+---
+type: invariant
+statement: "A failed graph view restore or save MUST show the owner nothing and a failed save MUST NOT be retried."
+constrains:
+- domain/graph-explorer/graph-pane
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/a-recorded-source-names-the-model-and-prompt-version
+---
+type: invariant
+statement: "A source the screen records MUST name the model claude-opus-4-8 and the prompt version v3."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/a-recorded-source-names-the-model-and-prompt-version.log
+---
+entries:
+- field: statement
+  unstated: The ingest screen names a fixed model and prompt version whenever it records a source, and no node says which.
+  decided: The screen names claude-opus-4-8 and v3.
+  why: Those are the values the running screen sends and the extraction rules conditioned on prompt version already presuppose v3 for the screen.
+---
+
+=== rules/ingest-workspace/a-traversal-read-stays-fresh-for-five-minutes
+---
+type: invariant
+statement: "A traversal read of an assembly MUST count as fresh for five minutes, during which neither a repeated assembly nor a regained window focus reads it again."
+constrains:
+- domain/ingest-workspace/ingest-session
+---
+
+## Description
+
+None.
+
+=== rules/ingest-workspace/an-assembly-delta-names-ingest-assembly-as-its-source-tool
+---
+type: invariant
+statement: "The graph delta an ingest assembly shows MUST name ingest_assembly as its source tool."
+constrains:
+- domain/chat/graph-delta
 ---
 
 ## Description
@@ -12338,6 +16831,49 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+---
+type: invariant
+statement: "A node status and an assertion flag MUST cross the wire with each hyphen of their enumeration value written as an underscore."
+constrains:
+- domain/knowledge-base/node-status
+- domain/knowledge-base/assertion-flag
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores.log
+---
+entries:
+- field: statement
+  unstated: A survey of the graph stream found needs_review and low_confidence on the wire while the enumerations spell needs-review and low-confidence, and nothing said which spelling the stream carries.
+  decided: The stream carries the underscore form of each hyphenated enumeration value.
+  why: The element schema keeps enumeration values in kebab-case with code forms derived, and the running stream and back end use the underscore forms.
+---
+
+=== rules/knowledge-base/a-source-type-crosses-the-wire-in-the-materials-words
+---
+type: invariant
+statement: "A source type MUST cross the wire as ata, artigo, transcricao or outro for meeting-minutes, article, transcript or other and as its own value for every other source type."
+constrains:
+- domain/knowledge-base/source-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/a-source-type-crosses-the-wire-in-the-materials-words.log
+---
+entries:
+- field: statement
+  unstated: The screen sends ata, artigo, transcricao and outro where the enumeration holds meeting-minutes, article, transcript and other, and nothing says the wire uses the material words.
+  decided: Those four values cross the wire as the material words and every other source type as itself.
+  why: The back end accepts exactly pdf, email, ata, chat, artigo, transcricao and outro, and the enumeration description already names those words as the material own.
+---
 
 === rules/knowledge-base/accept-rate
 ---
@@ -18698,7 +23234,7 @@ entries:
 === rules/owner-access/sign-in-destination-defaults-to-chat
 ---
 type: invariant
-statement: After a successful sign-in the owner MUST be taken to the destination the address requested, or to /chat when the address requested none or one that is not a valid sign-in destination.
+statement: After a successful sign-in the owner MUST be taken to the destination the address requested in its redirect parameter, or to /chat when the address requested none or one that is not a valid sign-in destination.
 constrains:
 - domain/owner-access/sign-in-attempt
 - domain/owner-access/sign-in-destination
@@ -18707,6 +23243,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/owner-access/sign-in-destination-defaults-to-chat.log
+---
+entries:
+- field: statement
+  unstated: The address names the requested destination in a parameter the rule does not name.
+  decided: The parameter is named redirect.
+  why: The running sign-in reads exactly that parameter and anything building a sign-in address has to match it.
+---
 
 === rules/owner-access/sign-in-destination-is-a-local-path
 ---
@@ -18794,6 +23339,70 @@ constrains:
 ## Description
 
 None.
+
+=== scenarios/application-shell/a-401-is-refreshed-once
+---
+subject: rules/application-shell/a-repeated-request-never-refreshes-again
+given:
+- "a request answered 401"
+- "the identity provider returns a fresh token"
+when:
+- "the request is repeated and answered 401 again"
+then:
+- "no second refresh is asked"
+- "the answer is judged like any answer below 500"
+---
+
+## Description
+
+A second 401 is not refreshed.
+
+=== scenarios/application-shell/an-empty-rename-sends-nothing
+---
+subject: rules/application-shell/a-rename-sends-the-trimmed-title
+given:
+- "the owner is renaming a conversation"
+- "the field holds only spaces"
+when:
+- "the owner presses Enter"
+then:
+- "nothing is sent"
+- "the field closes with no message"
+---
+
+## Description
+
+A blank title is dropped silently.
+
+=== scenarios/application-shell/an-expiring-token-redirects-to-sign-in
+---
+subject: rules/application-shell/the-guard-needs-a-fresh-token
+given:
+- "the access token expires in 20 seconds"
+when:
+- "the owner opens the curation address"
+then:
+- "the owner is sent to the sign-in address with the reason session_expired"
+---
+
+## Description
+
+A token about to expire is not fresh.
+
+=== scenarios/application-shell/unreachable-health-stays-verifying
+---
+subject: rules/application-shell/health-is-judged-by-the-database-field
+given:
+- "the back end is unreachable and no health answer was ever parsed"
+when:
+- "the footer asks for the health"
+then:
+- "the footer reads verificando…"
+---
+
+## Description
+
+An unreachable back end never reads as banco inacessível.
 
 === scenarios/chat-workspace/escape-stops-a-streaming-turn
 ---
@@ -18997,6 +23606,71 @@ then:
 ## Description
 
 An item someone else already resolved stays gone.
+
+=== scenarios/graph-explorer/a-deleted-source-offers-no-retry
+---
+subject: rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
+given:
+- "the origin read fails with BUSINESS_RAW_INFORMATION_DELETED"
+when:
+- "the panel shows the failure"
+then:
+- "the alert reads that the original document was removed for compliance"
+- "no retry is offered"
+---
+
+## Description
+
+A removed source is final.
+
+=== scenarios/graph-explorer/first-change-after-a-restore-is-not-saved
+---
+subject: rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+given:
+- "a saved view was just restored for the active conversation"
+when:
+- "the first graph change with at least one node happens"
+then:
+- "nothing is saved"
+- "the next change is saved after 800 milliseconds"
+---
+
+## Description
+
+A restore does not write itself back.
+
+=== scenarios/graph-explorer/reduced-motion-reveals-all-at-once
+---
+subject: rules/graph-explorer/reduced-motion-reveals-everything-at-once
+given:
+- "the owner prefers reduced motion"
+- "four nodes are queued for reveal"
+when:
+- "the reveal step runs"
+then:
+- "all four nodes are revealed at once"
+- "the pane becomes ready"
+---
+
+## Description
+
+A reduced-motion owner gets no stagger.
+
+=== scenarios/graph-explorer/unknown-neighbour-is-shown-by-its-id
+---
+subject: rules/graph-explorer/the-neighbour-is-the-other-end
+given:
+- "a relationship whose neighbour is missing from the answer's nodes"
+when:
+- "the relationships are shown"
+then:
+- "the neighbour is named by its id"
+- "its type is empty"
+---
+
+## Description
+
+A missing neighbour is not an error.
 
 === scenarios/ingest-workspace/conflicting-extraction-shows-the-failure
 ---

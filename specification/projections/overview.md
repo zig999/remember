@@ -6,18 +6,29 @@ Derived by spec.py from the specification files; never edited.
 
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
+| application-shell | supporting | 10 | 121 | 2 | 4 |
 | chat | supporting | 17 | 131 | 1 | 0 |
-| chat-workspace | supporting | 6 | 125 | 2 | 4 |
-| curation-workspace | supporting | 10 | 211 | 3 | 9 |
-| ingest-workspace | supporting | 3 | 55 | 3 | 4 |
-| knowledge-base | core | 75 | 401 | 5 | 10 |
+| chat-workspace | supporting | 6 | 126 | 2 | 4 |
+| curation-workspace | supporting | 10 | 218 | 3 | 9 |
+| graph-explorer | supporting | 10 | 170 | 3 | 4 |
+| ingest-workspace | supporting | 3 | 58 | 3 | 4 |
+| knowledge-base | core | 75 | 403 | 5 | 10 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
 
+- application-shell/application-shell — 0 entity(ies) inside, 6 attribute(s) on the root
+- application-shell/conversation-menu — 0 entity(ies) inside, 3 attribute(s) on the root
+- application-shell/failure-router — 0 entity(ies) inside, 3 attribute(s) on the root
+- application-shell/message-bubble — 0 entity(ies) inside, 4 attribute(s) on the root
+- application-shell/owner-session — 0 entity(ies) inside, 5 attribute(s) on the root
+- application-shell/request-helper — 0 entity(ies) inside, 2 attribute(s) on the root
+- application-shell/state-badge — 0 entity(ies) inside, 2 attribute(s) on the root
 - chat-workspace/chat-session — 0 entity(ies) inside, 9 attribute(s) on the root
 - chat/conversation — 3 entity(ies) inside, 5 attribute(s) on the root
 - curation-workspace/curation-session — 0 entity(ies) inside, 8 attribute(s) on the root
+- graph-explorer/graph-pane — 0 entity(ies) inside, 13 attribute(s) on the root
+- graph-explorer/node-detail — 0 entity(ies) inside, 5 attribute(s) on the root
 - ingest-workspace/ingest-session — 0 entity(ies) inside, 8 attribute(s) on the root
 - knowledge-base/attribute-key — 0 entity(ies) inside, 8 attribute(s) on the root
 - knowledge-base/compliance-deletion — 0 entity(ies) inside, 3 attribute(s) on the root
@@ -79,4 +90,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-259 decision(s) disclosed, 2 location(s) retired in the decision logs.
+278 decision(s) disclosed, 2 location(s) retired in the decision logs.
