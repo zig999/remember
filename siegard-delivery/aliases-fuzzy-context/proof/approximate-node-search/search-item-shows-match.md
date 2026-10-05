@@ -4,15 +4,14 @@ implementation: sha256:9753b39ef9244b2b5d06b12825916b612f9b10e4749267282faf2d52b
 standard:
   at: ../standards/backend-node-service.yaml
   pin: sha256:8c38c4f11796188276d89c2c7ed1710a4eed05f701034f22c68af0a554142c77
-run: run/approximate-node-search-search-item-shows-match-suite
+run: run/prove-aliases-fuzzy-context-2
 title: Proof that a hop-0 knowledge node search item shows how it matched
-summary: Service-level and transport-level tests that exact and approximate hop-0 node items carry match and similarity as the specification states, that link and fragment items carry neither, and that flags stay free of match values.
+summary: Service-level and transport-level tests that exact and approximate hop-0 node items carry match and similarity as the specification states, that link and fragment items (including a fragment a chunk-layer match also supports) carry neither, and that flags stay free of match values.
 tests:
 - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
   name: 'searchKnowledgeService: a search for the correct name of two knowledge nodes > answers the knowledge nodes Petrobras and Petrobrás Distribuidora for petrobras as two node items, each carrying the match exact'
-  proves: A search for "petrobras" over the knowledge nodes "Petrobras" and "Petrobrás Distribuidora", each with an accepted information fragment mentioning it, returns both knowledge nodes. In that search both returned knowledge node items carry the match exact. (This also gives the exact-match evidence for "An exactly matched hop-0 knowledge node item carries the match exact.")
+  proves: A search for "petrobras" over the knowledge nodes "Petrobras" and "Petrobrás Distribuidora", each with an accepted information fragment mentioning it, returns both knowledge nodes. In that search both returned knowledge node items carry the match exact. (This also gives the exact-match evidence for "An exactly matched hop-0 knowledge node item carries the match exact.") It decides the service's tagging of what the exact route returns, not the database's matching of "petrobras" to the two names.
   fails_when: either node is missing from the answer, or either node item carries a match other than exact (absent or approximate) when the exact route returned it
-  demonstrates: scenarios/knowledge-base/correct-name-matches-exactly
 - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
   name: 'searchKnowledgeService: the match and similarity of a hop-0 knowledge node item > answers an exactly matched node with the match exact and no similarity, and an approximately matched node with the match approximate and the highest word similarity of its aliases, not its weighted score'
   proves: 'A knowledge node search item at hop 0 carries whether the node layer matched it exactly or approximately, and the similarity of an approximate match. Also the criteria: an exact hop-0 item carries the match exact; an approximate one carries the match approximate and its similarity; an exact item carries no similarity. Also the UNDERDETERMINED entry on approximate-match-similarity: the stubbed approximate row has similarity 0.8 and score 0.72 (0.9 times 0.8), and the item must carry 0.8.'
@@ -33,8 +32,12 @@ tests:
   fails_when: the flags of an approximately matched node item contain any value, such as approximate, instead of staying empty for an active node
 - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
   name: 'searchKnowledgeService: the items that are neither a knowledge node > answers every knowledge link reached by expansion, from an exactly or an approximately matched node, and every information fragment with no match and no similarity'
-  proves: A search item for a knowledge link or an information fragment carries no node match and no similarity. Also the criterion "A knowledge link item reached by expansion carries no match." and the UNDERDETERMINED entry on link-and-fragment-items-carry-no-match (no match on fragment items, no similarity on link items reached from an approximately matched node).
+  proves: A search item for a knowledge link or an information fragment carries no node match and no similarity. Also the criterion "A knowledge link item reached by expansion carries no match." and the UNDERDETERMINED entry on link-and-fragment-items-carry-no-match (no match on fragment items, no similarity on link items reached from an approximately matched node). It exercises a fragment the fragment layer matched alone; the case of a fragment a chunk-layer match also supports is the new test beside it, which now carries the node's demonstrates.
   fails_when: any expanded link item, from an approximately or an exactly matched node, or any fragment item carries a match or a similarity; or the link or fragment items are absent from the answer
+- file: src/__tests__/unit/query-retrieval/search-service-fragment-link-no-match.spec.ts
+  name: 'searchKnowledgeService: the link and fragment items of a search over every layer > answers each knowledge link reached from an exactly or an approximately matched node, and the information fragment that the fragment layer and a supporting chunk both matched, with no match and no similarity'
+  proves: A search item for a knowledge link or an information fragment carries no node match and no similarity (rules/knowledge-base/link-and-fragment-items-carry-no-match), over every class the rule names that the service can produce, in one search across all three layers with expansion on. The links are reached by expansion from an exactly matched node and from an approximately matched node, so a similarity copied from the source node would show. The fragment is matched by the fragment layer and also supported by a chunk-layer match that the search collapses into it, which is the case of a fragment the chunk layer surfaces. The stand-in answers each store query by its SQL text, with no business rule decided in it.
+  fails_when: any expanded link item, from the exactly or the approximately matched node, or the fragment item that a chunk-layer match also supports carries a match or a similarity (for example the source node's match or similarity is copied onto a link, or the fragment is tagged exact); or the link or fragment items are absent from the answer
   demonstrates: rules/knowledge-base/link-and-fragment-items-carry-no-match
 - file: src/__tests__/unit/query-retrieval/search-repository-approximate-node.spec.ts
   name: searchNodeAliasApproximateLayer SQL contract > selects the similarity as the highest word similarity of the node's aliases to the normalized query, with no layer weight applied
@@ -50,7 +53,7 @@ tests:
   fails_when: the MCP search tool's payload leaves match or similarity out of the node item, or they carry other values
 files:
 - path: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
-  effect: The harness's stubbed approximate-route rows now carry the similarity column the real query returns (new approximateHitRow replaces nodeHitRow for approximate matches); the existing approximate-node expansion test is unchanged in what it asserts. The test listed under `tests` is added to this file.
+  effect: The harness's stubbed approximate-route rows now carry the similarity column the real query returns (new approximateHitRow replaces nodeHitRow for approximate matches); the existing approximate-node expansion test is unchanged in what it asserts. The test listed under `tests` is added to this file. Not changed in this re-delivery.
 not_applicable:
 - edge_case: absent, blank, over-long or unparseable query text
   why: Refused at the validation boundary and by the parse gate under other nodes' rules (search-query-not-blank, search-query-length, search-query-must-parse) and already tested; this task's fields are not built on that path.
@@ -74,16 +77,23 @@ untested:
 - 'rules/knowledge-base/node-layer-matches-through-aliases: whether the lexical parse of the query text matches an alias is decided by PostgreSQL full text and cannot be decided against a fake pool; the tests tag what the exact route returns.'
 - 'rules/knowledge-base/approximate-match-similarity: that the stored value is the highest word similarity over the node''s aliases is computed by the database. The tests prove the service passes the row''s similarity through unweighted and that the SQL selects max(word_similarity(...)) as similarity, not the computed value against real aliases.'
 - 'contracts/knowledge-base/retrieval: the contract spans sixteen operations; the tests cover only the search answer''s match and similarity over REST and MCP.'
-- 'scenarios/knowledge-base/correct-name-matches-exactly: the scenario test stubs the exact route''s answer. That the database''s lexical parse of "petrobras" actually matches the alias "Petrobrás Distribuidora" (accent folding) is not proven.'
+- 'scenarios/knowledge-base/correct-name-matches-exactly: the scenario cannot be decided without a real node-layer match. A search for "petrobras" matching the names "Petrobras" and "Petrobrás Distribuidora" is evaluated by the database (norm(), accent folding, the simple_unaccent_v1 full-text parse of the aliases), and a stand-in that decides it from the search text and stored names would reimplement those rules rather than stand in for the store. No test connects to a real database in this delivery, so the remainder the auditor named (exact two node items, each exact, decided from the search text and the names) is left unproven. The existing test is kept as evidence of the service''s tagging only, and no longer claims the node under `demonstrates` because it exercises the scenario in part.'
+- 'rules/knowledge-base/link-and-fragment-items-carry-no-match, the remainder''s literal form: no input produces an information fragment item whose layer is chunk. The service builds fragment items with layer fragment only, and rules/knowledge-base/chunk-match-never-surfaces (not a node this task implements) says a chunk-layer match never surfaces as a search item, so asserting layer chunk would contradict the specification. The fragment-supported-by-a-chunk-match case, the closest the specification allows, is exercised by the new test and carries no assertion on the item''s layer.'
 - 'Inference about behavior: items without a match or similarity omit the key rather than send null. The node only declares both optional and no node decides null versus omission, so the tests treat absent and null alike and assert neither.'
 - 'Inference about behavior: the similarity is kept as the real value word_similarity returns, with no cast. How a PostgreSQL real arrives through the driver (digit noise on the wire) is not proven against a database; the node says only decimal.'
 - The scenario misspelled-name-matches-approximately ("Petrobrass" over "Petrobras") is not in this task's implements; its approximate-match and similarity clause is evidenced here only through stubs, and the approximate match itself is not decided here.
+divergences:
+- cites: MNT-03
+  file: src/__tests__/unit/query-retrieval/search-service-fragment-link-no-match.spec.ts
+  departure: The store stand-in (rows for nodes, links, fragments, chunks and provenance, and the SQL-text router) is copied from the harness of search-service-expansion.spec.ts rather than called.
+  why: The harness is private to that spec and this re-delivery may not edit an existing test file; extracting a shared helper would have touched it. The copy answers store queries by their SQL text only and decides no business rule.
 ---
 
 ## What it is
 
-Service-level and transport-level tests that exact and approximate hop-0 node items carry match and similarity as the specification states, that link and fragment items carry neither, and that flags stay free of match values.
+Service-level and transport-level tests that exact and approximate hop-0 node items carry match and similarity as the specification states, that link and fragment items (including a fragment a chunk-layer match also supports) carry neither, and that flags stay free of match values.
 
 ## Notes
 
 One test pins the emitted SQL of the approximate route because every test here runs against a fake pool; the database-computed values themselves are unproven.
+Proof-only re-delivery for the testable remainders the review aliases-fuzzy-context left; green on run/prove-aliases-fuzzy-context-2.
