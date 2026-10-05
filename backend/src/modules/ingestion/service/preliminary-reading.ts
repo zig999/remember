@@ -257,12 +257,14 @@ function logProducedContext(
 export async function produceDocumentContext(
   request: DocumentContextRequest
 ): Promise<DocumentContext | null> {
+  const held = request.run.document_context ?? null;
+  if (held !== null) return held;
   const skipped = skippedReadingStatus(request);
   if (skipped !== null) {
     await recordSkippedReading(request, skipped);
     return null;
   }
-  if (!shouldReadDocument(request)) return request.run.document_context ?? null;
+  if (!shouldReadDocument(request)) return null;
   let context: DocumentContext;
   try {
     context = await readDocumentContext(request);
