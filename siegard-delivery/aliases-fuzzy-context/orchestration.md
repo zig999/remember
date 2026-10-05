@@ -21,3 +21,4 @@ Delivered task/document-context/preliminary-reading in 1363557: build and suite 
 Delivered task/document-context/failed-reading-continues in c91d341: build and suite green on the first run.
 Delivered task/document-context/skip-preliminary-reading in 7d7da75: suite red once on the code-point tail (cause code, fixed by the implementer), green on suite-2.
 Delivered task/document-context/chunk-prompt-shows-context in 7003bde: build and suite green on the first run.
+Delivered task/document-context/run-answers-show-document-context in 3af0433: build and suite green on the first run.
