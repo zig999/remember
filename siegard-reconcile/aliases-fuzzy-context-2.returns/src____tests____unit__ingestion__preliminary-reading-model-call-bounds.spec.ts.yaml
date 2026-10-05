@@ -1,0 +1,273 @@
+findings:
+  - file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+    where: >-
+      the second test, "calls the context model exactly three times for one preliminary reading when it answers a retryable error on every attempt", with the overloadedFetch stub and the constants OVERLOADED_STATUS and MAX_ATTEMPTS_OF_ONE_CALL
+    evidence: >-
+      const OVERLOADED_STATUS = 529;
+      ...
+      error: { type: "overloaded_error", message: "Overloaded" },
+      ...
+      expect(readingAttempts).toHaveLength(MAX_ATTEMPTS_OF_ONE_CALL);
+    cost: >-
+      The test pins that a 529 overloaded answer is retried, and retried exactly twice. The node says only "is retried at most twice". It says nothing about which failures are retried, and nothing that makes three attempts a floor rather than a ceiling. A reader looking for which answers the extraction retries finds it in this test and not in the specification. If the retry policy changes, nothing in the specification says which is right.
+    kind: unstated
+    correction: >-
+      Analysis would need to decide whether which provider answers are retried, and whether the number of attempts is a floor as well as a ceiling, belong in constraints/extraction-model-call-bounded or in a node of their own. Until then the test states a fact the specification does not hold.
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never examines how the document content or the context is presented to the model. It reads only `model` from the request body: `RequestBodySchema = z.object({ model: z.string() })`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      the first test's `boundsOf` assertions and the second test's attempt count
+    evidence: >-
+      const FIVE_MINUTES_MS = 5 * 60 * 1000; const MAX_ATTEMPTS_OF_ONE_CALL = 3; `attemptsAtMostThree: own.length <= MAX_ATTEMPTS_OF_ONE_CALL`, `abandonedWithinFiveMinutes: Math.max(...waits) <= FIVE_MINUTES_MS`, `expect(bounds).toEqual({ reading: bounded, firstChunk: bounded })`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls `runLlmExtraction(buildPool(), RUN_ID, ...)` directly and asserts no operation's answer or refusal. There is no HTTP status and no error code anywhere in it.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search, read or traverse call. Its only import from the retrieval side is none; it imports `buildSnapshot` and `runLlmExtraction` from ingestion.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `uncertain`, `disputed` or `low-confidence` value appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture only supplies the absence of a context: `document_context: null,`. No summary, entities or model shape is declared.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture only supplies `document_context_status: null,`. The enumeration's values (produced, single-chunk, too-long, failed) are never declared.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity, names list or node type reference appears apart from the catalog fixture `nodeTypes: [{ id: NODE_TYPE_PERSON, name: "Person" }]`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `runRow()` returns a database row fixture with `id`, `model`, `prompt_version`, `status`, `attempts` and so on. It is a stub of the rows the repository reads, not a declaration of the LLMRun shape.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `exact` or `approximate` match appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture passes the value along: `prompt_version: "v5",`. The set of versions is not declared.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item, score, hop or similarity appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or node proposal appears. The file only observes the model calls' timing and count.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity or search appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run fixture names its prompt version outright, `prompt_version: "v5",`. No ingestion that names none is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model never answers with entities. `neverAnsweringFetch` never resolves and `overloadedFetch` always answers 529.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the ENV constant and the `boundsOf(attempts, CONTEXT_MODEL)` reading assertion
+    evidence: >-
+      const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", CONTEXT_MODEL } as const; ... `reading: boundsOf(attempts, CONTEXT_MODEL), firstChunk: boundsOf(attempts, RUN_MODEL)`. The fallback to claude-haiku-4-5 is not exercised.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the fixture of three chunks under v5 and the `called: true` assertion on the reading's model
+    evidence: >-
+      const CHUNK_TEXTS = ["first chunk body", "second chunk body", "third chunk body"]; `prompt_version: "v5"`, `document_context: null`, and the expectation `{ reading: bounded, firstChunk: bounded }` where `bounded` has `called: true`. The 100000 code-unit ceiling is not exercised.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run fixture always holds `document_context: null` and `document_context_status: null`. No reuse is exercised.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No status is asserted. The fixture holds `document_context_status: null,` and the SQL stub answers `UPDATE llm_run` with the same run row.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is ever produced. The model never returns a successful answer.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment proposal is made. The model never returns tool calls.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The request body is parsed only for its model: `RequestBodySchema.parse(JSON.parse(String(init?.body)))`. The prompt text is never inspected.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only v5 is exercised and no prompt text is inspected.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The prompt text is never inspected. `hoje`, `ontem` and `amanhã` do not appear.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The prompt text is never inspected.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture holds three chunks (`chunk_index: index`) and the test observes the first chunk's call by model (`firstChunk: boundsOf(attempts, RUN_MODEL)`). It asserts no order and none of what each chunk is shown with. The 200 code-point tail is not exercised.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw fixture carries `metadata: { document_date: "2026-09-30", title: "Test doc" }`, but no prompt content about relative dates is inspected.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or node resolution appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name comparison appears in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only `prompt_version: "v5"` is exercised. No earlier version is run.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the known `prompt_version: "v5"` is used. No unknown version is run.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run retry is exercised. `retry` here is the model call's attempts, not the LLM run's.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or node proposal appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or ALIAS_NOT_IN_SOURCE appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture holds three chunks under v5, but the model never answers with proposals. Neither "João Silva" nor any anchoring is exercised.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model never yields a document context and no store content is asserted. The persistence stub is `answer(sql)`, which returns `EMPTY_RESULT` for everything but the run, raw and chunk reads.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run fixture always holds `document_context: null`, so no reuse after a retried run is exercised.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture always holds three chunks (`CHUNK_TEXTS` has three entries), so the single-chunk case is never exercised.
+looked_past: >-
+  The fixture literals (the run model "claude-opus-4-8", the stub context model "claude-context-under-test", the 240-minute drain loop and the hard-coded UUIDs) are test scaffolding and not domain facts, so I left them unreported.

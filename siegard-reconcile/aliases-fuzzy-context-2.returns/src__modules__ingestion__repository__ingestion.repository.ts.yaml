@@ -1,0 +1,225 @@
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the LlmRunRow interface, which declares the run's attributes except summary
+    evidence: >-
+      export interface LlmRunRow { readonly id: string; readonly model: string; readonly prompt_version: string; readonly started_at: Date; readonly finished_at: Date | null; readonly status: "running" | "completed" | "failed"; readonly attempts: number; readonly input_raw_information_id: string; readonly idempotency_key: string; readonly document_context: DocumentContext | null; readonly document_context_status: DocumentContextStatus | null; }
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkRow interface, which declares the chunk's shape in part (no status or superseded_at), and toRawChunkResponse
+    evidence: >-
+      export interface RawChunkRow { readonly id: string; readonly raw_information_id: string; readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly offset_end: number; readonly locator: ChunkLocator; readonly chunking_version: string; }
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      the RawInformationRow interface, which declares the shape in part (no title, document_date, status or superseded_at), and the INSERT in insertRawInformation
+    evidence: >-
+      export interface RawInformationRow { readonly id: string; readonly source_type: SourceType; readonly content: string; readonly storage_ref: string | null; readonly content_hash: string; readonly received_at: Date; readonly metadata: Record<string, unknown>; readonly original_input: string | null; }
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the status member of LlmRunRow, an inline union of the three values
+    evidence: >-
+      readonly status: "running" | "completed" | "failed";
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      the file persists and reads rows (insertRawInformation, findRawInformationById) and builds no prompt, so it never presents content to a model
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      the file makes no call to a language model; it holds only queries such as `SELECT ... FROM llm_run WHERE idempotency_key = $1 LIMIT 1`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      toRawInformationResponse and toRawChunkResponse, which carry the fields the read-raw-information and list-raw-chunks answers name; the refusals, status codes, proposals and run reads sit elsewhere
+    evidence: >-
+      return { id: row.id, source_type: row.source_type, content: row.content, storage_ref: row.storage_ref, content_hash: row.content_hash, received_at: row.received_at.toISOString(), metadata: row.metadata ?? {}, }; and return { id: row.id, raw_information_id: row.raw_information_id, chunk_index: row.chunk_index, text: row.text, offset_start: row.offset_start, offset_end: row.offset_end, locator: row.locator ?? null, chunking_version: row.chunking_version, };
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      the file holds no search, provenance, catalog or graph read; its only reads are findRawInformationByHash, findRawInformationById, findChunksByRawInformationId and findLlmRunByIdempotencyKey
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      no flag vocabulary appears in the file; it declares only RawInformationRow, RawChunkRow and LlmRunRow
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      the file only imports the type and uses it as a column type, so it declares no shape for it: `import type { DocumentContext, DocumentContextStatus } from "../dto/llm-run.dto.js";` and `readonly document_context: DocumentContext | null;`
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      the file imports the type from the dto and passes it along, so it declares no enumeration: `readonly document_context_status: DocumentContextStatus | null;`
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      no document entity is declared or handled here; document_context appears only as an opaque column in the SELECT and RETURNING lists
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      no node matching occurs in this file; it holds no node queries
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      prompt_version is typed as a bare string and no version set is declared: `readonly prompt_version: string;` and `prompt_version: string;` in insertLlmRun's args
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      the file builds no search items
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      the file touches no alias; it holds only raw_information, raw_chunk and llm_run queries
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      no similarity is computed here
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      insertLlmRun takes prompt_version as a required argument and applies no default: `INSERT INTO llm_run (model, prompt_version, input_raw_information_id, idempotency_key) VALUES ($1, $2, $3, $4)`
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      no entity filtering against a node-type catalog happens in this file
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      no context model is named or selected in this file
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      the file only selects document_context as a column; it makes no preliminary reading and holds no 100000 threshold
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      no statement writes document_context_status; insertLlmRun does not set it and the finder only selects it
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      no statement writes document_context_status, and no single-chunk, too-long, failed or produced value appears in the file
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      no summary handling occurs in this file
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      no summary or line count appears in this file
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      no node resolution occurs in this file
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      no search items are built in this file
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      the file proposes no fragments; it holds chunk reads and writes only
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      the file does not read chunks to a model. Its only link to the rule is the query that supplies the ordered chunks, `FROM raw_chunk WHERE raw_information_id = $1 ORDER BY chunk_index ASC`. The reading, the 200-code-point tail and the source details are not here.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      no search items are built in this file
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      no alias or node writes occur in this file
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      no name comparison or normalization appears in this file
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      no node or alias creation occurs in this file
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      insertLlmRun writes no document_context or document_context_status and takes no version-conditional branch
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      no search items are built in this file
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      no node layer or word-similarity threshold appears in this file
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      no node layer appears in this file
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      the file checks no prompt version against a held set; it inserts the value it is given as `args.prompt_version`
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      no retry statement is in this file; the retry sits in llm-run.repository.ts
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      no ranking appears in this file
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      no alias admission occurs in this file
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      no resolution occurs in this file
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      no alias admission occurs in this file
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      no extraction, resolution or anchoring occurs in this file
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      no search occurs in this file
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      no alias admission occurs in this file
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      no preliminary reading or proposal occurs in this file
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      no retry or context reuse occurs in this file; findLlmRunByIdempotencyKey only selects `document_context, document_context_status`
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      no status is recorded in this file
+looked_past: >-
+  The SQL constraint-name constants, the `metadata ?? {}` and `locator ?? null` null-coalescing defaults, and the unnest batching in insertRawChunks are persistence mechanics that state no domain fact any node holds, so I did not report them.
+candidates_opened: []

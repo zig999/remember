@@ -1,0 +1,22 @@
+certified:
+  - node: domain/knowledge-base/document-context
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/document-context-value-in-extraction.spec.ts
+    why: >-
+      Most of the fact is exercised. The required summary and model are refused when absent: the
+      schema rejects a context without either, and a reading with no summary records nothing.
+      Several entities are carried. The context made before extraction appears in every chunk's
+      prompt, along with its summary and entities. The recorded context holds exactly the strings
+      every chunk was shown, together with the model that did the reading. An entity that no chunk
+      mentions produces no write to knowledge_node, node_alias, knowledge_link, node_attribute or
+      provenance, which is how the test checks that the context is never a source of knowledge.
+      One part is not exercised: that the preliminary reading is of the whole document. Nothing in
+      the test looks at what the reading was given. A reading that saw only part of the document,
+      such as its first chunk, would still record a summary and entities, and every assertion
+      here would still pass.
+    remainder: testable
+    remainder_why: >-
+      Use one input: a document with several chunks, where some text appears only in the last
+      chunk. Expect one result: the input given to the preliminary reading contains the content
+      of every chunk, including that text from the last one, before any chunk is extracted.

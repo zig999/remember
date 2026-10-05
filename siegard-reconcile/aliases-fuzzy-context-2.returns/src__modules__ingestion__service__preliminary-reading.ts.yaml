@@ -1,0 +1,258 @@
+read:
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the type, `import type { DocumentContext, DocumentContextStatus, DocumentEntity } from "../dto/llm-run.dto.js";`, and only builds a value of it, `return { summary: cutSummaryToLines(reading.summary, SUMMARY_MAX_LINES), entities: keepCatalogEntities(reading.entities, request.catalog), model: request.model, };`. The shape is declared in the dto file, not here.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only imports the type and writes its values (`"produced"`, `"single-chunk"`, `"too-long"`, `"failed"`). The enumeration is declared in "../dto/llm-run.dto.js".
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `function keepCatalogEntities(entities: readonly DocumentEntity[], ...)` only reads `e.node_type` of a type imported from "../dto/llm-run.dto.js". The shape is not declared here.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only a request-local projection, `readonly run: { readonly id: string; readonly prompt_version: string; readonly document_context: DocumentContext | null | undefined; };`. That is a request parameter, not the LLMRun aggregate's shape.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      keepCatalogEntities(), used in readDocumentContext()
+    evidence: >-
+      `return entities.filter((e) => catalog.nodeTypeByName.has(e.node_type));` and `entities: keepCatalogEntities(reading.entities, request.catalog),`
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      shouldReadDocument() and produceDocumentContext()
+    evidence: >-
+      `readsDocumentFirst(request.run.prompt_version) && request.chunkCount > 1 && request.content.length <= PRELIMINARY_READING_MAX_CONTENT_UNITS && (request.run.document_context === null || request.run.document_context === undefined)`, with `PRELIMINARY_READING_MAX_CONTENT_UNITS = 100_000`. readDocumentContext() sends the whole content in one call, `messages: [{ role: "user", content: user(request.content) }]`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      the first lines of produceDocumentContext()
+    evidence: >-
+      `const held = request.run.document_context ?? null; if (held !== null) return held;` This return comes before any call to recordSkippedReading or recordReadingStatus, so the held run's status is not written.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      skippedReadingStatus(), recordFailedReading() and recordProducedContext()
+    evidence: >-
+      `if (request.chunkCount === SINGLE_CHUNK_COUNT) return "single-chunk"; if (request.chunkCount > SINGLE_CHUNK_COUNT && request.content.length > PRELIMINARY_READING_MAX_CONTENT_UNITS) { return "too-long"; }`, `await recordReadingStatus(request.pool, request.run.id, "failed");` and `document_context_status: "produced",`. All are gated by readsDocumentFirst.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      cutSummaryToLines(), called from readDocumentContext()
+    evidence: >-
+      `summary: cutSummaryToLines(reading.summary, SUMMARY_MAX_LINES),` and `if (lines.length <= maxLines) return summary; return lines.slice(0, maxLines).join(LINE_BREAK);`. The value 5 itself is imported from "../prompts/preliminary-reading.js", not declared in this file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      cutSummaryToLines()
+    evidence: >-
+      `const lines = summary.split(LINE_BREAK); if (lines[lines.length - 1] === "") lines.pop();` with `LINE_BREAK = "\n"`. A line ends at "\n", a "\r" ends none, an empty line counts, and a trailing newline starts no further line. The limit of 5 is passed in as `maxLines` from SUMMARY_MAX_LINES, defined in another file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      readsDocumentFirst(), which gates shouldReadDocument() and skippedReadingStatus()
+    evidence: >-
+      `return (major !== undefined && Number.parseInt(major, 10) >= FIRST_PRELIMINARY_READING_VERSION);` with `FIRST_PRELIMINARY_READING_VERSION = 5`, and `if (!readsDocumentFirst(request.run.prompt_version)) return null;` in skippedReadingStatus().
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      readDocumentContext() and produceDocumentContext()
+    evidence: >-
+      The reading returns only a value, `return { summary: ..., entities: ..., model: request.model, };`, and the only writes are `recordDocumentContext` and `recordDocumentContextStatus`. The file calls no proposal operation.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      the held-context return in produceDocumentContext()
+    evidence: >-
+      `const held = request.run.document_context ?? null; if (held !== null) return held;`. No second reading is made, and the held context is the one returned to the caller.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      skippedReadingStatus() and recordSkippedReading() in produceDocumentContext()
+    evidence: >-
+      `if (request.chunkCount === SINGLE_CHUNK_COUNT) return "single-chunk";`, then `await recordSkippedReading(request, skipped); return null;`
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only calls `user(request.content)` and `system(request.catalog)` from "../prompts/preliminary-reading.js". Any marking of content as data happens in that other file.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `request.anthropic.messages.stream({ model: request.model, system: ..., max_tokens: MAX_TOKENS, messages: [...] })` sets no timeout and no retry count. A failed call goes straight to recordFailedReading.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no operation, refusal or answer of the contract. It records `document_context_status` and the context on the run, and the file exposes no surface of the contract.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search, read or traverse surface exists in the file. It has only the preliminary-reading functions such as `produceDocumentContext`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search-item flags appear in the file, which concerns only the preliminary reading.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node-match values appear in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The version is read as a string, `const PROMPT_VERSION_PATTERN = /^v(\d+)$/;`. The file does not declare the enumeration v1 to v5.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item shape appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias admission, only `keepCatalogEntities` and `cutSummaryToLines`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity computation appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The prompt version is taken from `request.run.prompt_version`. The file states no default.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model is received as `readonly model: string;` and used as `model: request.model`. The file names no configured context model and no `claude-haiku-4-5` default.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no fragment and anchors nothing. It reads the whole content, `user(request.content)`, not a chunk.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The prompt text lives in "../prompts/preliminary-reading.js", which is imported as `system` and `user`. No instruction text appears in this file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction instruction text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction system prompt appears in the file, only the call `system: system(request.catalog)`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction system prompt appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk and shows none to the model. It returns the context, `return context;`, and the chunk reading happens in the caller.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date handling appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no names. The catalog check is the plain `catalog.nodeTypeByName.has(e.node_type)`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node-layer matching appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node-layer matching appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only parses the version, `PROMPT_VERSION_PATTERN.exec(promptVersion)?.[1]`. It refuses no unknown version, and any `v<n>` with n >= 5 passes the gate.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no retry operation. It only leaves the status untouched when a context is already held, `if (held !== null) return held;`. That behaviour belongs to the kept-on-reuse rule, not to the retry.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias admission appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias admission appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only produces the context and returns it, `return context;`. Showing it to chunk 3 and resolving the proposal both happen elsewhere.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias admission and no directed ingestion appear in the file.
+looked_past: >-
+  The tolerant extraction of the first "{" to the last "}" from the model answer, the transaction and connection handling around the two status writes, and the log event names are implementation or operational matters and state no domain fact of this node set, so they are another judgment's.

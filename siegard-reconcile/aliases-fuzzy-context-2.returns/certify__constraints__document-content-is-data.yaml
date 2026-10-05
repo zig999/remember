@@ -1,0 +1,26 @@
+certified:
+  - node: constraints/document-content-is-data
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context-remainders.spec.ts
+        name: >-
+          presents each chunk's text, each listed entity name and the preliminary reading's content between a data label and a closing delimiter in the user turn and never in the system prompt, for a v5 run, a v4 run, a one-chunk run and a run whose preliminary reading failed
+    why: >-
+      Three things are checked for being marked as data. Each chunk's text must sit in the
+      user turn between a data label and a closing delimiter, and must not be in the system
+      prompt. This holds for a v5 run, a v4 run, a one-chunk run and a run whose preliminary
+      reading failed. The document's content in the preliminary reading call gets the same
+      check. So does each entity name from the document context in every chunk prompt, but
+      only in the v5 three-chunk run. The context's summary is not checked. It is also part of
+      the document context read from the document. The test passes in the context's summary,
+      but contextProblems only checks the injected content and the entity names. If the
+      summary were placed in the system prompt, or outside a delimited data block, this test
+      would still pass. So half of "the document context read from it" goes unexercised. The
+      second test in the file only checks order, presence and absence. It never checks marking,
+      so it says nothing about this fact.
+    remainder: testable
+    remainder_why: >-
+      Use one input: a v5 run whose preliminary reading returns a summary that carries
+      instruction-like text. Expect one result: in every chunk call, that summary appears only
+      in the user turn, between a data label and a closing delimiter, and never in the system
+      prompt.

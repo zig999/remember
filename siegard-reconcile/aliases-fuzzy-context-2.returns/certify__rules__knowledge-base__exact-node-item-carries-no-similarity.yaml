@@ -1,0 +1,29 @@
+certified:
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+        name: answers a knowledge node matched both exactly and approximately with no similarity, though one of its aliases is similar enough for an approximate match
+      - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+        name: answers an exactly matched node with the match exact and no similarity, and an approximately matched node with the match approximate and the highest word similarity of its aliases, not its weighted score
+    why: >-
+      The service-level half is exercised. An exact-only node comes back with no similarity. A
+      node the stand-in returns from both routes comes back as one item with no similarity, even
+      though its approximate row carries 0.8. That second test fails if the service stops passing
+      the exactly matched node ids as the approximate route's exclusion, or if it gives an exact
+      hit a similarity. The "even when an alias is similar enough" clause depends on the
+      approximate query itself leaving out a node the exact route already matched (the
+      `kn.id <> ALL($5::uuid[])` predicate in search.repository.ts). Nothing in the offered proof
+      exercises that predicate. The test's stand-in client does the exclusion itself, by
+      filtering its canned approximate rows against the id array it receives. So if the
+      predicate is dropped or weakened, the node layer answers the exactly matched node a second
+      time, carrying its alias similarity, and every named test stays green.
+      search-repository-approximate-node.spec.ts, outside the offered proof, does not close this
+      either: its one test passes an empty exclusion list.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, run against a real database (or one that evaluates
+      the approximate query's own predicate). Take a knowledge node with one alias that matches
+      the query text exactly and another alias whose word similarity to the query is at or above
+      the approximate threshold. The search should answer exactly one node item for that node,
+      with match exact and no similarity.

@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: asks in the v4 and v5 system prompts to resolve a relative date against the document date and, without one, against the reception date
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v5.spec.ts
+        name: holds exactly the prompt versions v1 to v5, each resolving to a module of its own version
+    why: >-
+      The wording half of the fact is checked. For v4 and v5, the system text from
+      selectPromptModule is tested against patterns: resolve a relative date against
+      `document_date`, and use `received_at` when `document_date` is absent. The first
+      named test fixes the held versions at exactly v1 to v5, so "v4 and later" is
+      bounded today. Nothing in the set runs an extraction, so two things the fact
+      states go untested. First, that an extraction whose run carries prompt version
+      v4 or later actually sends this system text to the model. If extraction stopped
+      using the module for its run's version, no test would fail. Second, that the model
+      gets the document date when the source has one, or the reception date when it
+      does not, so it has something to resolve against. The user prompt is built from
+      metadata with a null document_date and a received_at. It is only searched for
+      alias markers, and only for v1 to v4. Nothing checks that it carries either date,
+      and v4 and v5 are never examined. The prompt patterns are text matches, so a
+      rewording that keeps the instruction could fail them, and one that changes it
+      while keeping the matched phrases could pass.
+    remainder: testable
+    remainder_why: >-
+      Run an extraction with a stubbed model client, once with a v4 run and once with a
+      v5 run. In each, give one source with a document_date and one source without
+      (document_date null, received_at set). Expected: the request sent to the model has
+      the version's system text with the relative-date instruction, and the user content
+      has the document date in the first case and the reception date in the second.

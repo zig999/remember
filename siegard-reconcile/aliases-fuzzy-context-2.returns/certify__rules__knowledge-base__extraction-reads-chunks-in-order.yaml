@@ -1,0 +1,34 @@
+certified:
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context-remainders.spec.ts
+        name: >-
+          reads the chunks one at a time in index order even when the store returns them out of order, shows every chunk the source type, document date, title, reception time and the last 200 code points of its index predecessor, and shows the run's context only when the run holds one
+    why: >-
+      Most of the fact is exercised. The store hands back the chunks as [2, 0, 1], and the
+      test asserts the model reads them as 0, 1, 2. Every chunk prompt must carry the source
+      type, the document date and the title. Each chunk after the first must show exactly the
+      last 200 code points of the chunk before it in index order: astral characters catch a
+      cut made in UTF-16 units, and the 201st character must be absent. The document context
+      (summary, entity types and names) must appear in every chunk when the run holds one, and
+      must not appear in a v4 run or in a run whose preliminary reading failed. Two parts can
+      break without this test failing. First, the reception time. The test looks for the
+      prefix 2026-10-05T12:00:00, and the fixture sets the run's started_at to the same
+      instant as raw_information.received_at. A prompt showing the run's start in place of the
+      source's reception time therefore satisfies the same needle, so the test does not show
+      that the reception time is the time displayed. Second, "one at a time". The
+      largest-number-of-calls-in-flight observation is taken only for the v5 run that holds a
+      context. The v4 run and the failed-reading run are checked for read order alone. Calls
+      are recorded when they are issued, so a run without context that sent all chunk requests
+      concurrently would still record order 0, 1, 2 and pass. The companion test in the same
+      file ("presents each chunk's text ... between a data label and a closing delimiter ...")
+      counts the chunk calls per run shape but asserts no order, metadata, tail or
+      concurrency, so it adds nothing to these parts.
+    remainder: testable
+    remainder_why: >-
+      Two assertions would close it. First, give the run a started_at different from the raw
+      information's received_at, and expect every chunk prompt to show received_at and not
+      started_at. Second, for a v4 run and for a v5 run whose preliminary reading failed, both
+      with chunks stored out of order, expect at most one model call in flight at any moment,
+      as the test already checks for the run that holds a context.

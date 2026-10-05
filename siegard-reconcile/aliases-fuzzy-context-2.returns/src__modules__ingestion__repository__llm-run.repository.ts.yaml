@@ -1,0 +1,278 @@
+read:
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only types the value it forwards, and the enumeration is declared elsewhere (the import from ../dto/llm-run.dto.js). `document_context_status: DocumentContextStatus;` and `SET document_context_status = $2::document_context_status`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for a fragment. It only inserts one and counts or rejects fragments through SQL. `INSERT INTO information_fragment (llm_run_id, "text", confidence)`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      The run's status, started_at, finished_at, prompt_version and model attributes sit in the RecentIngestionRow interface. The retry transition is in retryLlmRunRow, and the close transition is in closeLlmRunRow.
+    evidence: >-
+      `readonly run_status: LlmRunStatus | null;`, `readonly started_at: Date | null;`, `readonly finished_at: Date | null;`, `readonly prompt_version: string | null;`, `readonly model: string | null;`. Also `SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed'`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      The RecentIngestionRow interface names part of its attributes: source_type, status, received_at and a content preview.
+    evidence: >-
+      `readonly raw_information_id: string; readonly source_type: string; readonly raw_status: string; readonly received_at: Date; readonly content_preview: string;`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      The ToolCallRow interface, and insertToolCall, which writes one record.
+    evidence: >-
+      `readonly tool_name: IngestToolName; readonly arguments: Record<string, unknown>; readonly result: Record<string, unknown> | null; readonly validation_outcome: ValidationOutcome; readonly created_at: Date;`
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      retryLlmRunRow. Its UPDATE assigns only status, attempts and finished_at, and never touches document_context_status.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed' RETURNING id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key, document_context, document_context_status`
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      retryLlmRunRow leaves document_context and its status untouched, and findLlmRunById reads them back on the retried run. The preliminary reading itself is not in this file.
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL` and `SELECT id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key, document_context, document_context_status FROM llm_run WHERE id = $1`
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt and no call to a model. It holds only data access: `export async function findLlmRunById(`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no call to a language model, no timeout and no retry count. Its only statements are SQL, such as `UPDATE llm_run`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partially. findRecentIngestions holds the 80-character content preview and the latest-run join, findToolCallsByRun holds the page, and aggregateToolCallOutcomes holds the run summary.
+    evidence: >-
+      `left(ri.content, 80) AS content_preview`, `LIMIT $2 OFFSET $3`, and `const summary: LlmRunSummary = { accepted: 0, consolidated: 0, superseded_previous: 0, needs_review: 0, uncertain: 0, disputed: 0, rejected: 0, error: 0, orphaned_fragments: 0, };`
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search, provenance read, node read or traversal. Its only fragment-related reads are `countFragmentsAnchoredToSource(` and `countChunksInSource(`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no flag. The nearest construct is `validation_outcome: ValidationOutcome;`
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards a document context it receives as a parameter, and the value object is declared in the dto. `args: { llm_run_id: string; document_context: DocumentContext }` and `SET document_context = $2::jsonb`
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no entity of a document context, only the opaque `DocumentContext` import.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node match. It holds `export async function findNodeTypeIdByNodeId(` and no matching.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries prompt_version only as an opaque string. `readonly prompt_version: string | null;`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item. It holds `RecentIngestionRow` and `ToolCallRow` only.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias handling. `findNodeTypeIdByNodeId` selects `node_type_id FROM knowledge_node` only.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no similarity or trigram query. Its only knowledge_node read is `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no default for a prompt version. `prompt_version` appears only in SELECT lists and in `RecentIngestionRow`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file filters no entity by node type. `SET document_context = $2::jsonb` stores the context as received.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no context model or default model name. `model` appears only in SELECT lists.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading, no chunk count and no 100000 threshold. It only persists a context: `recordDocumentContext(`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The reuse decision is not in this file. The file only offers `recordDocumentContextStatus(` as an unconditional UPDATE, and the decision whether to call it lies with the caller.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no status. It only writes the status it is handed. `SET document_context_status = $2::document_context_status`
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no summary cutting. It stores the context as received. `JSON.stringify(args.document_context)`
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no line counting. `JSON.stringify(args.document_context)` serializes the context unchanged.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no entity resolution. `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1` is its only node read.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item. `export interface RecentIngestionRow {` is its only listing row.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors whatever chunk ids it is handed and chooses none. `SELECT $1, c FROM unnest($2::uuid[]) AS c`
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt. Its statements are SQL such as `INSERT INTO tool_call (llm_run_id, tool_name, arguments, result, validation_outcome)`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt. `export async function insertToolCall(` records a call and composes no instruction.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. No word such as "hoje" appears in it.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt. `findLlmRunById` selects `prompt_version` only as a column.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chunk reading, no previous-chunk tail and no 200 code point count. `countChunksInSource` counts chunks and orders none.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt and no date resolution. Its only date columns are `received_at`, `started_at` and `finished_at`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item. `export interface ToolCallRow {` is its only record shape.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias insert. `findNodeTypeIdByNodeId` is its only knowledge_node access.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no name comparison or normalization. No lower or unaccent call appears in it.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node and no alias. `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1` is its only node access.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no version gate. `recordDocumentContext` writes unconditionally and does not inspect prompt_version: `SET document_context = $2::jsonb WHERE id = $1`
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item. `RecentIngestionRow` carries no match field.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no word similarity or 0.6 threshold, and no 5-character alias minimum. `findNodeTypeIdByNodeId` is its only node access.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no lexical parse and no query over aliases. `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no check of a prompt version against a known set. `readonly prompt_version: string | null;`
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search ranking. Its only orderings are `ORDER BY ri.received_at DESC` and `ORDER BY created_at ASC, id ASC`, which other rules govern.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias admission or node creation. `findNodeTypeIdByNodeId` is its only knowledge_node access.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node resolution. `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias handling and no ALIAS_NOT_IN_SOURCE reason. Nothing in it concerns aliases.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chunk reading, no proposal and no node resolution. `insertFragmentWithSources` inserts the chunk ids it is handed: `INSERT INTO fragment_source (fragment_id, raw_chunk_id)`
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search. `export async function findRecentIngestions(` is its only listing.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no directed ingestion and no alias handling. `findNodeTypeIdByNodeId` is its only node access.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading. `recordDocumentContext` only stores a context it receives: `UPDATE llm_run SET document_context = $2::jsonb WHERE id = $1`
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no single-chunk decision. `recordDocumentContextStatus` writes whichever status it is handed: `SET document_context_status = $2::document_context_status`
+looked_past: >-
+  The tool-call record's arguments and result are typed as Record<string, unknown> and stored as jsonb, while the tool-call node types them as string. I left that to the node's modelling and did not report it as a domain fact.
+candidates_opened:
+  - rules/knowledge-base/summary-counts-orphaned-fragments
+  - rules/knowledge-base/summary-counts-tool-calls
+  - rules/knowledge-base/tool-call-page-defaults
+  - domain/knowledge-base/run-summary

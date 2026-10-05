@@ -1,0 +1,26 @@
+certified:
+  - node: domain/knowledge-base/node-match
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-ranking.spec.ts
+        name: answers a node reached by the lexical parse of the query with the match exact and a node reached by the trigram similarity of an alias with the match approximate
+    why: >-
+      The test fails if the node layer stops labelling its two paths with these two values: a
+      swapped label, a renamed value or a dropped value all break the toEqual on the
+      {id: match} map. It does not test how either path finds a node. The client is a stand-in
+      that picks its answer by matching text in the SQL. Any statement containing
+      "word_similarity" gets the approximate rows, and any containing "FROM node_alias na" gets
+      the exact rows. Those rows are returned whatever "termo" would actually match. So the test
+      still passes if the exact path stops matching through the lexical parse of the query text,
+      as long as it still reads node_alias. It also still passes if the approximate path takes
+      trigram similarity against something other than one of the node's aliases, such as the
+      canonical name, as long as the statement still contains "word_similarity". The test proves
+      the value follows the layer. It does not prove that each layer matches the way its value
+      says. Nothing in the file checks that no other value ever appears on a matched node.
+    remainder: testable
+    remainder_why: >-
+      Run a search against a real store over the query text. Input: one node whose alias matches
+      that text through its lexical parse, and another whose alias matches only by trigram
+      similarity, for example a misspelling that the lexical parse does not reach. Expected: the
+      first node's item answers match exact, and the second's answers match approximate.
+    # canonical-name variant: unverified, needs one more case in that store

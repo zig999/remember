@@ -1,0 +1,273 @@
+read:
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      ALIAS_ADMISSION_SQL, the `admitted` column, and admitAliases()
+    evidence: |-
+      COALESCE(
+                r.directed
+                  OR (norm(a.alias) <> '' AND strpos(r.content_norm, norm(a.alias)) > 0),
+                false
+              ) AS admitted
+      ... norm(ri.content) AS content_norm ... WHERE lr.id = $4
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      decideFromCandidates() (the `ambiguous` branch), createNewNode() and insertMatchReviews()
+    evidence: |-
+      return { kind: "ambiguous", candidates: aboveFloor };
+      ... needsReview ? "needs_review" : "active"
+      ... INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
+      ... LIMIT $3 with TRIGRAM_CANDIDATE_LIMIT = 10, MATCH_FLOOR = 0.55
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      findExactMatch(), used first in resolveWithAdmittedAliases()
+    evidence: |-
+      WHERE na.alias_norm = norm($1::text)
+              AND kn.node_type_id = $2
+              AND kn.status = 'active'
+      ... return await matchExisting(client, args, exactNodeId, admission);
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      matchExisting() and the `is_name` column of ALIAS_ADMISSION_SQL
+    evidence: |-
+      aliases: admission.admittedOtherThanName,
+      ... norm(a.alias) = norm($5::text) AS is_name
+      ... .filter((r) => !r.is_name)
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the norm() calls in ALIAS_ADMISSION_SQL, acquireNameLock(), findExactMatch() and findTrigramCandidates()
+    evidence: |-
+      WHERE na.alias_norm = norm($1::text)
+      ... similarity(na.alias_norm, norm($1::text))
+      ... strpos(r.content_norm, norm(a.alias))
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases(), called from createNewNode()
+    evidence: |-
+      VALUES ($1, $2, 'canonical', $3)
+      ... VALUES ($1, $2, 'alias', $3)
+      ... canonicalName: args.name, aliases: plan.aliases
+      ... aliases: admission.admitted
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      decideFromCandidates() (the `novel` branch) and createNewNode()
+    evidence: |-
+      if (aboveFloor.length === 0) {
+          return { kind: "novel" };
+        }
+      ... reviewCandidates: decision.kind === "ambiguous" ? decision.candidates : []
+      ... resolution: needsReview ? "needs_review" : "created_new"
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates() (the `strong_unique` branch) and resolveWithAdmittedAliases()
+    evidence: |-
+      if (strong.length === 1 && aboveFloor.length === 1) {
+          return { kind: "strong_unique", nodeId: strong[0]!.node_id };
+        }
+      ... export const MATCH_STRONG = 0.85;
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      ALIAS_ADMISSION_SQL (admission by occurrence in the run's content) and attachCanonicalAndAliases() (canonical alias plus alias)
+    evidence: |-
+      strpos(r.content_norm, norm(a.alias)) > 0
+      ... VALUES ($1, $2, 'canonical', $3)
+      ... VALUES ($1, $2, 'alias', $3)
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      findExactMatch(), which matches on any alias of an active node of the node type
+    evidence: |-
+      WHERE na.alias_norm = norm($1::text)
+              AND kn.node_type_id = $2
+              AND kn.status = 'active'
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      admitAliases() building `notAdmitted`, returned as aliases_not_admitted by resolveOrCreateNode()
+    evidence: |-
+      notAdmitted: res.rows
+            .filter((r) => !r.admitted)
+            .map((r) => ({ alias: r.alias, reason: ALIAS_NOT_IN_SOURCE })),
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      the `directed` branch of ALIAS_ADMISSION_SQL, with the model and prompt version taken from the DIRECTED_* constants
+    evidence: |-
+      SELECT (lr.model = $2 AND lr.prompt_version = $3) AS directed
+      ... DIRECTED_MODEL,
+          DIRECTED_PROMPT_VERSION,
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file composes no prompt and presents no document content to a model; it only runs SQL for node resolution and alias admission.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file makes no model call and holds no timeout or retry count; its only counts are MATCH_STRONG, MATCH_FLOOR and TRIGRAM_CANDIDATE_LIMIT.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      only the propose-node answer's resolution values and not-admitted aliases, in ResolveOrCreateNodeResult and admitAliases(). The error codes and every other operation are held elsewhere.
+    evidence: |-
+      export interface ResolveOrCreateNodeResult extends ResolvedNode {
+        readonly aliases_not_admitted: readonly AliasNotAdmitted[];
+      }
+      ... resolution: "matched_existing"
+      ... reason: ALIAS_NOT_IN_SOURCE
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a write-side resolution service. It has no search, provenance, listing, node-read or traverse code. Its only reads are the node_alias and knowledge_node queries for resolution.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares no uncertain, disputed or low-confidence enumeration and does not mention flags.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document context shape; none of its interfaces carries a summary, entities or a model attribute.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no produced, single-chunk, too-long or failed enumeration and reads no document context status.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no document entity shape; its declared types are ResolveOrCreateNodeArgs, ResolvedNode, TrigramCandidate, AliasAdmission, AdmissionRow and Decision.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLMRun shape. It only reads two columns of the table, `lr.model` and `lr.prompt_version`, joined on `lr.input_raw_information_id`, and passes llmRunId along.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file declares no exact or approximate match enumeration; it runs a trigram similarity for resolution, not for search.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file declares no v1..v5 enumeration. It imports `DIRECTED_PROMPT_VERSION` from "./directed-run.js" and only compares against it.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search item shape and has no score, hop, flags, match or similarity attributes of a search item.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file's `similarity(na.alias_norm, norm($1::text))` is the resolution similarity of a node proposal. It sets no search item's similarity.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file names no default prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file reads no preliminary reading and consults no catalog for entities; it takes `catalog: CatalogSnapshot` in its args and never reads it.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file names no context model and produces no document context.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file has no chunk count, content length bound or preliminary reading.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file neither reads nor writes a run's document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file records no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file handles no summary text and has no line cut.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary line limit.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item; findExactMatch returns only `node_id`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file handles node proposals only; it has no fragment or chunk anchoring.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and tests no prompt version below v5.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and names no relative-date words.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file holds no system prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunks.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no date resolution and no prompt text.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no link or fragment search items.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt version gating and no document context.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item and sets no `match` or `similarity` on one.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file has no word similarity, no 5-character alias minimum and no 0.6 threshold; its `%` / `similarity()` use serves resolution at 0.55 and 0.85.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no lexical parse of a query text; its exact match is a `norm()` equality on `alias_norm`, a different rule.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file validates no prompt version; it only compares the run's against the directed constants.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file does not retry runs and does not touch document context status.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file ranks no search items; its only ordering is `ORDER BY MAX(similarity(...)) DESC` for resolution candidates.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The scenario's subject is the document context read first. The file has no document context and no chunk anchoring; its only related part is findExactMatch resolving a name to an earlier node's alias.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The scenario is about the node layer of a search. The file has no search code.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no preliminary reading and no proposals made from one.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file has no run retry and no document context.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file has no chunk count and no document context status.
+looked_past: >-
+  The `norm(a.alias) <> ''` guard (a blank alias reported as ALIAS_NOT_IN_SOURCE outside a directed ingestion), the advisory lock in acquireNameLock(), and the arbitrary `LIMIT 1` of findExactMatch when several active nodes hold the alias are facts that candidate nodes outside the set (alias-not-blank, concurrent-proposals-resolve-in-turn) or the specification's silence govern, so I left them to the passes over those nodes.
+candidates_opened:
+  - rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - rules/knowledge-base/alias-not-blank
+  - rules/knowledge-base/directed-ingestion-run

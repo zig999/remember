@@ -1,0 +1,311 @@
+read:
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere. The enumeration is declared in the response DTO this file imports. The file only passes the values along.
+    evidence: >-
+      import type { AssertionFlag, NodeMatch, SearchItem, ... } from "../dto/response.dto.js"; and
+      function toExactHit(row: NodeAliasHitRow): NodeLayerHit { return { ...row, match: "exact" }; }
+  - node: domain/knowledge-base/page
+    held_at: >-
+      The limit and offset attributes of SearchServiceInput, and the page cut in searchKnowledgeService.
+    evidence: >-
+      readonly limit: number; readonly offset: number; and
+      const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      The IntermediateItem interface and toSearchItem()/matchFields(), which build each item's kind, layer, score, hop, summary, flags, match and similarity. The imported SearchItem type is declared elsewhere.
+    evidence: >-
+      return { kind: it.kind, layer: it.layer, id: it.id, score: it.score, hop: it.hop, summary: it.summary, flags: it.flags, provenance: it.provenance, ...matchFields(it) };
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      The SearchServiceInput interface, which carries the query text, layers, expansion switches and depth, link types, as-of date, in-effect-only, include-uncertain, and limit and offset.
+    evidence: >-
+      readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[];
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      toExactHit(), which adds no similarity. matchFields() then emits only the match when similarity is undefined. The exact repository row type has no similarity field.
+    evidence: >-
+      function toExactHit(row: NodeAliasHitRow): NodeLayerHit { return { ...row, match: "exact" }; } and
+      if (it.similarity === undefined) return { match: it.match };
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      traverseFrom(), which hands the query's as-of date to the traversal. The validity filtering itself is done in the knowledge-graph traversal, not in this file.
+    evidence: >-
+      asOf: context.input.asOf,
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      collectExpandedLinks(), which scores each reached link from the decay constant imported from the knowledge-graph module. The constant is declared as 0.5 in knowledge-graph/traversal/config.ts.
+    evidence: >-
+      score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score,
+  - node: rules/knowledge-base/expansion-hop
+    held_at: >-
+      collectExpandedLinks(), which takes each link's hop from the traversal result. The count itself is made by the traversal.
+    evidence: >-
+      hop: link.hop,
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      traverseFrom(), which hands the in-effect-only switch and the as-of date to the traversal. The filtering is done in the knowledge-graph traversal.
+    evidence: >-
+      asOf: context.input.asOf, inEffectOnly: context.input.inEffectOnly,
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      The fragment items pushed in searchKnowledgeService and the link item built in toExpandedLinkItem, neither of which sets match or similarity.
+    evidence: >-
+      return { key: `link:${link.id}`, kind: "link", layer: "node", id: link.id, score, hop, recordedAtTs: meta.recorded_at.getTime(), approximateOnly: !reachedExactly, summary: ..., flags: computeFlags({ kind: "link", status: meta.status }), provenance, status: meta.status, };
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      The node items pushed in searchKnowledgeService, which carry the node layer's match and similarity at hop 0. matchFields() passes both through to the search item.
+    evidence: >-
+      hop: 0, ... match: n.match, similarity: n.similarity,
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      searchNodeLayer(), which labels the exact hits and takes approximate hits only from nodes the exact pass did not return. The 5-character minimum and the 0.6 word-similarity threshold are not in this file. They sit behind searchNodeAliasApproximateLayer in the repository.
+    evidence: >-
+      const approximateRows = await searchNodeAliasApproximateLayer(client, { query, limit: remaining, excludedNodeIds: exactHits.map((hit) => hit.node_id), }); return [...exactHits, ...approximateRows.map(toApproximateHit)];
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      searchNodeLayer(), which calls searchNodeAliasLayer for the exact match. The lexical parse and the alias match are in the repository.
+    evidence: >-
+      const exactRows = await searchNodeAliasLayer(client, query, PER_LAYER_FETCH_LIMIT); const exactHits = exactRows.map(toExactHit);
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      compareItems() and the sort in searchKnowledgeService. A node's recordedAtTs is 0, a fragment's is its creation time and a link's is its recording time.
+    evidence: >-
+      if (a.approximateOnly !== b.approximateOnly) return a.approximateOnly ? 1 : -1; if (b.score !== a.score) return b.score - a.score; if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs; return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      searchKnowledgeService, where the total is taken from the filtered items before the page is cut.
+    evidence: >-
+      const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds(), reached only when the query expands.
+    evidence: >-
+      const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined; and
+      if (row === undefined) { throw new UnknownLinkTypeError(name); }
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      searchNodeLayer(), which returns each exactly matched node with match exact and excludes it from the approximate pass.
+    evidence: >-
+      return { ...row, match: "exact" }; and excludedNodeIds: exactHits.map((hit) => hit.node_id),
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      searchNodeLayer(), where a node the exact layer did not return can come back with match approximate. The alias test that lets "contrato Petrobras" reach "Petrobras" is in the repository.
+    evidence: >-
+      return { ...row, match: "approximate" };
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere. The file holds no extraction prompt and no presentation of document content to a model.
+    evidence: >-
+      The file's imports are pg, pino, knowledge-graph, search DTOs and the search repository. No prompt text appears.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere. The file makes no model call.
+    evidence: >-
+      The only awaited calls are repository functions such as parseTsQuery(client, input.query) and traverseNodes(...).
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere. The file is a search service and reaches no ingestion operation.
+    evidence: >-
+      export async function searchKnowledgeService(client: PoolClient, catalog: CatalogSnapshot, input: SearchServiceInput, logger: Logger): Promise<SearchResponse>
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      searchKnowledgeService, which produces the page of ranked items with their provenance entries and the total. Request validation and the HTTP envelope are in other files. The service throws InvalidSearchQueryError, InvalidSearchLayerError and UnknownLinkTypeError.
+    evidence: >-
+      const response: SearchResponse = { query: input.query, total, limit: input.limit, offset: input.offset, items: sliced.map(toSearchItem), };
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere. The enumeration is declared in the response DTO. This file only builds flag values with computeFlags().
+    evidence: >-
+      import type { AssertionFlag, ... } from "../dto/response.dto.js"; and
+      flags.push("low_confidence");
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere. The file holds no document context.
+    evidence: >-
+      No construct in the file mentions a document context. The imports are only the search types and repository functions.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere. The file holds no document context status.
+    evidence: >-
+      The status values the file handles are the search item statuses: status: "accepted" and meta.status === "uncertain".
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere. The file holds no document entity.
+    evidence: >-
+      No construct in the file mentions a document entity.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere. The file holds no LLM run.
+    evidence: >-
+      The file's imports are pg, pino, knowledge-graph, search DTOs and the search repository. No run is read or written.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere. The file holds no prompt version.
+    evidence: >-
+      No construct in the file mentions a prompt version.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere. The file does not admit aliases.
+    evidence: >-
+      The file only reads aliases through searchNodeAliasLayer and searchNodeAliasApproximateLayer.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere. The file only forwards the repository's similarity value. It does not compute the highest word similarity or apply any layer weight.
+    evidence: >-
+      function toApproximateHit(row: ApproximateNodeAliasHitRow): NodeLayerHit { return { ...row, match: "approximate" }; }
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere. The file holds no prompt version default.
+    evidence: >-
+      No construct in the file mentions a prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere. The file holds no document context.
+    evidence: >-
+      The only catalog use is catalog.linkTypeByName.get(name).
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere. The file holds no model configuration.
+    evidence: >-
+      No construct in the file mentions a model.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere. The file reads no document.
+    evidence: >-
+      No construct in the file concerns an extraction.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere. The file records no document context status.
+    evidence: >-
+      No construct in the file concerns an extraction.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere. The file records no document context status.
+    evidence: >-
+      No construct in the file concerns an extraction.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere. The file cuts no document context summary.
+    evidence: >-
+      The only summary built is the search item summary, summary: f.text.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere. The file holds no document context summary.
+    evidence: >-
+      The only summary built is the search item summary, summary: n.canonical_name.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere. The file resolves no node proposal.
+    evidence: >-
+      The file only searches aliases for the owner's query text.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere. The file anchors no fragment.
+    evidence: >-
+      The file only reads chunk hits through searchChunkLayer.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere. The file holds no extraction prompt.
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere. The file holds no extraction prompt.
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere. The file holds no extraction prompt.
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere. The file holds no extraction prompt.
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere. The file runs no extraction.
+    evidence: >-
+      The file reads chunks only for search: chunkHits = await searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere. The file holds no extraction prompt.
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere. The file adds no aliases.
+    evidence: >-
+      The file only reads aliases.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere. The file does not normalize names. The approximate match compares them in the repository.
+    evidence: >-
+      The file passes the raw query to the repository: searchNodeAliasApproximateLayer(client, { query, limit: remaining, excludedNodeIds: ... }).
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere. The file creates no node or alias.
+    evidence: >-
+      The file only reads nodes and aliases.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere. The file holds no extraction.
+    evidence: >-
+      No construct in the file concerns a prompt version.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere. The file holds no prompt version.
+    evidence: >-
+      No construct in the file concerns a prompt version.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere. The file retries no run.
+    evidence: >-
+      No construct in the file concerns an LLM run.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere. The file admits no alias.
+    evidence: >-
+      The file only reads aliases through searchNodeAliasLayer.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere. The file resolves no proposal.
+    evidence: >-
+      The file only reads aliases through searchNodeAliasLayer.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere. The file admits no alias.
+    evidence: >-
+      The file only reads aliases through searchNodeAliasLayer.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere. The file runs no extraction.
+    evidence: >-
+      No construct in the file concerns an extraction.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere. The file runs no directed ingestion.
+    evidence: >-
+      No construct in the file concerns ingestion.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere. The file makes no preliminary reading.
+    evidence: >-
+      No construct in the file concerns an extraction.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere. The file retries no run.
+    evidence: >-
+      No construct in the file concerns an LLM run.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere. The file runs no extraction.
+    evidence: >-
+      No construct in the file concerns an extraction.
+looked_past: >-
+  The IntermediateItem working type and the log line emitted as query_retrieval_search_ok (route, outcome, counts) name no domain fact the nodes govern, so they were left to a code review.
+candidates_opened:
+  - rules/knowledge-base/item-flags
+  - rules/knowledge-base/search-layer-candidate-cap

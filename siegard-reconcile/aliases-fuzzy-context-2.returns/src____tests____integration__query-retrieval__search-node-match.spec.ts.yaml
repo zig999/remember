@@ -1,0 +1,258 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file drives only the search answer: `url: "/api/v1/search?query=Petrobrass&expand=false"`. It builds no extraction prompt and presents no document content to a model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no call to a language model. Its only calls are `app.inject({ method: "GET", url: "/api/v1/search?query=Petrobrass&expand=false" ...` and the MCP `search` tool call.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion operation is exercised. The only tool named is `name: "search"` in `searchOverMcp`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      searchOverRest and searchOverMcp, and the two `it` blocks that assert the node item of the search answer over each transport
+    evidence: >-
+      `url: "/api/v1/search?query=Petrobrass&expand=false"` and `name: "search", arguments: { query: "Petrobrass", expand: false }`, then `expect(nodeItemsOf(items)).toEqual(EXPECTED_APPROXIMATE_NODE_ITEMS);` with `{ id: NODE_ID, match: "approximate", similarity: APPROXIMATE_SIMILARITY }`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      `WireItem` declares only `kind`, `id`, `match` and `similarity`. No `flags` field and none of the values `uncertain`, `disputed` or `low-confidence` appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context is built or read. The fake pool answers only `websearch_to_tsquery`, `plainto_tsquery` and `word_similarity` queries.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      None of the values `produced`, `single-chunk`, `too-long` or `failed` appears. No run is read.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no entity with names and a node type. Its interfaces are `Rows`, `WireItem`, `JsonRpcEnvelope` and `AuthFixture`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run is opened or read. The fixtures are a fake pool, a JWT and an app, and the rows returned are provenance rows and a node row.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared here. `WireItem` types the field as `match?: string`, and the value `"approximate"` appears only as an expected literal in `EXPECTED_APPROXIMATE_NODE_ITEMS`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears anywhere in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the `WireItem` interface, which declares part of the item's shape, read through `nodeItemsOf`
+    evidence: >-
+      `interface WireItem { kind: string; id: string; match?: string; similarity?: number; }`
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias admission is exercised. The only alias-related value is the stub row field `matched_alias_ids: []` in `approximateNodeRow`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      approximateNodeRow, which gives the matched node a similarity distinct from its score, and the two assertions that the answer's similarity is that value
+    evidence: >-
+      `score: APPROXIMATE_SCORE, similarity: APPROXIMATE_SIMILARITY` in `approximateNodeRow`, then `{ id: NODE_ID, match: "approximate", similarity: APPROXIMATE_SIMILARITY }` as the expected node item.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document ingestion and no prompt version appear in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog is built empty: `buildSnapshot({ nodeTypes: [], linkTypes: [], linkTypeRules: [], attributeKeys: [] })`. No preliminary reading is exercised.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No context model is named. The only model-related surface is `buildMcpServer(silentLogger)`, which serves the search tool.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction is run. The fake pool's `respond` has no branch for chunks or raw information content.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run or document context status appears in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status appears in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is read or cut. `fragment_text: "texto"` is the only text in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context summary appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or entity resolution is exercised. The file drives only the search answer.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only an approximately matched node is exercised. `respond` returns one row only for `sql.includes("word_similarity") && sql.includes("node_alias")`, so no exact node item is asserted.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment is proposed or anchored. `provenanceRow` supplies `raw_chunk_id: "chunk-1"` only as a read-side fixture.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt is built or inspected.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt is built or inspected.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt is built or inspected.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt is built or inspected.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is read by an extraction. `plainto_tsquery` rows are returned only for the search answer's supporting fragments.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt is built or inspected. `RECEIVED_AT` is only a read-side fixture value in `provenanceRow`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file filters link and fragment items out before asserting: `.filter((item) => item.kind === "node")`. No assertion is made about link or fragment items.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal is exercised.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file implements no normalization. The query `Petrobrass` is passed through unchanged, and the stub tsquery `'petrobrass'` is returned verbatim by `respond`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is created. The only node is the stub row from `approximateNodeRow`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version, run or document context appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      the two `it` blocks, through EXPECTED_APPROXIMATE_NODE_ITEMS and nodeItemsOf
+    evidence: >-
+      `const EXPECTED_APPROXIMATE_NODE_ITEMS = [ { id: NODE_ID, match: "approximate", similarity: APPROXIMATE_SIMILARITY } ];` asserted with `expect(nodeItemsOf(items)).toEqual(EXPECTED_APPROXIMATE_NODE_ITEMS);` over both REST and MCP, with `expand=false`/`expand: false` so the node is at hop 0.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no threshold or length. The approximate match is a stub: `if (sql.includes("word_similarity") && sql.includes("node_alias")) { return result([approximateNodeRow()]); }`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no exact-match parse rule. `respond` returns `result([{ q: "'petrobrass'" }])` for the tsquery statement only as scaffolding.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears anywhere in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run retry appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts a single node item and no ordering. The result is filtered with `.filter((item) => item.kind === "node")` and compared whole.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal with an alias is exercised. The strings "Petrobras" and "Petrobrass" appear only as a stub name and a query.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No later proposal resolves to an existing node. The file only searches.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or ALIAS_NOT_IN_SOURCE answer appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk reading or document context appears in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's search is for the misspelled "Petrobrass" and the node is matched approximately. No exact match is asserted. The only match value is `match: "approximate"`.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading or extraction appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run retry or document context appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction, chunk count or document context status appears in the file.
+looked_past: >-
+  The file's own scaffolding (the SQL-fragment sniffing in `respond`, the RS256 JWT fixture, the empty catalog snapshot and the stub constants such as `APPROXIMATE_SCORE = 0.72`) states no domain fact, so I treated it as test construction and not as a specification judgment.

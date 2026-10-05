@@ -1,0 +1,280 @@
+findings:
+  - file: src/modules/ingestion/service/directed-run.ts
+    where: >-
+      lines 1 and 3, the exports DIRECTED_MODEL and DIRECTED_PROMPT_VERSION
+    evidence: |-
+      export const DIRECTED_MODEL = "directed" as const;
+
+      export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;
+    cost: >-
+      The values are declared only in this file. Node rules/knowledge-base/directed-ingestion-run states them
+      ("A directed ingestion opens an LLM run of model directed and prompt version directed-v1"), but the
+      trace binds that node to src/modules/ingestion/service/directed-ingestion.service.ts, which imports
+      the values from here. If the node moves, --check reaches the service and never this file. The
+      constants would then change in a file the node does not answer for, or fail to change, with nobody
+      knowing which was decided. The same constants also feed the alias-admission query in
+      entity-resolution.service.ts, so the value is read in two places and declared in a third.
+    kind: contradicts
+    correction: >-
+      The bind that claims this declaration has to reach it: rules/knowledge-base/directed-ingestion-run
+      bound to this file as well as to directed-ingestion.service.ts. Code never reads the specification, so
+      nothing in the source can close this.
+    node: rules/knowledge-base/directed-ingestion-run
+read:
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file holds only `export const DIRECTED_MODEL = "directed" as const;` and `export const
+      DIRECTED_PROMPT_VERSION = "directed-v1" as const;`. It admits no alias and applies no exception. The
+      directed-run identity it declares is passed to the admission query in entity-resolution.service.ts
+      (`DIRECTED_MODEL, DIRECTED_PROMPT_VERSION, args.llmRunId`), where the rule's fact sits.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file holds only the two constants `DIRECTED_MODEL = "directed"` and `DIRECTED_PROMPT_VERSION =
+      "directed-v1"`. It records no alias on any node.
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file holds only `export const DIRECTED_MODEL = "directed" as const;` and `export const
+      DIRECTED_PROMPT_VERSION = "directed-v1" as const;`, and presents no document content to a model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file holds only two string constants and makes no model call, wait or retry.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds only `DIRECTED_MODEL = "directed"` and `DIRECTED_PROMPT_VERSION = "directed-v1"`. It
+      declares no operation, acceptance or refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds only two string constants and no read operation.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape. It holds only `export const DIRECTED_MODEL = "directed" as const;` and
+      `export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;`.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLMRun shape. It holds only the values `DIRECTED_MODEL = "directed"` and
+      `DIRECTED_PROMPT_VERSION = "directed-v1"`, which a run's model and prompt_version attributes take.
+      The shape is declared elsewhere.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration of v1 to v5. It holds `export const DIRECTED_PROMPT_VERSION =
+      "directed-v1" as const;`, a value that sits outside that enumeration and belongs to a run that calls no
+      model.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file holds no default and no `v5`. It holds only `DIRECTED_PROMPT_VERSION = "directed-v1"`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file filters no entity. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file holds no context model and no `claude-haiku-4-5`. It holds only `DIRECTED_MODEL =
+      "directed"` and `DIRECTED_PROMPT_VERSION = "directed-v1"`.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file makes no preliminary reading. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file records no status. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file records no status. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file cuts no summary. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file counts no lines. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file resolves no name. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file anchors no fragment. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunk. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file adds no alias. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no name. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file creates no node. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file records no document context. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file builds no search item. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file matches no node. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file matches no node. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file checks no version. It holds only `DIRECTED_PROMPT_VERSION = "directed-v1"`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file retries no run. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file ranks nothing. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file admits no alias. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposal. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file admits or refuses no alias. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunk. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file searches nothing. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file makes no preliminary reading. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file retries no run. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file runs no extraction. It holds only the two constants `DIRECTED_MODEL` and
+      `DIRECTED_PROMPT_VERSION`.
+candidates_opened:
+  - rules/knowledge-base/directed-ingestion-run

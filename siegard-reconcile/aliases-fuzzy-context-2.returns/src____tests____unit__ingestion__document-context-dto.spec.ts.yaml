@@ -1,0 +1,233 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file checks the shape of three DTO schemas by parsing literals, for example
+      `refusedFields(DocumentContextSchema, withoutSummary)`. It never builds a prompt or marks
+      content apart from instructions.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No timeout or retry appears in the file. Its only subjects are `DocumentContextSchema`,
+      `DocumentContextStatusSchema` and `DocumentEntitySchema`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No operation, response envelope or error code is exercised. The file only calls
+      `schema.safeParse(input)` and reads `issue.path`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file touches no search or read surface. It contains only schema parses over
+      document-context shapes.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag vocabulary (`uncertain`, `disputed`, `low-confidence`) appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      The `describe("a document context")` block, lines 32-48. Its two cases refuse a context
+      lacking `summary` and a context lacking `model`.
+    evidence: >-
+      `const withoutSummary = { entities: [ENTITY], model: MODEL };` with
+      `expect(refused).toEqual(["summary"]);`, and `const withoutModel = { summary: SUMMARY,
+      entities: [ENTITY] };` with `expect(refused).toEqual(["model"]);`. Both are checked
+      through `refusedFields(DocumentContextSchema, ...)`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      The `describe("the document context status enumeration the specification declares")`
+      block, lines 22-30. The test asserts the enumeration's exact membership.
+    evidence: >-
+      `const declared = ["produced", "single-chunk", "too-long", "failed"];` and
+      `const members = [...DocumentContextStatusSchema.options].sort();` followed by
+      `expect(members).toEqual([...declared].sort());`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      The `describe("a document entity")` block, lines 50-74. Its three cases refuse an entity
+      lacking `node_type`, one lacking `names`, and one with an empty `names` list.
+    evidence: >-
+      `const withoutNodeType = { names: NAMES };` with `expect(refused).toEqual(["node_type"]);`,
+      `const withoutNames = { node_type: "Person" };` with `expect(refused).toEqual(["names"]);`,
+      and `const withEmptyNames = { node_type: "Person", names: [] };` with
+      `expect(refused).toEqual(["names"]);`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file never builds or reads an LLM run. It imports only the three document-context
+      schemas from `llm-run.dto.js`.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No `exact` or `approximate` match value appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version value (`v1` to `v5`) appears in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No search item shape (`kind`, `layer`, `score`, `similarity`) appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file contains no alias admission. `NAMES` is only a fixture list passed to
+      `DocumentEntitySchema`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity computation or value appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version default appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file never checks `node_type` against a catalog. `{ node_type: "Person", names: NAMES }`
+      is only a fixture.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      `const MODEL = "claude-haiku-4-5";` is a fixture value fed to the schema. The test asserts
+      no model selection, so the rule's fact is not exercised.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading, chunk count or content length threshold appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      No run reuse or status handling appears in the file. Only the status enumeration's members
+      are asserted.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file asserts only the status enumeration's members. It never records a status per
+      chunk count or length.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary truncation is exercised. `SUMMARY` is one short line.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No line limit on `summary` is asserted. The only summary case is a missing `summary`
+      field.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      No search item or similarity appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No fragment anchoring appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No prompt text or relative-date words appear in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No chunk reading appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No relative-date handling appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No node proposal or alias addition appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No name normalization appears in the file. `NAMES` entries are passed verbatim.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No prompt version condition appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No approximate matching or threshold appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No node layer matching appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version check appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The scenario's given/when/then is not exercised. The file only parses schema shapes.
+looked_past: >-
+  The file repeats the status enumeration as a literal `declared` list inside a test, which is a test oracle and not a code-held vocabulary, so I treated it as the check on the node and not as a second home.

@@ -1,0 +1,22 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/retry-reuses-document-context-later-prompt-version.spec.ts
+        name: leaves the document context status as it was when a retried run under a later prompt version holding a document context is extracted with no preliminary reading
+    why: >-
+      The fact covers prompt version v5 and every later version. The test runs only
+      prompt_version "v6". It mocks selectPromptModule so that v6 resolves to v5's module.
+      It sets up a retried run that holds a document context with status "single-chunk",
+      and the document has three chunks. After the extraction it asserts that the status is
+      still "single-chunk". Any status the extraction wrote would be something other than
+      that held value, so the assertion catches it, but only for v6. No run in the offered
+      proof is extracted under prompt version v5 itself. If the version gate excluded v5,
+      for example by testing for a version strictly later than v5, the status of a v5 run
+      reusing its context could change and this test would still pass. The lower bound of
+      the fact is unexercised.
+    remainder: testable
+    remainder_why: >-
+      Take a retried run under prompt_version "v5" that holds a document context with a
+      status, extract it with no preliminary reading, and assert that its
+      document_context_status is unchanged.

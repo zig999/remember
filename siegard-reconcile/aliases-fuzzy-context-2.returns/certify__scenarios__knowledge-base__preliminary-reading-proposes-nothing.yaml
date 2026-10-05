@@ -1,0 +1,26 @@
+certified:
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: proposes nothing and writes nothing but the run's own context columns before its first chunk is read
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: makes the preliminary reading before the first chunk is read
+    why: >-
+      The fact is covered, with one over-assertion to report. The test "proposes nothing and
+      writes nothing but the run's own context columns before its first chunk is read" uses
+      the default scenario: a v5 run, a raw information of 3 chunks, an empty knowledge base,
+      and a preliminary reading that yields two entities (Person and Organization). It records
+      every write statement the run makes before the first chunk's model call. It then requires
+      that no write other than "UPDATE llm_run" appears in that window. A proposal, or an insert
+      of a knowledge node, information fragment, knowledge link or node attribute, made before
+      the first chunk is read would therefore make it fail.
+
+      The over-assertion is in that same test. It forbids every write outside llm_run, not only
+      writes to the four kinds the node names and proposals. A table the node never mentions,
+      such as an audit row or another task's legitimate write placed before the first chunk,
+      would break it, though the node's fact would still hold.
+
+      The test "makes the preliminary reading before the first chunk is read" establishes that
+      the reading happens inside the window being checked. The first test does not assert that
+      on its own.

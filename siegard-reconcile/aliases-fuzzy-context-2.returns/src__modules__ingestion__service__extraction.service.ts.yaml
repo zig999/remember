@@ -1,0 +1,287 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      runChunkLoop, the model call at line 487 (`thinking: { type: "adaptive" }`), and the
+      `thinking` field of the ExtractionMessageRequest interface at line 118
+    evidence: |-
+      thinking: { type: "adaptive" },
+    cost: >-
+      Every extraction turn is sent with adaptive thinking on. That is a choice about how the
+      model reads a chunk, and it affects what each turn costs and how long it takes. No node
+      states it. A reader who looks in the specification for how an extraction calls the model
+      finds the timeout, the retries and the token ceiling, but not this. The decision lives
+      only in this call.
+    kind: unstated
+    correction: >-
+      Analysis would give the extraction's model-call settings a node, or an amendment to
+      rules/knowledge-base/extraction-turn-token-ceiling, so that adaptive thinking is stated
+      where the other model-call bounds are.
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      lines 137-145, ANTHROPIC_REQUEST_TIMEOUT_MS, ANTHROPIC_MAX_RETRIES and
+      defaultAnthropicFactory
+    evidence: |-
+      const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+      const ANTHROPIC_MAX_RETRIES = 2;
+      ... new AnthropicClient({ apiKey, timeout: ANTHROPIC_REQUEST_TIMEOUT_MS, maxRetries: ANTHROPIC_MAX_RETRIES })
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the error classes RunNotRunnableError (409, BUSINESS_RUN_NOT_RUNNABLE, naming the status),
+      LlmProviderFatalError (502, SYSTEM_LLM_PROVIDER_UNAVAILABLE, carrying partialRun) and
+      ExtractionFatalError (500, SYSTEM_INTERNAL_ERROR, carrying partialRun), and the
+      runLlmExtraction flow that raises them
+    evidence: |-
+      public readonly code = "BUSINESS_RUN_NOT_RUNNABLE" as const;
+      public readonly code = "SYSTEM_LLM_PROVIDER_UNAVAILABLE" as const;
+      public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+      if (run.status !== "running") { throw new RunNotRunnableError(llmRunId, run.status); }
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the run shape loaded in LoadedRunContext.run, the complete and fail operations in
+      closeRunSafe calls, and the response built in readFinalRun. The full shape is declared in
+      dto/llm-run.dto.ts.
+    evidence: |-
+      await closeRunSafe(pool, llmRunId, "completed");
+      await closeRunSafe(pool, llmRunId, "failed");
+      readonly run: { readonly id: string; readonly status: "running" | "completed" | "failed"; readonly model: string; readonly prompt_version: string; ... readonly document_context: DocumentContext | null; };
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the literal union in LoadedRunContext.run.status and in the RunNotRunnableError
+      constructor
+    evidence: |-
+      readonly status: "running" | "completed" | "failed";
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      line 346, where the configured context model is passed to produceDocumentContext. The
+      default claude-haiku-4-5 sits in config/env.ts, not in this file.
+    evidence: |-
+      const documentContext = await produceDocumentContext({ pool, anthropic, catalog, logger, model: deps.env.CONTEXT_MODEL, run, chunkCount: chunks.length, content, });
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      lines 341-350, the call to produceDocumentContext made before the chunk loop, handing it
+      the run, the chunk count and the whole content. The conditions on version, chunk count
+      and 100000 code units are decided in preliminary-reading.ts.
+    evidence: |-
+      const documentContext = await produceDocumentContext({ ... run, chunkCount: chunks.length, content, });
+      for (const chunk of chunks) {
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      dispatchToolUse, case "propose_fragment", plus buildTool, which strips chunk_ids from the
+      schema shown to the model
+    evidence: |-
+      const withChunk = { ...(rawInput as Record<string, unknown>), chunk_ids: [chunkId], };
+      schema = stripProperty(schema, "chunk_ids");
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the for-of loop over chunks in runLlmExtraction (line 352), PREV_TAIL_CHARS and
+      lastCodePoints, and the user blocks built in runChunkLoop from metadata, prevTail and
+      documentContext
+    evidence: |-
+      export const PREV_TAIL_CHARS = 200 as const;
+      return Array.from(text).slice(-count).join("");
+      prevTail = lastCodePoints(chunk.text, PREV_TAIL_CHARS);
+      const userBlocks = input.prompt.user({ metadata: input.metadata, chunkText: input.chunkText, prevTail: input.prevTail, documentContext: input.documentContext, });
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      runLlmExtraction, which produces one document context before the loop and hands it to
+      every chunk, and dispatchToolUse, which anchors each fragment to the chunk being read
+    evidence: |-
+      documentContext, dispatchDeps, prompt, logger, llmRunId, affectedNodes, });
+      chunk_ids: [chunkId],
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only passes content to the prompt module: `const userBlocks = input.prompt.user({ metadata: input.metadata, chunkText: input.chunkText, ... documentContext: input.documentContext })`.
+      The marking of content as data lives in the prompt files, not here.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no read or search surface. It holds extraction dispatch and the closing
+      of the run.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag vocabulary appears in the file. It only reads `envelope.result.outcome` in
+      isErrorValidationOutcome.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file imports the type and passes it along: `import type { DocumentContext, LlmRunResponse } from "../dto/llm-run.dto.js";`.
+      The shape is declared in the dto.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file only spreads `...documentContextFields(row)` from run-document-context.js into
+      the response. It declares no status values.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No entity shape is declared or read here. The only context-related code is the call to
+      produceDocumentContext.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No match vocabulary appears. The file is extraction orchestration.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The version is carried as `readonly prompt_version: string;` and handed to
+      `selectPromptModule(run.prompt_version)`. The enumeration lives in prompts/index.ts.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file forwards propose_node to `proposeNodeHandler(parsed.data, { pool, logger, llm_run_id, catalog })`.
+      Alias admission is decided in the node-proposal service, not here.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file holds no similarity or search code.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file reads `run.prompt_version` from the stored run and applies no default.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file hands `catalog` to produceDocumentContext and does not filter entities.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file hands `run` to produceDocumentContext and does not set the status. The reuse is
+      decided in preliminary-reading.ts.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file passes `chunkCount: chunks.length` and `content` and records no status itself.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary handling.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary handling.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      Resolution is not here. The file calls `proposeNodeHandler(...)`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file only takes the prompt text from `input.prompt.system(input.catalog)`. The
+      wording lives in the prompt module.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file only takes the prompt text from `input.prompt.system(input.catalog)`.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file only takes the prompt text from `input.prompt.system(input.catalog)`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file only takes the prompt text from `input.prompt.system(input.catalog)`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file builds the metadata (`document_date`, `received_at`) and passes it to the
+      prompt. The instruction text lives in the prompt module.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only dispatches to `proposeNodeHandler`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no names.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only dispatches to `proposeNodeHandler`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file calls produceDocumentContext unconditionally and leaves the version gating to
+      preliminary-reading.ts.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      line 331, `selectPromptModule(run.prompt_version)` inside the try block, and the
+      catch-all branch that fails the run and raises ExtractionFatalError. The membership
+      check itself is in prompts/index.ts.
+    evidence: |-
+      const prompt = selectPromptModule(run.prompt_version);
+      ... await closeRunSafe(pool, llmRunId, "failed"); ... throw new ExtractionFatalError(llmRunId, cause, partial);
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file neither performs a retry nor writes a status. It only reads `run.document_context`.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      Alias admission is not in the file. It only dispatches `proposeNodeHandler`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      Resolution is not in the file. It only dispatches `proposeNodeHandler`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      Alias admission is not in the file. It only dispatches `proposeNodeHandler`.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file holds no directed ingestion. It is the model-driven extraction path.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      lines 341-350, where produceDocumentContext is called with no dispatchDeps, before any
+      chunk is dispatched
+    evidence: |-
+      const documentContext = await produceDocumentContext({ pool, anthropic, catalog, logger, model: deps.env.CONTEXT_MODEL, run, chunkCount: chunks.length, content, });
+      for (const chunk of chunks) {
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file hands `run` (with `document_context: runRow.document_context`) to
+      produceDocumentContext. Whether a second reading is made is decided in
+      preliminary-reading.ts.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file only passes `chunkCount: chunks.length` to produceDocumentContext. The status
+      single-chunk is decided in preliminary-reading.ts.
+looked_past: >-
+  The file also holds the fatal burst of 3 (FATAL_ERROR_BURST), the 64 turns per chunk, the end_turn, refusal and pause_turn handling, the "Input failed Zod parse." and "Unknown tool" refusals, and the closing of the run, all of which nodes outside this set govern (extraction-fails-on-repeated-system-errors, extraction-chunk-turn-limit, extraction-turn-without-proposals-ends-chunk, extraction-malformed-arguments-refused, extraction-unknown-tool-refused, extraction-closes-its-run), so I did not report them here; I also left the `cache_control: ephemeral` prompt-caching marker unreported as a transport optimization that states no domain fact.

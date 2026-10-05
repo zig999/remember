@@ -1,0 +1,272 @@
+findings:
+  - file: src/__tests__/unit/ingestion/extraction-prompt-held-versions.spec.ts
+    where: >-
+      the fourth test, "fails an extraction under a prompt version the system does not hold without asking the model, ...", and its expected object (lines 321-342)
+    evidence: >-
+      unheldVersionModelRequests: refused.systemTexts.length, ... unheldVersionModelRequests: 0,
+    cost: >-
+      The suite asserts that an extraction under an unheld prompt version makes zero requests to the language model. No node states this. prompt-version-known says only that the version must be one the system holds, and the ingestion contract says only that the refusal carries the failed run. A reader who wants to know whether such a run may reach the model looks in the specification, finds nothing, and takes this test's expected value as the business decision.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether an extraction under an unheld prompt version calls the model, and give that decision a node. The natural home is prompt-version-known or a rule beside it.
+    node: rules/knowledge-base/prompt-version-known
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file captures only the system text, with `systemTexts.push(systemTextOf(request.system))`. It makes no assertion about how document content is marked in the user turn.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `anthropicFactory: () => capturingClient(systemTexts)` returns a stub stream. The file sets no timeout and no retry count, and asserts neither.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      failedRunStatusOf and the last test's expected object, for the failed run that the unheld-version refusal carries. The rest of the contract is nowhere.
+    evidence: >-
+      refusal instanceof ExtractionFatalError ? refusal.partialRun.status : "not refused as a failed run" ... unheldVersionRunStatus: "failed",
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises no search, provenance or catalog read. It imports only the catalog snapshot builder, the prompt selector and the extraction service.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No file construct mentions uncertain, disputed or low-confidence.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      `document_context: null,` is only a value in the runRow fixture. The file declares no shape for the element.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `document_context_status: null,` is only a value in the runRow fixture. The file declares no enumeration.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No file construct names entities with node types, or the names the document uses for them.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      runRow builds a fixture row with `prompt_version: state.promptVersion` and `status: state.status`. This passes values along. The file declares no LLM run shape (RunState carries only status and promptVersion).
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No file construct mentions exact or approximate match.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file probes `selectPromptModule(version)` for v1 to v50 and asserts `"v5 is held": versions.includes("v5")`. It declares no enumeration of versions; the selector in another file holds them.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No file construct mentions a search item, its score, hop, flags or similarity.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file proposes no alias and admits none. The chunk fixture "O Escritório de Projetos (PMO) cobrou o Caio hoje." is never asserted against.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity computation or assertion appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Every run in the file is given its version explicitly, as in `runUnder(promptVersion)`. No ingestion without a version is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading result is produced or asserted.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `env: { ANTHROPIC_API_KEY: "sk-ant-test", CONTEXT_MODEL: "claude-context-test" }` only supplies a value. The file asserts no model choice for the context.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunk fixture is one chunk (chunk_index 0). No test asserts a read of the whole content before the first chunk.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run fixture always holds `document_context_status: null`. No reuse case is exercised.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No test asserts a recorded document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is produced or cut anywhere in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts no summary lines. `instructionLines` splits prompt text, which is another subject.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution is exercised.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The stub stream returns `END_TURN_MESSAGE` with no tool use. No fragment is proposed or anchored.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      the OTHER_NAMES_CHECKS table and the first test, which sends every held version from v5 on and tests the captured request text against it
+    evidence: >-
+      "names an acronym as another name": /\bacronyms?\b/i, "names a short name as another name": /\bshort\s+names?\b/i, ... results[`${version} request ${name}`] = pattern.test(sent);
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      `heldFrom(FIRST_OTHER_NAMES_VERSION)` selects only v5 and later. No assertion covers v1 to v4 leaving the instruction out.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      the second test, over RELATIVE_DATE_WORDS and relativeDateWordCheck, for every held version from v4 on
+    evidence: >-
+      const RELATIVE_DATE_WORDS: readonly string[] = ["hoje", "ontem", "amanhã"]; ... results[`${version} names ${word} as a relative-date word`] = relativeDateWordCheck(word).test(system);
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      the third test, a whole-line containment check of the v4 system prompt in the v5 system prompt
+    evidence: >-
+      const missing = v4Lines.filter((line) => !v5Lines.has(line)); expect(missing).toEqual([]);
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `CHUNK_ROW` is a single fixture chunk. No assertion covers chunk order, the context shown with each chunk, or the last 200 code points.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      `relativeDateWordCheck` tests that the words are named near "relative date". It asserts nothing about resolving against the document date or the reception date.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or resolution is exercised.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      `squash` collapses whitespace in prompt text before matching. It is not name normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is created in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run fixture holds `document_context: null` for every version. No assertion covers the absence of a preliminary reading before v5.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No trigram threshold or alias length appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No lexical parse of query text appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      the fourth test, which runs under `UNHELD_VERSION = "v99"` and expects the failed run
+    evidence: >-
+      const refused = await runUnder(UNHELD_VERSION); ... unheldVersionRunStatus: "failed",
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is exercised.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search ranking appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions "(PMO)" only inside the chunk fixture text. It asserts no alias admission.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No later proposal or resolution is exercised.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal answer is checked and ALIAS_NOT_IN_SOURCE does not appear in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds one chunk and no document context, and exercises no multi-chunk reading.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search is run in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading is made, and the stub model returns "done" with no proposals.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retried run is exercised.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs one-chunk extractions (`rowsOf([CHUNK_ROW])`) but never asserts the recorded document context status.
+looked_past: >-
+  The fixtures (the CONTEXT_MODEL value, the claude-opus-4-8 model, the 64-character idempotency key, the v1 to v50 probing bound, the SQL-matching stub pool) are test scaffolding rather than domain facts, and what they say about the code's structure is a code-review judgment.
+candidates_opened:
+  - rules/knowledge-base/extraction-fails-on-repeated-system-errors

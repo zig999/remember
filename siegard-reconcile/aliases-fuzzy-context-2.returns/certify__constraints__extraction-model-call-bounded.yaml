@@ -1,0 +1,28 @@
+certified:
+  - node: constraints/extraction-model-call-bounded
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+        name: abandons a model call that never answers within five minutes and attempts it at most three times, for the preliminary reading and for a chunk alike
+      - file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+        name: calls the context model exactly three times for one preliminary reading when it answers a retryable error on every attempt
+    why: >-
+      The fact is covered. The first test runs a model that never answers, for both the
+      preliminary-reading call and the chunk call. It fails if any attempt is still waiting
+      after five minutes, if no attempt is ever abandoned, or if either call is attempted more
+      than three times. The second test fails if the preliminary-reading call is attempted more
+      than three times when the model returns a retryable error every time.
+
+      Three findings in these tests are excess, not extra coverage. (1) The second test
+      requires exactly three attempts. The fact only sets a ceiling of at most two retries, so
+      the test also fails if the implementation retries fewer times or not at all, and both of
+      those still satisfy the fact. (2) The first test's "firstChunk" bound counts every call
+      made with the run's model, not only the first chunk's call. So the at-most-three check
+      also requires that the run makes no further call with that model after the first chunk's
+      call is abandoned, which the fact does not state. (3) The first test measures the wait
+      only through the request's abort signal, and it fails if the call carries no signal. An
+      implementation that stops waiting within five minutes without aborting the request would
+      meet the fact and still fail the test.
+
+      With retryable errors, the retry ceiling is checked only for the preliminary-reading
+      call. For the chunk call it is checked only under the never-answering path.

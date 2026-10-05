@@ -1,0 +1,272 @@
+findings:
+  - file: src/__tests__/unit/ingestion/chunk-prompt-document-context-remainders.spec.ts
+    where: >-
+      the constants DATA_OPENER and BLOCK_CLOSER (lines 74-75), applied by isDelimitedAt and marksViolations to decide that content is "marked apart"
+    evidence: >-
+      const DATA_OPENER = /\bdata\b.*:$/i;
+      const BLOCK_CLOSER = /^END\b/;
+    cost: >-
+      The test fixes what the mark is: a line ending in a colon that contains the word "data", and a closing line that starts with "END". The node only says the content is "marked apart from its instructions as data" and names no marker. A prompt that marked the content apart some other way would satisfy the node and fail this test. A reader asking what "marked apart" means will find the answer here, not in the specification.
+    kind: unstated
+    correction: >-
+      The analysis would either state the presentation marker in constraints/document-content-is-data, or leave the marker to the prompt and have the test assert only the node's own wording.
+    node: constraints/document-content-is-data
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      the first it() block, through marksViolations, isDelimitedAt and everyOccurrenceIsDelimited, which check chunk text, entity names and the preliminary reading's content
+    evidence: >-
+      marksViolations(call, CHUNK_INJECTION) ... "present in the system prompt" ... "not between a data label and a closing delimiter"
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file fakes the model with `finalMessage: async () => { await tick(); ... }` and sets no timeout or retry count, so the five-minute limit and the two retries are never stated or asserted
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls `runLlmExtraction(buildPool(world), RUN_ID, pino({ level: "silent" }), CATALOG, { env: ENV, anthropicFactory: () => buildModel(world) })` and declares no operation, answer or refusal of the contract
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search, provenance, catalog or graph read; its only subject is extraction prompts
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      no flag value (uncertain, disputed, low-confidence) appears in the file
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the shape is only imported (`DocumentContextSchema, type DocumentContext`) and the preliminary reading's answer is built as `JSON.stringify({ summary: SUMMARY, entities: ENTITIES })`; the file declares no shape of its own for it
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `document_context_status: string | null` in RunRow is an untyped passthrough; none of produced, single-chunk, too-long or failed is declared or asserted
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `type DocumentEntity` is imported and used as `const DIRECTOR: DocumentEntity = { node_type: "Person", names: [...] }`, so the file only passes the shape along
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the RunRow interface, which declares the llm_run row's attributes in this file
+    evidence: >-
+      interface RunRow { id: string; model: string; prompt_version: string; started_at: Date; finished_at: Date | null; status: string; attempts: number; input_raw_information_id: string; idempotency_key: string; document_context: DocumentContext | null; document_context_status: string | null; }
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      neither exact nor approximate appears in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `promptVersion: string;` in Scenario and `promptVersion: "v5"` / `{ promptVersion: "v4" }` only pass values; the enumeration v1 to v5 is not declared
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item or any of its attributes
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the model stub only answers `CHUNK_REPLY = "done"`, so no node proposal or alias is made
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search or similarity
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the scenario names its version explicitly (`promptVersion: "v5"` in BASE_SCENARIO); no run is created without one
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the catalog holds only the node types the reading lists (`{ id: NODE_TYPE_PERSON_ID, name: "Person" }, { id: NODE_TYPE_ORGANIZATION_ID, name: "Organization" }`); no entity under an unknown node type is exercised
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", CONTEXT_MODEL } as const;` configures a model, but no assertion reads which model the preliminary reading was made under
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the second it() block, through observeRunWithContext and EXPECTED_WITH_CONTEXT, for a v5 run of three chunks; the reading call is marked by `isReading: !("tools" in req)`. The 100000 code-unit bound is not stated.
+    evidence: >-
+      missingFromChunks(world, [...CONTEXT_NEEDLES, ...METADATA_NEEDLES]) expected as `missingFromAChunk: []`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      every run starts with `document_context: null, document_context_status: null`; no run reuses a held context
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `updateRun` stores `world.run.document_context_status = value;` but no assertion reads it back
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const SUMMARY = "Ata do comite financeiro.";` is a single line and is never cut
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      no summary of more than one line is exercised and the line limit is not stated
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file makes no node proposal, so no resolution
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `textMessage(CHUNK_REPLY)` returns plain text with no fragment proposal to anchor
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the system prompt is captured in `system: systemTextOf(req.system)` but nothing asserts that it asks for other names
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the v4 run (`{ promptVersion: "v4" }`) is checked only for chunk metadata, tails and absence of a context, never for its wording on other names
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      "hoje", "ontem" and "amanhã" appear nowhere in the file
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      the v4 and v5 system prompts are never compared
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the second it() block: EXPECTED_WITH_CONTEXT and EXPECTED_WITHOUT_CONTEXT, over readOrder, largestNumberOfModelCallsInFlight, METADATA_NEEDLES, tailShownWithChunk and the TAIL_CODE_POINTS constant
+    evidence: >-
+      const TAIL_CODE_POINTS = 200; ... readOrder: [0, 1, 2], largestNumberOfModelCallsInFlight: 1, missingFromAChunk: [], tails: [SHOWN_EXACTLY, SHOWN_EXACTLY], with `storedOrder: STORED_UNORDERED`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      no relative date is asked of the model and no instruction about dates is asserted
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file makes no node proposal
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no name comparison; its catalog names are used only as exact keys
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node is created in the file
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      the v4 shape expects only `contextShown: []` in the chunk prompts; whether a reading was made and whether a context or status was recorded is not asserted
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no node-layer search or similarity threshold
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no node-layer search
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the known versions "v4" and "v5" are used; no unknown version is exercised
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not retry a run; every run starts from `status: "running", attempts: 1`
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search items to rank
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no node proposal or alias such as "CNPq"
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file makes no node proposal that resolves
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no alias proposal and no ALIAS_NOT_IN_SOURCE answer
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has three chunks and a context listing entities, but no proposal is made while a chunk is read (`CHUNK_REPLY = "done"`), so neither the resolution nor the anchoring is observed
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no directed ingestion
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never asserts that the preliminary reading makes no proposal or that nothing is held before the first chunk is read
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run is retried and none starts holding a document context (`document_context: null`)
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the one-chunk shape `"a v5 run of one chunk": { texts: DEFAULT_TEXTS.slice(0, 1) }` is only counted (`"a v5 run of one chunk": 1` chunks read); the absence of a preliminary reading and the single-chunk status are not asserted
+looked_past: >-
+  The test's stand-ins for the store, such as the ORDER_BY_CHUNK_INDEX regex over the SQL and the pool and stream fakes, are test mechanics and not a domain fact, so they belong to another judgment.
+candidates_opened: []

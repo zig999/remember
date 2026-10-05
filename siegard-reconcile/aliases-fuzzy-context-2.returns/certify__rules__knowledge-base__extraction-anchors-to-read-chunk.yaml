@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: anchors the fragment proposed while reading a chunk to that chunk alone, whether the model names no chunk, a later chunk or two earlier chunks
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: resolves a proposal named João Silva made while reading chunk 3 to the knowledge node created while reading chunk 1 and anchors the chunk 3 fragment to chunk 3
+    why: >-
+      The first named test checks that each fragment is anchored to exactly the chunk being
+      read when the model names no chunk, names a later chunk, or names two earlier chunks. It
+      would fail if the anchors came from the model's chunk_ids, or were added to them, in that
+      run. The second test checks the no-chunk case again, but only on the way to checking that
+      the node resolves. That anchor is asserted only incidentally.
+      Both tests use the same kind of run: a v5 run of three chunks with a document context. The
+      invariant covers every extraction. Nothing in the set checks anchoring in a run whose
+      prompt version is older than v5, in a run of one chunk, or in a run whose preliminary
+      reading failed. The set already shows these runs being read chunk by chunk, but never what
+      their fragments are anchored to. So an implementation that anchors to the read chunk only
+      when a document context exists, and uses the model's chunk_ids otherwise, would pass.
+      "Whatever raw chunks the model names" is also exercised only with chunk ids that belong to
+      the run's own raw information. No test has the model name a chunk id that does not exist or
+      that belongs to another raw information. So nothing shows that such a fragment is still
+      anchored to the read chunk instead of being refused or anchored somewhere else.
+    remainder: testable
+    remainder_why: >-
+      Take the same anchoring script: propose_fragment with no chunk_ids, with a later chunk's id,
+      and with two earlier chunks' ids. Run it on a v4 run of three chunks, on a v5 run of three
+      chunks whose preliminary reading fails, and on a v5 run of one chunk. In each run, expect
+      every fragment_source anchor to equal exactly the chunk being read. Then run, while reading
+      chunk 2, a propose_fragment that names a chunk id the raw information does not hold. Expect
+      the fragment to be anchored to chunk 2 alone.

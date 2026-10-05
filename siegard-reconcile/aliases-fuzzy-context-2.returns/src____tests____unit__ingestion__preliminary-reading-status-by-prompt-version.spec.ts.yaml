@@ -1,0 +1,258 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file stubs the model with `finalMessage: async (): Promise<Anthropic.Messages.Message> =>` and asserts only statuses. It never inspects how content is presented to the model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (shape.readingFails === true) throw new Error("provider unavailable");` is a single failure with no timeout or retry bound, so the bound is not exercised.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls `produceDocumentContext({ pool: buildPool(store), anthropic: buildReader(shape), ... })` directly. No ingestion operation or answer shape is declared or asserted.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or read operation appears in the file. The imports are `buildSnapshot`, `DocumentContextStatus` and `produceDocumentContext`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item or flag. The only imports from the module are `buildSnapshot`, `DocumentContextStatus`, `produceDocumentContext` and `ContextReader`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is not declared here. The file only supplies `READING_ANSWER = JSON.stringify({ summary: "Ata de reuniao.", entities: [] })` as a stub answer.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is only imported as a type (`import type { DocumentContextStatus } from "../../../modules/ingestion/dto/llm-run.dto.js";`). The file passes its values along in `expected` and does not declare the shape.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `entities: []` in READING_ANSWER. No entity shape is declared or asserted.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `run: { id: RUN_ID, prompt_version: promptVersion, document_context: null },` is an object literal passed to a function. It declares no LLMRun shape.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node match appears in the file. It holds only `CATALOG = buildSnapshot({ nodeTypes: [], linkTypes: [], linkTypeRules: [], attributeKeys: [] })`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const V5_AND_LATER = ["v5", "v6", "v10"];` is a list of test inputs, not a declaration of the held prompt versions.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item or search call appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal or alias. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions similarity or a search item. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `statusRecorded(promptVersion: string, shape: Shape)` always passes an explicit prompt version. No ingestion that names none is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `entities: []` and an empty catalog (`nodeTypes: []`). No entity under an unheld node type is read, and no kept or dropped entity is asserted.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `model: CONTEXT_MODEL,` with `CONTEXT_MODEL = "claude-context-under-test"` is passed in. The configured-model default and the claude-haiku-4-5 fallback are not exercised.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the `severalChunksAtTheLimit` shape in `shapes()` and its expectation in the `it(...)` body. Only the more-than-one-chunk, at-most-100000-units case that yields a produced context is exercised.
+    evidence: >-
+      `severalChunksAtTheLimit: { chunkCount: SEVERAL_CHUNKS, content: contentOfUnits(CONTENT_LIMIT_UNITS), },` expected as `severalChunksAtTheLimit: "produced",`. The file runs with `document_context: null`, the "run holds none" condition. The "before its first chunk" ordering is not asserted.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      `run: { id: RUN_ID, prompt_version: promptVersion, document_context: null }` always passes a run holding no context. The reuse case is not exercised.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      the `shapes()` table and the `expected` mapping in the single `it(...)`, read through `statusRecorded` for each prompt version in `V5_AND_LATER`.
+    evidence: >-
+      `const expected = { oneChunkWithinTheLimit: "single-chunk", oneChunkPastTheLimit: "single-chunk", severalChunksAtTheLimit: "produced", severalChunksOneUnitPastTheLimit: "too-long", severalChunksPastTheLimitInUnitsWithinItInCodePoints: "too-long", severalChunksWhoseReadingFails: "failed", };` with `const CONTENT_LIMIT_UNITS = 100_000;`. The astral case is built as `"x" + ASTRAL_CHARACTER.repeat((OVER_LIMIT_UNITS - 1) / 2)`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      `READING_ANSWER = JSON.stringify({ summary: "Ata de reuniao.", entities: [] })` is a one-line summary. No summary past 5 lines is exercised.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only summary is `"Ata de reuniao."`. Line counting is not exercised.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal or resolution. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search or similarity. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal or chunk anchoring. It reads only `store.status`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub ignores its request (`stream: () => ({ finalMessage: async ... })`). No prompt content is asserted.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub ignores its request, and no prompt version below v5 is run.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub ignores its request, and no system prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub ignores its request, and no system prompt is compared in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `chunkCount: shape.chunkCount,` is passed as a number. No chunk iteration or per-chunk presentation is exercised.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub ignores its request, and no relative-date instruction appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search items. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal or alias. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not compare names. The only normalization-like text is `sql.replace(/\s+/g, " ")`, which prepares the SQL stub's match and is not a name policy.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no knowledge node. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const V5_AND_LATER = ["v5", "v6", "v10"];` is the only version list. No version at or below v4 is run, and no absence of a status is asserted.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer or word similarity. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer or alias. The only call is `produceDocumentContext({...})`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      `["v5", "v6", "v10"]` are passed straight to `produceDocumentContext`. No refusal of an unheld version is exercised.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retry. `run: { id: RUN_ID, prompt_version: promptVersion, document_context: null }` is a first extraction.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search or ranking. The only call is `produceDocumentContext({...})`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal or alias. The only call is `produceDocumentContext({...})`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal or alias. The only call is `produceDocumentContext({...})`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal, alias or ALIAS_NOT_IN_SOURCE answer.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      `entities: []` and no chunk reading. No later mention is resolved against a context entity.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search. The only call is `produceDocumentContext({...})`.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion or alias. The only call is `produceDocumentContext({...})`.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The test reads only `store.status` through `SET document_context_status` in `buildPool`. It does not assert that no knowledge node, fragment, link or attribute is written.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      `document_context: null` on every run. No retried run holding a context is exercised.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      the `oneChunkWithinTheLimit` shape in `shapes()` and its expectation. The status half of the scenario is held. "No preliminary reading is made" is not asserted.
+    evidence: >-
+      `oneChunkWithinTheLimit: { chunkCount: SINGLE_CHUNK, content: contentOfUnits(SHORT_CONTENT_UNITS), },` expected as `oneChunkWithinTheLimit: "single-chunk",`, with `const SINGLE_CHUNK = 1;`.
+looked_past: >-
+  The fixture list `V5_AND_LATER = ["v5", "v6", "v10"]` feeds versions beyond v5 to the function, while domain/knowledge-base/prompt-version enumerates only v1 to v5. I treated it as a test input probing the "v5 and later" scope and not as a stated fact about which versions exist.
