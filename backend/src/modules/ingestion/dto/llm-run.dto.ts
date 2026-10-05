@@ -75,6 +75,8 @@ export const LlmRunResponseSchema = z.object({
   input_raw_information_id: z.string().uuid(),
   idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
   summary: LlmRunSummarySchema,
+  document_context_status: DocumentContextStatusSchema.optional(),
+  document_context: DocumentContextSchema.optional(),
   affected_nodes: z.array(AffectedNodeSchema).optional(),
 });
 export type LlmRunResponse = z.infer<typeof LlmRunResponseSchema>;

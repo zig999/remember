@@ -47,6 +47,7 @@ import {
   type AffectedNode,
   type AffectedNodeCollector,
 } from "./affected-nodes.js";
+import { documentContextFields } from "./run-document-context.js";
 import {
   produceDocumentContext,
   type ContextMessageRequest,
@@ -709,6 +710,7 @@ async function readFinalRun(
       input_raw_information_id: row.input_raw_information_id,
       idempotency_key: row.idempotency_key,
       summary,
+      ...documentContextFields(row),
     };
     if (row.status === "completed" && affectedNodes !== undefined) {
       return { ...base, affected_nodes: [...affectedNodes] };

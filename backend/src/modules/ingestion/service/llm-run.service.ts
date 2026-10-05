@@ -1,16 +1,3 @@
-// LLMRun lifecycle service — REST endpoints UC-04, UC-05, UC-06, UC-07.
-//
-// Layering: route handler opens the transaction and passes `client` here.
-// This module is pure transactional orchestration on top of the repository.
-//
-// Errors:
-//   - `ResourceNotFoundError` (re-exported from ingestion.service) -> 404.
-//   - `RunNotRetryableError` -> 409 BUSINESS_RUN_NOT_RETRYABLE.
-//   - `RunNotRunningError`   -> 409 BUSINESS_RUN_NOT_RUNNING (TC-13 propose-*
-//                               REST mirrors; raised by the route layer's
-//                               pre-check when the addressed run exists but
-//                               is not in `running` status).
-
 import type { PoolClient } from "pg";
 
 import type {
@@ -37,10 +24,10 @@ import {
   setCachedAffectedNodes,
   type AffectedNode,
 } from "./affected-nodes.js";
+import { documentContextFields } from "./run-document-context.js";
 
 export { ResourceNotFoundError };
 
-/** 409 sentinel — caller maps to BUSINESS_RUN_NOT_RETRYABLE. */
 export class RunNotRetryableError extends Error {
   public readonly statusCode = 409;
   public readonly code = "BUSINESS_RUN_NOT_RETRYABLE" as const;
@@ -55,18 +42,6 @@ export class RunNotRetryableError extends Error {
   }
 }
 
-/**
- * 409 sentinel for the TC-13 propose-* REST mirrors. Raised by the route
- * layer's pre-check when the addressed `llmRunId` exists but its `status` is
- * not `'running'` — i.e. the run is `completed` or `failed`. Distinguishes
- * the case from 404 (unknown id) so the human caller gets the explicit
- * `BUSINESS_RUN_NOT_RUNNING` code instead of a generic envelope.
- *
- * On the MCP transport the same situation surfaces as a
- * `BUSINESS_RUN_NOT_RUNNING` envelope via `assertRunIsRunning` in
- * `handler-base.ts` — REST + MCP are now byte-identical on this condition
- * per the P2.1 namespaced taxonomy.
- */
 export class RunNotRunningError extends Error {
   public readonly statusCode = 409;
   public readonly code = "BUSINESS_RUN_NOT_RUNNING" as const;
@@ -83,7 +58,6 @@ export class RunNotRunningError extends Error {
   }
 }
 
-/** UC-04: GET /llm-runs/{id}. */
 export async function getLlmRunById(
   client: PoolClient,
   llmRunId: string
@@ -94,10 +68,6 @@ export async function getLlmRunById(
   }
   const summary = await aggregateToolCallOutcomes(client, llmRunId);
 
-  // Cache hit absorbs the common path;
-  // a miss falls back to the derived lookup over `tool_call.result` rows for
-  // this run (best-effort — a transient DB outage on the derived path is
-  // swallowed and the field is simply omitted).
   let affectedNodes: readonly AffectedNode[] | undefined;
   if (row.status === "completed") {
     const cached = getCachedAffectedNodes(llmRunId);
@@ -109,8 +79,6 @@ export async function getLlmRunById(
         setCachedAffectedNodes(llmRunId, derived);
         affectedNodes = derived;
       } catch {
-        // Best-effort — omit the field on a transient read failure; the
-        // caller can re-derive on the next poll.
         affectedNodes = undefined;
       }
     }
@@ -119,10 +87,6 @@ export async function getLlmRunById(
   return toLlmRunResponse(row, summary, affectedNodes);
 }
 
-/**
- * One item of the read-only "recent ingestions" listing surfaced by the
- * `list_recent_ingestions` MCP tool. Dates are ISO-8601 strings (wire form).
- */
 export interface RecentIngestionItem {
   readonly raw_information_id: string;
   readonly source_type: string;
@@ -137,12 +101,6 @@ export interface RecentIngestionItem {
   readonly model: string | null;
 }
 
-/**
- * Read the most recent ingestions (newest first). Powers the
- * `list_recent_ingestions` MCP tool — the operator's way to find a run after a
- * client-side timeout (the server keeps extracting after the socket drops, so
- * the run id is recoverable here). Read-only; the caller owns the transaction.
- */
 export async function listRecentIngestions(
   client: PoolClient,
   limit: number
@@ -163,7 +121,6 @@ export async function listRecentIngestions(
   }));
 }
 
-/** UC-05: GET /llm-runs/{id}/tool-calls. */
 export async function listToolCallsByLlmRun(
   client: PoolClient,
   args: { llm_run_id: string; limit: number; offset: number }
@@ -182,13 +139,6 @@ export async function listToolCallsByLlmRun(
   };
 }
 
-/**
- * UC-06: POST /llm-runs/{id}/retry. The order is critical:
- *   1. Pre-read to distinguish "not found" (404) from "wrong status" (409).
- *   2. Atomic `UPDATE ... WHERE status = 'failed'`; rowCount === 0 means the
- *      pre-read showed `failed` but a concurrent transition raced us -> 409.
- *   3. Orphan-fragment cleanup happens inside `retryLlmRunRow` in the same TX.
- */
 export async function retryLlmRun(
   client: PoolClient,
   llmRunId: string
@@ -202,12 +152,9 @@ export async function retryLlmRun(
   }
   const updated = await retryLlmRunRow(client, llmRunId);
   if (updated === null) {
-    // The status flipped between the pre-read and the UPDATE — treat as 409.
-    // Re-read the current status to surface the truthful value.
     const refreshed = await findLlmRunById(client, llmRunId);
     const currentStatus = refreshed?.status ?? "running";
     if (currentStatus === "failed") {
-      // Should not happen — log internally and surface as 409 conservatively.
       throw new RunNotRetryableError(llmRunId, "running");
     }
     throw new RunNotRetryableError(llmRunId, currentStatus);
@@ -216,10 +163,6 @@ export async function retryLlmRun(
   return toLlmRunResponse(updated, summary);
 }
 
-/**
- * UC-07: internal close path. Used by the LLM orchestrator integration in
- * future TCs; exposed here so the state-machine transition lives in one place.
- */
 export async function closeLlmRun(
   client: PoolClient,
   args: { llm_run_id: string; outcome: "completed" | "failed" }
@@ -248,10 +191,8 @@ function toLlmRunResponse(
     input_raw_information_id: row.input_raw_information_id,
     idempotency_key: row.idempotency_key,
     summary,
+    ...documentContextFields(row),
   };
-  // BR-33 — never emit the key when undefined (serializers must omit it; we
-  // enforce by not assigning at all). Empty array is a valid completed-run
-  // payload and is preserved verbatim.
   if (affectedNodes !== undefined) {
     return { ...base, affected_nodes: [...affectedNodes] };
   }
