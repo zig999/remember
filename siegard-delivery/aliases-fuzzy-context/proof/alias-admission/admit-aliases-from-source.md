@@ -85,7 +85,6 @@ untested:
 - 'Inference: when the run or its raw information cannot be read, every alias is reported as not admitted (fail closed). No node decides it, so it is not tested.'
 - 'An alias that equals the proposed name after normalization, listed on a matched node: the implementation excludes it from the aliases added. The node states "each admitted alias" and "never its proposed name" and does not say which prevails for an alias equal to the name. It is not pinned.'
 - 'Inference: the directed model and prompt-version constants moved to directed-run.ts and are re-exported, and the trigram candidate limit became a bound parameter. Both are arrangement, so no test is written over them.'
-contested: []
 divergences:
 - cites: TST-03
   file: src/__tests__/unit/ingestion/entity-resolution-alias-admission.spec.ts
