@@ -4,9 +4,9 @@ implementation: sha256:9f1b7239b9a3e6942c270663581068ebd22d84eb860ab05655d4af339
 standard:
   at: ../standards/backend-node-service.yaml
   pin: sha256:8c38c4f11796188276d89c2c7ed1710a4eed05f701034f22c68af0a554142c77
-run: run/document-context-preliminary-reading-suite
+run: run/prove-aliases-fuzzy-context-2
 title: Proof for the preliminary reading that produces the document context
-summary: Eighteen behavior tests over a v5 three-chunk extraction, driven through runLlmExtraction with the model and the store stood in for, prove that one tool-less reading is made first with the whole content under the configured context model, and that the cut, filtered and labelled context and the status produced are recorded.
+summary: Nineteen behavior tests over a v5 three-chunk extraction prove that one tool-less reading is made first with the whole content under the configured context model, that the cut, filtered and labelled context and the status produced are recorded, and that every model call of the extraction, the reading included, is abandoned within five minutes and attempted at most three times, observed through the real SDK client over a stubbed fetch under fake timers.
 tests:
 - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
   name: makes exactly one preliminary reading for a v5 extraction of 3 chunks holding no document context
@@ -80,7 +80,15 @@ tests:
   name: makes every model call of an extraction, the preliminary reading included, through a client bounded to five minutes and two retries
   proves: The model call of the preliminary reading waits at most five minutes; it is retried at most twice. Observed on the client options of every call of a 3-chunk v5 run built through the default factory (one reading, three chunks).
   fails_when: the reading is sent through a client built with a timeout above five minutes or none, or with more than two retries, or the number of calls differs from one reading plus three chunk calls
+- file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+  name: abandons a model call that never answers within five minutes and attempts it at most three times, for the preliminary reading and for a chunk alike
+  proves: constraints/extraction-model-call-bounded, first assertion of the remainder, observed through the real SDK client built by the default factory over a stubbed fetch under fake timers. A model that never answers is abandoned, per attempt, no later than five minutes after the attempt began, and a call (the context-model reading and the first chunk call alike) is attempted at most three times (the first attempt and two retries). The wait is observed as the fake-clock instant at which each attempt's abort signal fires.
+  fails_when: an attempt of the reading or of a chunk call is aborted later than five minutes after it began or never aborted (a longer timeout, none, or the SDK default of ten minutes), or one call is attempted more than three times (more than two retries), or the reading or the chunk is never called
   demonstrates: constraints/extraction-model-call-bounded
+- file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+  name: calls the context model exactly three times for one preliminary reading when it answers a retryable error on every attempt
+  proves: constraints/extraction-model-call-bounded, second assertion of the remainder, observed through the real SDK client over a stubbed fetch under fake timers. A model that answers an overloaded (529) error on every attempt is called exactly three times (the first attempt and two retries) for the one preliminary reading, and no fourth call is ever made.
+  fails_when: the reading's model call is attempted fewer than or more than three times against a retryable error, for example because the client is built with more retries, with none, or because the reading adds a retry loop of its own
 not_applicable:
 - edge_case: absent or empty raw information content
   why: a three-chunk raw information cannot hold empty content, and no criterion or bound node says what the reading does on it
@@ -91,7 +99,9 @@ not_applicable:
 - edge_case: a write failing between the context write and the status write
   why: neither a criterion nor a bound node states atomicity of the two records
 - edge_case: a provider failure or a slow answer during the reading
-  why: the failure path is assigned to task/document-context/failed-reading-continues, whose criteria own it; the five-minute and two-retry bounds are proved here
+  why: what the extraction does after a failed reading is owned by task/document-context/failed-reading-continues; here only the bounds on the call itself (five minutes, two retries) are proved
+- edge_case: a model call that answers a non-retryable error (a 4xx other than 408, 409 and 429)
+  why: the node bounds how long a call waits and how often it is retried, and says nothing of a call that is not retried at all; a single attempt is within the bound, so a test would pin SDK status classification rather than an obligation
 untested:
 - 'UNDERDETERMINED entry 1 (one-chunk raw information, content over the limit and run already holding a context get no reading): owed in task/document-context/skip-preliminary-reading (criteria 1 and 3 for one chunk and over the limit) and task/document-context/retry-reuses-document-context (criterion 3 for a held context); no test here. The over-limit case is exercised here only through the UTF-16 unit test, which pins the unit and not the skip path.'
 - 'UNDERDETERMINED entry 3 (the claude-haiku-4-5 fallback where no context model is configured): the default is yielded by the environment and is owed in task/document-context/context-model-setting criterion 1; here the orchestrator is handed the resolved model and the ''calls the configured context model'' test covers the configured case, so an orchestrator that ignores an unconfigured default cannot be told apart from the environment''s.'
@@ -101,8 +111,9 @@ untested:
 - 'rules/knowledge-base/document-context-model: the configured-model clause is exercised by the ''calls the configured context model'' and ''names the model'' tests; the default clause is owed in task/document-context/context-model-setting, so the fact is not decided whole here.'
 - 'constraints/document-content-is-data: the preliminary reading''s presentation of the content is tested, but the statement also covers presenting the document context read from it to each chunk, which the task''s REMAINDER entry assigns to task/document-context/chunk-prompt-shows-context; the node is claimed by no test.'
 - 'domain/knowledge-base/llm-run, domain/knowledge-base/document-context, domain/knowledge-base/document-entity and domain/knowledge-base/document-context-status: structural declarations of attributes, relationships and an enumeration with no behavior of their own for a finite test to decide whole. What this task writes into them (the context, its entities and the status produced) is exercised by the criterion tests above, and the closed set of status values is asserted by the earlier task''s llm-run-repository-document-context.spec.ts.'
-- 'Inference about behavior, no node decides it: a reading answer that is not a parseable document context, or a provider failure, fails the run through the existing catch and records no status failed. Left unpinned because task/document-context/failed-reading-continues changes exactly this behavior.'
-- 'Inference about behavior, no node decides it: the model answers with one JSON object in plain text, parsed from the first ''{'' to the last ''}''. The tests'' model stand-in answers in that form, so an implementation reading the answer another way (for example a forced tool_use) would fail them although no node states the form.'
+- 'constraints/extraction-model-call-bounded, reading of the wait: the node and the criterion bound each wait to five minutes, and the test observes it per attempt (each attempt''s abort fires within five minutes of its start). The total wall time of one call across its attempts and the retry back-off between them (up to three attempts of five minutes plus the SDK''s sleeps) is not bounded by the node and is not asserted.'
+- 'Against a real model provider and the real network: the five-minute abandonment and the three attempts are observed through the real SDK client over a stubbed global fetch and fake timers; whether the live provider honours the abort is the SDK''s and the network''s, and is not tested (no real provider is contacted).'
+- 'Inference about behavior, no node decides it: a reading answer that is not a parseable document context, or a provider failure, was left to the failed-reading-continues task, which now records status failed and continues; the reading''s choice of JSON-in-plain-text answer form is likewise unpinned by any node. The tests'' model stand-in answers in that form, so an implementation reading the answer another way (for example a forced tool_use) would fail them although no node states the form.'
 - 'Inference about behavior, no node decides it: entities with empty names and duplicate entities are kept as the model returned them, and the reading''s prompt omits the document metadata block. No test pins either choice.'
 - Inferences about arrangement (request max_tokens 4000, system as a string, no thinking, ContextMessageRequest type) get no test because a test would pin the shape of the code.
 - Existing unit specs that call runLlmExtraction (extraction-orchestrator.spec.ts, extraction-affected-nodes.spec.ts, extraction-orchestrator-prompt-v5.spec.ts) pass env without CONTEXT_MODEL. None of them is a v5 run of more than one chunk (v1 and v3 prompt versions, or one chunk), so none meets the extra model call, and tsc excludes spec files; none was changed.
@@ -111,12 +122,16 @@ divergences:
   file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
   departure: the spec sits flat in src/__tests__/unit/ingestion/ and drives the unit through runLlmExtraction, rather than mirroring src/modules/ingestion/service/preliminary-reading.ts under a service subdirectory.
   why: every spec of the ingestion module sits flat in that directory, and moving one file would split the suite across two layouts
+- cites: TST-04
+  file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+  departure: the spec sits flat in src/__tests__/unit/ingestion/ and drives the bound through runLlmExtraction with the default Anthropic factory, rather than mirroring the unit's path under a service subdirectory.
+  why: the bound is a property of the orchestrator's client as the preliminary reading uses it, not of one unit file, and every spec of the ingestion module sits flat in that directory
 ---
 
 ## What it is
 
-Eighteen behavior tests over a v5 three-chunk extraction, driven through runLlmExtraction with the model and the store stood in for, prove that one tool-less reading is made first with the whole content under the configured context model, and that the cut, filtered and labelled context and the status produced are recorded.
+Nineteen behavior tests over a v5 three-chunk extraction prove that one tool-less reading is made first with the whole content under the configured context model, that the cut, filtered and labelled context and the status produced are recorded, and that every model call of the extraction, the reading included, is abandoned within five minutes and attempted at most three times, observed through the real SDK client over a stubbed fetch under fake timers.
 
 ## Notes
 
-None.
+Proof-only re-delivery for the testable remainders the review aliases-fuzzy-context left; green on run/prove-aliases-fuzzy-context-2.
