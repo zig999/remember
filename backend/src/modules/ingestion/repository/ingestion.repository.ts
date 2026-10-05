@@ -1,22 +1,11 @@
-// Ingestion repository — parameterized SQL only (CLAUDE.md "Security").
-//
-// Owns the three tables this Task Contract writes:
-//   - `raw_information` (INSERT, SELECT by id, SELECT by content_hash)
-//   - `raw_chunk`       (bulk INSERT, SELECT by raw_information_id)
-//   - `llm_run`         (INSERT, SELECT by idempotency_key, SELECT by id)
-//
-// Every method receives a `PoolClient` (live connection), never a `Pool`. The
-// service layer is responsible for `BEGIN` / `COMMIT` / `ROLLBACK` and for
-// returning the client to the pool — the repository never opens transactions
-// of its own. This keeps BR-19 (one transaction per route) honest.
-//
-// String concatenation of SQL is forbidden by CLAUDE.md "Security". Every
-// query below uses positional placeholders (`$1`, `$2`, ...).
-
 import type { PoolClient } from "pg";
 
 import { InvariantError } from "../../../shared/invariant-error.js";
 import type { RawChunkInput } from "../chunker/v1.js";
+import type {
+  DocumentContext,
+  DocumentContextStatus,
+} from "../dto/llm-run.dto.js";
 import type { SourceType } from "../dto/source-type.js";
 import type {
   ChunkLocator,
@@ -24,15 +13,12 @@ import type {
   RawInformationResponse,
 } from "../dto/raw-information.dto.js";
 
-/** Constraint name used by the DB to enforce the content_hash uniqueness. */
 export const RAW_INFORMATION_CONTENT_HASH_CONSTRAINT =
   "raw_information_content_hash_key" as const;
 
-/** Constraint name used by the DB to enforce the llm_run idempotency_key uniqueness. */
 export const LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT =
   "llm_run_idempotency_key_key" as const;
 
-/** Shape returned by `INSERT INTO raw_information ... RETURNING *`. */
 export interface RawInformationRow {
   readonly id: string;
   readonly source_type: SourceType;
@@ -41,16 +27,9 @@ export interface RawInformationRow {
   readonly content_hash: string;
   readonly received_at: Date;
   readonly metadata: Record<string, unknown>;
-  /**
-   * Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
-   * BR-34). `null` for every non-chat path (REST, MCP direct, document
-   * ingestion). NEVER participates in `content_hash`. Covered by §11
-   * `compliance_delete`.
-   */
   readonly original_input: string | null;
 }
 
-/** Shape returned by `INSERT INTO raw_chunk ... RETURNING *`. */
 export interface RawChunkRow {
   readonly id: string;
   readonly raw_information_id: string;
@@ -62,7 +41,6 @@ export interface RawChunkRow {
   readonly chunking_version: string;
 }
 
-/** Shape returned by `INSERT INTO llm_run ... RETURNING *`. */
 export interface LlmRunRow {
   readonly id: string;
   readonly model: string;
@@ -73,13 +51,10 @@ export interface LlmRunRow {
   readonly attempts: number;
   readonly input_raw_information_id: string;
   readonly idempotency_key: string;
+  readonly document_context: DocumentContext | null;
+  readonly document_context_status: DocumentContextStatus | null;
 }
 
-/**
- * Insert a new `raw_information` row. The DB enforces the `content_hash`
- * format check and the UNIQUE constraint; the caller catches SQLSTATE 23505
- * on the unique-violation path (BR-09).
- */
 export async function insertRawInformation(
   client: PoolClient,
   args: {
@@ -87,12 +62,6 @@ export async function insertRawInformation(
     content: string;
     content_hash: string;
     metadata: Record<string, unknown>;
-    /**
-     * Optional verbatim user turn (TC-01 / BR-34). Omitted / `undefined` /
-     * explicit `null` ALL persist as SQL NULL — the column has no default.
-     * Never mixed into `content_hash` (the caller computes that over
-     * `content` only).
-     */
     original_input?: string | null;
   }
 ): Promise<RawInformationRow> {
@@ -110,13 +79,11 @@ export async function insertRawInformation(
   );
   const row = result.rows[0];
   if (row === undefined) {
-    // Programming error — the INSERT either succeeds or throws.
     throw new InvariantError("insertRawInformation: no row returned");
   }
   return row;
 }
 
-/** Look up an existing `raw_information` row by its `content_hash`. */
 export async function findRawInformationByHash(
   client: PoolClient,
   contentHash: string
@@ -131,7 +98,6 @@ export async function findRawInformationByHash(
   return result.rows[0] ?? null;
 }
 
-/** Look up a `raw_information` row by id. Returns `null` when missing. */
 export async function findRawInformationById(
   client: PoolClient,
   id: string
@@ -146,10 +112,6 @@ export async function findRawInformationById(
   return result.rows[0] ?? null;
 }
 
-/**
- * Bulk-insert chunks for a `raw_information_id`. Uses `unnest(...)` so the
- * statement size is independent of N — one round trip, parameterized arrays.
- */
 export async function insertRawChunks(
   client: PoolClient,
   rawInformationId: string,
@@ -190,10 +152,6 @@ export async function findChunksByRawInformationId(
   return result.rows;
 }
 
-/**
- * Insert a new `llm_run` row. Default `status = 'running'`, `attempts = 1`,
- * `finished_at = NULL` (DB defaults).
- */
 export async function insertLlmRun(
   client: PoolClient,
   args: {
@@ -207,7 +165,8 @@ export async function insertLlmRun(
     `INSERT INTO llm_run (model, prompt_version, input_raw_information_id, idempotency_key)
      VALUES ($1, $2, $3, $4)
      RETURNING id, model, prompt_version, started_at, finished_at, status,
-               attempts, input_raw_information_id, idempotency_key`,
+               attempts, input_raw_information_id, idempotency_key,
+               document_context, document_context_status`,
     [args.model, args.prompt_version, args.input_raw_information_id, args.idempotency_key]
   );
   const row = result.rows[0];
@@ -217,14 +176,14 @@ export async function insertLlmRun(
   return row;
 }
 
-/** Look up an existing `llm_run` row by its `idempotency_key`. */
 export async function findLlmRunByIdempotencyKey(
   client: PoolClient,
   idempotencyKey: string
 ): Promise<LlmRunRow | null> {
   const result = await client.query<LlmRunRow>(
     `SELECT id, model, prompt_version, started_at, finished_at, status,
-            attempts, input_raw_information_id, idempotency_key
+            attempts, input_raw_information_id, idempotency_key,
+            document_context, document_context_status
        FROM llm_run
       WHERE idempotency_key = $1
       LIMIT 1`,
@@ -233,11 +192,6 @@ export async function findLlmRunByIdempotencyKey(
   return result.rows[0] ?? null;
 }
 
-/**
- * Map a `raw_information` DB row to the API response shape. Pure conversion:
- * the only adjustments are turning `Date` into ISO 8601 with offset and
- * surfacing the `metadata` jsonb as a plain object (pg returns it as such).
- */
 export function toRawInformationResponse(
   row: RawInformationRow
 ): RawInformationResponse {
@@ -252,7 +206,6 @@ export function toRawInformationResponse(
   };
 }
 
-/** Map a `raw_chunk` DB row to the API response shape. */
 export function toRawChunkResponse(row: RawChunkRow): RawChunkResponse {
   return {
     id: row.id,

@@ -1,19 +1,9 @@
-// Repository helpers for the LLMRun lifecycle and the MCP ingest pipeline.
-//
-// Parameterized queries only. The caller owns the transaction (BR-19): every
-// function receives a live `PoolClient` and never opens its own transaction
-// (with the documented exception of `insertToolCallStandalone`, which opens
-// a separate short transaction to satisfy BR-23 even on rollback).
-//
-// CLAUDE.md "Security": SQL string concatenation is forbidden. The only place
-// we build SQL fragments dynamically is `aggregateToolCallOutcomes`, where the
-// fragment is a closed set of enum literals validated against `ValidationOutcome`
-// at compile time.
-
 import type { Pool, PoolClient } from "pg";
 
 import { InvariantError } from "../../../shared/invariant-error.js";
 import type {
+  DocumentContext,
+  DocumentContextStatus,
   IngestToolName,
   LlmRunStatus,
   LlmRunSummary,
@@ -21,10 +11,8 @@ import type {
 } from "../dto/llm-run.dto.js";
 import type { LlmRunRow } from "./ingestion.repository.js";
 
-/** Re-export the existing row shape so callers don't need a deep import. */
 export type { LlmRunRow };
 
-/** A single `tool_call` row, exposed with typed enums. */
 export interface ToolCallRow {
   readonly id: string;
   readonly llm_run_id: string;
@@ -35,11 +23,6 @@ export interface ToolCallRow {
   readonly created_at: Date;
 }
 
-/**
- * One row of the "recent ingestions" read — a `raw_information` row joined to
- * its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears
- * with null run fields).
- */
 export interface RecentIngestionRow {
   readonly raw_information_id: string;
   readonly source_type: string;
@@ -54,10 +37,6 @@ export interface RecentIngestionRow {
   readonly model: string | null;
 }
 
-/**
- * Most recent ingestions, newest first. Read-only; the caller wraps this in a
- * `BEGIN READ ONLY` transaction.
- */
 export async function findRecentIngestions(
   client: PoolClient,
   limit: number
@@ -89,14 +68,14 @@ export async function findRecentIngestions(
   return result.rows;
 }
 
-/** Look up a single `llm_run` row by id. */
 export async function findLlmRunById(
   client: PoolClient,
   id: string
 ): Promise<LlmRunRow | null> {
   const result = await client.query<LlmRunRow>(
     `SELECT id, model, prompt_version, started_at, finished_at, status,
-            attempts, input_raw_information_id, idempotency_key
+            attempts, input_raw_information_id, idempotency_key,
+            document_context, document_context_status
        FROM llm_run
       WHERE id = $1
       LIMIT 1`,
@@ -105,9 +84,41 @@ export async function findLlmRunById(
   return result.rows[0] ?? null;
 }
 
-/**
- * Aggregate run metrics.
- */
+export async function recordDocumentContext(
+  client: PoolClient,
+  args: { llm_run_id: string; document_context: DocumentContext }
+): Promise<LlmRunRow | null> {
+  const result = await client.query<LlmRunRow>(
+    `UPDATE llm_run
+        SET document_context = $2::jsonb
+      WHERE id = $1
+      RETURNING id, model, prompt_version, started_at, finished_at, status,
+                attempts, input_raw_information_id, idempotency_key,
+                document_context, document_context_status`,
+    [args.llm_run_id, JSON.stringify(args.document_context)]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function recordDocumentContextStatus(
+  client: PoolClient,
+  args: {
+    llm_run_id: string;
+    document_context_status: DocumentContextStatus;
+  }
+): Promise<LlmRunRow | null> {
+  const result = await client.query<LlmRunRow>(
+    `UPDATE llm_run
+        SET document_context_status = $2::document_context_status
+      WHERE id = $1
+      RETURNING id, model, prompt_version, started_at, finished_at, status,
+                attempts, input_raw_information_id, idempotency_key,
+                document_context, document_context_status`,
+    [args.llm_run_id, args.document_context_status]
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function aggregateToolCallOutcomes(
   client: PoolClient,
   llmRunId: string
@@ -152,11 +163,6 @@ export async function aggregateToolCallOutcomes(
   return summary;
 }
 
-/**
- * Atomic retry transition. Implements BR-10 / BR-11:
- *  - UPDATE ... WHERE status = 'failed' RETURNING the new row. If no row is
- *    affected, the caller surfaces 409 BUSINESS_RUN_NOT_RETRYABLE.
- */
 export async function retryLlmRunRow(
   client: PoolClient,
   llmRunId: string
@@ -168,7 +174,8 @@ export async function retryLlmRunRow(
             finished_at = NULL
       WHERE id = $1 AND status = 'failed'
       RETURNING id, model, prompt_version, started_at, finished_at, status,
-                attempts, input_raw_information_id, idempotency_key`,
+                attempts, input_raw_information_id, idempotency_key,
+                document_context, document_context_status`,
     [llmRunId]
   );
   if (updated.rows.length === 0) return null;
@@ -187,11 +194,6 @@ export async function retryLlmRunRow(
   return updated.rows[0] ?? null;
 }
 
-/**
- * Close a run — UC-07. Service action (no public REST endpoint); exposed here
- * so future internal callers can drive `running -> completed | failed` via the
- * same transactional path the rest of the module uses.
- */
 export async function closeLlmRunRow(
   client: PoolClient,
   args: { llm_run_id: string; outcome: "completed" | "failed" }
@@ -202,13 +204,13 @@ export async function closeLlmRunRow(
             finished_at = now()
       WHERE id = $1 AND status = 'running'
       RETURNING id, model, prompt_version, started_at, finished_at, status,
-                attempts, input_raw_information_id, idempotency_key`,
+                attempts, input_raw_information_id, idempotency_key,
+                document_context, document_context_status`,
     [args.llm_run_id, args.outcome]
   );
   return result.rows[0] ?? null;
 }
 
-/** Count tool_call rows of a run. Used for the paginated audit list. */
 export async function countToolCalls(
   client: PoolClient,
   llmRunId: string
@@ -235,11 +237,6 @@ export async function findToolCallsByRun(
   return result.rows;
 }
 
-/**
- * Insert a `tool_call` row inside the caller's transaction. Used for the
- * accepted/consolidated/etc paths, where the audit row lives in the same TX
- * as the business writes (BR-19).
- */
 export async function insertToolCall(
   client: PoolClient,
   args: {
@@ -269,11 +266,6 @@ export async function insertToolCall(
   return row;
 }
 
-/**
- * Insert a `tool_call` row in a NEW, short transaction taken from `pool`. This
- * is the BR-23 safety net: even when the business transaction rolls back, the
- * audit row must be written.
- */
 export async function insertToolCallStandalone(
   pool: Pool,
   args: {
@@ -285,6 +277,7 @@ export async function insertToolCallStandalone(
   }
 ): Promise<ToolCallRow> {
   const client = await pool.connect();
+  let discardConnection = false;
   try {
     await client.query("BEGIN");
     const row = await insertToolCall(client, args);
@@ -294,19 +287,14 @@ export async function insertToolCallStandalone(
     try {
       await client.query("ROLLBACK");
     } catch {
-      /* swallow rollback failure */
+      discardConnection = true;
     }
     throw err;
   } finally {
-    client.release();
+    client.release(discardConnection);
   }
 }
 
-/**
- * Returns the COUNT of fragments
- * that satisfy the rule — caller compares against `fragment_ids.length` and
- * throws `VALIDATION_INVALID_FORMAT` on mismatch.
- */
 export async function countFragmentsAnchoredToSource(
   client: PoolClient,
   args: {
@@ -327,11 +315,6 @@ export async function countFragmentsAnchoredToSource(
   return Number.parseInt(result.rows[0]?.n ?? "0", 10);
 }
 
-/**
- * Verify every chunk in `chunk_ids` exists AND belongs to
- * `expected_raw_information_id`. Returns the count of matches; caller compares
- * with `chunk_ids.length`.
- */
 export async function countChunksInSource(
   client: PoolClient,
   args: { chunk_ids: readonly string[]; expected_raw_information_id: string }
@@ -347,7 +330,6 @@ export async function countChunksInSource(
   return Number.parseInt(result.rows[0]?.n ?? "0", 10);
 }
 
-/** Insert an `information_fragment` row + its `fragment_source` rows. */
 export async function insertFragmentWithSources(
   client: PoolClient,
   args: {
@@ -367,7 +349,6 @@ export async function insertFragmentWithSources(
   if (fragmentId === undefined) {
     throw new InvariantError("insertFragmentWithSources: no fragment id returned");
   }
-  // Bulk insert fragment_source via unnest — single round trip.
   await client.query(
     `INSERT INTO fragment_source (fragment_id, raw_chunk_id)
      SELECT $1, c FROM unnest($2::uuid[]) AS c
@@ -377,7 +358,6 @@ export async function insertFragmentWithSources(
   return { id: fragmentId };
 }
 
-/** Look up a `knowledge_node` row's node_type_id. Used by graph-rule layer. */
 export async function findNodeTypeIdByNodeId(
   client: PoolClient,
   nodeId: string

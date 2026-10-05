@@ -1,17 +1,8 @@
-// Response / request DTOs for the LLMRun REST endpoints.
-//
-// Mirrors `openapi.yaml#/components/schemas/{LlmRun, LlmRunSummary, ToolCall,
-// RetryLlmRunRequest}`. The Zod schemas are exported so tests can re-use
-// them; runtime parse is not performed on outbound payloads — Fastify trusts
-// the service layer's typed result.
-
 import { z } from "zod";
 
-/** Mirror of PostgreSQL enum `llm_run_status`. */
 export const LlmRunStatusSchema = z.enum(["running", "completed", "failed"]);
 export type LlmRunStatus = z.infer<typeof LlmRunStatusSchema>;
 
-/** Mirror of PostgreSQL enum `validation_outcome`. */
 export const ValidationOutcomeSchema = z.enum([
   "accepted",
   "consolidated",
@@ -24,7 +15,6 @@ export const ValidationOutcomeSchema = z.enum([
 ]);
 export type ValidationOutcome = z.infer<typeof ValidationOutcomeSchema>;
 
-/** Closed list of ingest tool names — matches the MCP `ingest` toolset. */
 export const IngestToolNameSchema = z.enum([
   "propose_fragment",
   "propose_node",
@@ -33,12 +23,6 @@ export const IngestToolNameSchema = z.enum([
 ]);
 export type IngestToolName = z.infer<typeof IngestToolNameSchema>;
 
-/**
- * Counters for `LlmRun`. The 8 outcome buckets are aggregated from
- * `tool_call.validation_outcome`; `orphaned_fragments` is a separate
- * fragment-level recall signal (see field doc). All fields always present
- * (BR-12).
- */
 export const LlmRunSummarySchema = z.object({
   accepted: z.number().int().nonnegative(),
   consolidated: z.number().int().nonnegative(),
@@ -52,21 +36,33 @@ export const LlmRunSummarySchema = z.object({
 });
 export type LlmRunSummary = z.infer<typeof LlmRunSummarySchema>;
 
-/**
- * One entry of `LlmRunResponse.affected_nodes` (BR-33 / TC-02).
- *
- * Surfaces a `KnowledgeNode` the run touched (created, matched, or
- * consolidated). The triple `{ id, canonical_name, node_type }` is the
- * minimum the chat-side `block 4C` (post-ingestion playbook in
- * `chat.back.md` BR-18 v3) needs to jump directly to `get_node`/`traverse`
- * — eliminating the multi-name `search` guess that motivated BR-33.
- */
 export const AffectedNodeSchema = z.object({
   id: z.string().uuid(),
   canonical_name: z.string(),
   node_type: z.string(),
 });
 export type AffectedNode = z.infer<typeof AffectedNodeSchema>;
+
+export const DocumentContextStatusSchema = z.enum([
+  "produced",
+  "single-chunk",
+  "too-long",
+  "failed",
+]);
+export type DocumentContextStatus = z.infer<typeof DocumentContextStatusSchema>;
+
+export const DocumentEntitySchema = z.object({
+  node_type: z.string(),
+  names: z.array(z.string()),
+});
+export type DocumentEntity = z.infer<typeof DocumentEntitySchema>;
+
+export const DocumentContextSchema = z.object({
+  summary: z.string(),
+  entities: z.array(DocumentEntitySchema),
+  model: z.string(),
+});
+export type DocumentContext = z.infer<typeof DocumentContextSchema>;
 
 export const LlmRunResponseSchema = z.object({
   id: z.string().uuid(),
@@ -83,7 +79,6 @@ export const LlmRunResponseSchema = z.object({
 });
 export type LlmRunResponse = z.infer<typeof LlmRunResponseSchema>;
 
-/** Single item in the tool-call audit list. */
 export const ToolCallResponseSchema = z.object({
   id: z.string().uuid(),
   llm_run_id: z.string().uuid(),
@@ -95,7 +90,6 @@ export const ToolCallResponseSchema = z.object({
 });
 export type ToolCallResponse = z.infer<typeof ToolCallResponseSchema>;
 
-/** Envelope of `GET /llm-runs/{id}/tool-calls` — paginated (UC-05). */
 export const ListToolCallsResponseSchema = z.object({
   total: z.number().int().nonnegative(),
   limit: z.number().int().positive(),
@@ -104,7 +98,6 @@ export const ListToolCallsResponseSchema = z.object({
 });
 export type ListToolCallsResponse = z.infer<typeof ListToolCallsResponseSchema>;
 
-/** Optional body of `POST /llm-runs/{id}/retry`. */
 export const RetryLlmRunRequestSchema = z
   .object({
     reason: z.string().max(500).optional(),
@@ -112,7 +105,6 @@ export const RetryLlmRunRequestSchema = z
   .default({});
 export type RetryLlmRunRequest = z.infer<typeof RetryLlmRunRequestSchema>;
 
-/** Query-string schema for `GET /llm-runs/{id}/tool-calls?limit&offset`. */
 export const ListToolCallsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
