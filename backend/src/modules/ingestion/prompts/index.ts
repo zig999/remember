@@ -50,7 +50,7 @@ const V5: PromptModule = {
   user: v5.user,
 };
 
-export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+export const DEFAULT_PROMPT_VERSION: string = v5.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, PromptModule>> = {
   [v1.PROMPT_VERSION]: V1,

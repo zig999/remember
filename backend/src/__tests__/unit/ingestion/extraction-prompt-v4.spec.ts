@@ -13,10 +13,7 @@ import {
   type DocumentMetadata,
   user as userV4,
 } from "../../../modules/ingestion/prompts/extraction.v4.js";
-import {
-  DEFAULT_PROMPT_VERSION,
-  selectPromptModule,
-} from "../../../modules/ingestion/prompts/index.js";
+import { selectPromptModule } from "../../../modules/ingestion/prompts/index.js";
 
 const nodeTypes: NodeTypeRow[] = [
   {
@@ -159,10 +156,6 @@ describe("extraction v4 prompt", () => {
 });
 
 describe("prompt registry — v4", () => {
-  it("recommends v4 for new runs", () => {
-    expect(DEFAULT_PROMPT_VERSION).toBe("v4");
-  });
-
   it("dispatches 'v4' to the v4 module", () => {
     const mod = selectPromptModule("v4");
 
