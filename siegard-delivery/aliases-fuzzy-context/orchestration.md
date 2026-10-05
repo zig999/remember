@@ -13,3 +13,4 @@ Delivered task/approximate-node-search/approximate-node-match in 5cac6c1: build 
 Delivered task/approximate-node-search/search-item-shows-match in 400028d: build and suite green on the first run; transport answers covered by REST and MCP integration tests.
 Delivered task/approximate-node-search/rank-approximate-reach-last in f34b7e4: build and suite green on the first run.
 Stopped at task/document-context/context-model-setting: the suite went red on one test the test author wrote over the document-context-model clause the task does not implement (recorded as contested), the diagnosis read cause code, and the implementer judged the change to belong to task/document-context/preliminary-reading; the two producers disagree, so the loop ends and nothing further is committed.
+Delivered task/document-context/context-model-setting in e7f99e8: suite red once (test over another task's clause, withdrawn by the test author as owed by preliminary-reading), green on suite-2.
