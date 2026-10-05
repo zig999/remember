@@ -92,6 +92,10 @@ export async function searchNodeAliasLayer(
   return res.rows;
 }
 
+export interface ApproximateNodeAliasHitRow extends NodeAliasHitRow {
+  readonly similarity: number;
+}
+
 export interface ApproximateNodeSearchInput {
   readonly query: string;
   readonly limit: number;
@@ -103,6 +107,7 @@ const APPROXIMATE_NODE_ALIAS_SQL = `
            kn.canonical_name,
            kn.status,
            (max(word_similarity(na.alias_norm, norm($1::text))) * $2::float)::float AS score,
+           max(word_similarity(na.alias_norm, norm($1::text))) AS similarity,
            array_agg(na.id) AS matched_alias_ids
       FROM knowledge_node kn
       JOIN node_alias na ON na.node_id = kn.id
@@ -118,8 +123,8 @@ const APPROXIMATE_NODE_ALIAS_SQL = `
 export async function searchNodeAliasApproximateLayer(
   client: PoolClient,
   input: ApproximateNodeSearchInput
-): Promise<readonly NodeAliasHitRow[]> {
-  const res = await client.query<NodeAliasHitRow>(APPROXIMATE_NODE_ALIAS_SQL, [
+): Promise<readonly ApproximateNodeAliasHitRow[]> {
+  const res = await client.query<ApproximateNodeAliasHitRow>(APPROXIMATE_NODE_ALIAS_SQL, [
     input.query,
     LAYER_WEIGHT_NODE,
     APPROXIMATE_ALIAS_MIN_LENGTH,

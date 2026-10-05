@@ -146,6 +146,19 @@ function nodeHitRow(m: Match): unknown {
   };
 }
 
+const APPROXIMATE_SIMILARITY = 0.8;
+
+function approximateHitRow(m: Match): unknown {
+  return {
+    node_id: m.id,
+    canonical_name: `Name ${m.id}`,
+    status: "active",
+    score: m.score,
+    similarity: APPROXIMATE_SIMILARITY,
+    matched_alias_ids: [],
+  };
+}
+
 function knownNodeIds(world: World): Set<string> {
   const matched = [...world.matches, ...(world.approximateMatches ?? [])];
   const ids = new Set<string>(matched.map((m) => m.id));
@@ -161,7 +174,7 @@ function respondToSearchLayers(world: World, sql: string): Rows | undefined {
     return result([{ q: "'termo'" }]);
   }
   if (sql.includes("word_similarity")) {
-    return result((world.approximateMatches ?? []).map(nodeHitRow));
+    return result((world.approximateMatches ?? []).map(approximateHitRow));
   }
   if (sql.includes("FROM node_alias na")) {
     return result(world.matches.map(nodeHitRow));
@@ -578,5 +591,39 @@ describe("searchKnowledgeService expansion: a knowledge node matched approximate
       "link-x2": 0.1,
       "link-x3": 0.05,
     });
+  });
+});
+
+const MATCHED_AND_EXPANDED_WORLD: World = {
+  matches: [{ id: "node-x", score: SECOND_MATCH_SCORE }],
+  approximateMatches: [{ id: "node-a", score: APPROXIMATE_MATCH_SCORE }],
+  links: [
+    { id: "link-1", source: "node-a", target: "node-b" },
+    { id: "link-x1", source: "node-x", target: "node-y" },
+  ],
+  fragmentId: "fragment-1",
+};
+
+function itemsThatAreNotNodes(body: SearchResponse): unknown[] {
+  return body.items
+    .filter((item) => item.kind !== "node")
+    .map((item) => ({
+      kind: item.kind,
+      id: item.id,
+      match: item.match ?? undefined,
+      similarity: item.similarity ?? undefined,
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+describe("searchKnowledgeService: the items that are neither a knowledge node", () => {
+  it("answers every knowledge link reached by expansion, from an exactly or an approximately matched node, and every information fragment with no match and no similarity", async () => {
+    const body = await searchOver(MATCHED_AND_EXPANDED_WORLD);
+
+    expect(itemsThatAreNotNodes(body)).toEqual([
+      { kind: "fragment", id: "fragment-1" },
+      { kind: "link", id: "link-1" },
+      { kind: "link", id: "link-x1" },
+    ]);
   });
 });

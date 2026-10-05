@@ -3,7 +3,10 @@ import pino from "pino";
 import { describe, expect, it } from "vitest";
 
 import type { CatalogSnapshot } from "../../../modules/knowledge-graph/index.js";
-import type { SearchResponse } from "../../../modules/query-retrieval/dto/response.dto.js";
+import type {
+  SearchItem,
+  SearchResponse,
+} from "../../../modules/query-retrieval/dto/response.dto.js";
 import { searchKnowledgeService } from "../../../modules/query-retrieval/service/search.service.js";
 
 const silentLogger = pino({ level: "silent" });
@@ -24,6 +27,7 @@ const APPROXIMATE_CANDIDATES = 100;
 const RESULT_LIMIT = 500;
 const EXACT_SCORE = 0.63;
 const APPROXIMATE_SCORE = 0.72;
+const APPROXIMATE_SIMILARITY = 0.8;
 const RECORDED_AT = new Date("2026-06-11T18:30:00Z");
 const TRIGRAM_PATTERN = /similarity|<%|%>|\s%\s/;
 
@@ -38,6 +42,7 @@ interface NodeHit {
   readonly status: "active";
   readonly score: number;
   readonly matched_alias_ids: readonly string[];
+  readonly similarity?: number;
 }
 
 interface Store {
@@ -78,6 +83,10 @@ function nodeHit(id: string, score: number): NodeHit {
     score,
     matched_alias_ids: [],
   };
+}
+
+function approximateHit(id: string, similarity: number): NodeHit {
+  return { ...nodeHit(id, APPROXIMATE_SCORE), similarity };
 }
 
 function nodeHits(prefix: string, count: number, score: number): NodeHit[] {
@@ -276,4 +285,100 @@ describe("searchKnowledgeService: prose layers stay lexical", () => {
       expect(body.items.filter((item) => item.layer === layer)).toEqual([]);
     }
   );
+});
+
+interface NodeMatchView {
+  readonly id: string;
+  readonly match: string | undefined;
+  readonly similarity: number | undefined;
+}
+
+function nodeMatchViews(body: SearchResponse): NodeMatchView[] {
+  return body.items
+    .filter((item: SearchItem) => item.kind === "node")
+    .map((item) => ({
+      id: item.id,
+      match: item.match ?? undefined,
+      similarity: item.similarity ?? undefined,
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+const PETROBRAS_PAIR_STORE: Store = {
+  exact: [
+    nodeHit("node-petrobras", EXACT_SCORE),
+    nodeHit("node-petrobras-distribuidora", EXACT_SCORE),
+  ],
+  approximate: [],
+};
+
+const EXACT_AND_APPROXIMATE_STORE: Store = {
+  exact: [nodeHit("node-exact", EXACT_SCORE)],
+  approximate: [approximateHit("node-approximate", APPROXIMATE_SIMILARITY)],
+};
+
+const MATCHED_BOTH_WAYS_STORE: Store = {
+  exact: [nodeHit("node-both", EXACT_SCORE)],
+  approximate: [approximateHit("node-both", APPROXIMATE_SIMILARITY)],
+};
+
+describe("searchKnowledgeService: a search for the correct name of two knowledge nodes", () => {
+  it("answers the knowledge nodes Petrobras and Petrobrás Distribuidora for petrobras as two node items, each carrying the match exact", async () => {
+    const body = await searchFor(PETROBRAS_PAIR_STORE, "petrobras");
+
+    expect(
+      nodeMatchViews(body).map(({ id, match }) => ({ id, match }))
+    ).toEqual([
+      { id: "node-petrobras", match: "exact" },
+      { id: "node-petrobras-distribuidora", match: "exact" },
+    ]);
+  });
+});
+
+describe("searchKnowledgeService: the match and similarity of a hop-0 knowledge node item", () => {
+  it("answers an exactly matched node with the match exact and no similarity, and an approximately matched node with the match approximate and the highest word similarity of its aliases, not its weighted score", async () => {
+    const body = await searchFor(EXACT_AND_APPROXIMATE_STORE, "Petrobrass");
+
+    expect(nodeMatchViews(body)).toEqual([
+      {
+        id: "node-approximate",
+        match: "approximate",
+        similarity: APPROXIMATE_SIMILARITY,
+      },
+      { id: "node-exact", match: "exact", similarity: undefined },
+    ]);
+  });
+});
+
+describe("searchKnowledgeService: the match and similarity of a node matched both exactly and approximately", () => {
+  it("answers a knowledge node matched both exactly and approximately with the match exact", async () => {
+    const body = await searchFor(MATCHED_BOTH_WAYS_STORE, "Petrobras");
+
+    expect(itemsOf(body, "node-both").map((item) => item.match)).toEqual([
+      "exact",
+    ]);
+  });
+
+  it("answers a knowledge node matched both exactly and approximately with no similarity, though one of its aliases is similar enough for an approximate match", async () => {
+    const body = await searchFor(MATCHED_BOTH_WAYS_STORE, "Petrobras");
+
+    expect(
+      itemsOf(body, "node-both").map((item) => item.similarity ?? undefined)
+    ).toEqual([undefined]);
+  });
+});
+
+describe("searchKnowledgeService: the flags of an approximately matched knowledge node", () => {
+  it("answers an approximately matched node with no flag describing its match", async () => {
+    const store: Store = {
+      exact: [],
+      approximate: [approximateHit("node-approximate", APPROXIMATE_SIMILARITY)],
+    };
+
+    const body = await searchFor(store, "Petrobrass");
+
+    expect(itemsOf(body, "node-approximate").map((item) => item.flags)).toEqual([
+      [],
+    ]);
+  });
 });

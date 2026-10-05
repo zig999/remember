@@ -10,6 +10,7 @@ import {
 import { ALLOWED_LAYERS, type SearchLayer } from "../dto/search.dto.js";
 import type {
   AssertionFlag,
+  NodeMatch,
   SearchItem,
   SearchProvenanceEntry,
   SearchResponse,
@@ -28,6 +29,7 @@ import {
   searchNodeAliasLayer,
   type ChunkHitRow,
   type FragmentHitRow,
+  type ApproximateNodeAliasHitRow,
   type LinkMetadataRow,
   type NodeAliasHitRow,
   type SearchProvenanceRow,
@@ -68,7 +70,14 @@ interface IntermediateItem {
   provenance: SearchProvenanceEntry[];
   readonly status: string;
   readonly confidence?: number;
+  readonly match?: NodeMatch;
+  readonly similarity?: number;
 }
+
+type NodeLayerHit = NodeAliasHitRow & {
+  readonly match: NodeMatch;
+  readonly similarity?: number;
+};
 
 type TraversedLink = TraverseNodesResult["links"][number];
 
@@ -111,7 +120,7 @@ export async function searchKnowledgeService(
   }
 
   let fragmentHits: readonly FragmentHitRow[] = [];
-  let nodeHits: readonly NodeAliasHitRow[] = [];
+  let nodeHits: readonly NodeLayerHit[] = [];
   let chunkHits: readonly ChunkHitRow[] = [];
 
   if (layers.has("fragment")) {
@@ -220,6 +229,8 @@ export async function searchKnowledgeService(
         flags,
         provenance,
         status: n.status,
+        match: n.match,
+        similarity: n.similarity,
       });
     }
   }
@@ -279,20 +290,29 @@ export async function searchKnowledgeService(
 async function searchNodeLayer(
   client: PoolClient,
   query: string
-): Promise<readonly NodeAliasHitRow[]> {
-  const exactHits = await searchNodeAliasLayer(
+): Promise<readonly NodeLayerHit[]> {
+  const exactRows = await searchNodeAliasLayer(
     client,
     query,
     PER_LAYER_FETCH_LIMIT
   );
+  const exactHits = exactRows.map(toExactHit);
   const remaining = PER_LAYER_FETCH_LIMIT - exactHits.length;
   if (remaining <= 0) return exactHits;
-  const approximateHits = await searchNodeAliasApproximateLayer(client, {
+  const approximateRows = await searchNodeAliasApproximateLayer(client, {
     query,
     limit: remaining,
     excludedNodeIds: exactHits.map((hit) => hit.node_id),
   });
-  return [...exactHits, ...approximateHits];
+  return [...exactHits, ...approximateRows.map(toApproximateHit)];
+}
+
+function toExactHit(row: NodeAliasHitRow): NodeLayerHit {
+  return { ...row, match: "exact" };
+}
+
+function toApproximateHit(row: ApproximateNodeAliasHitRow): NodeLayerHit {
+  return { ...row, match: "approximate" };
 }
 
 function scoreMatchedNodes(
@@ -501,5 +521,14 @@ function toSearchItem(it: IntermediateItem): SearchItem {
     summary: it.summary,
     flags: it.flags,
     provenance: it.provenance,
+    ...matchFields(it),
   };
+}
+
+function matchFields(
+  it: IntermediateItem
+): Pick<SearchItem, "match" | "similarity"> {
+  if (it.match === undefined) return {};
+  if (it.similarity === undefined) return { match: it.match };
+  return { match: it.match, similarity: it.similarity };
 }
