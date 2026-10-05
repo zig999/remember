@@ -39,6 +39,7 @@ interface GraphLink {
 
 interface World {
   readonly matches: readonly Match[];
+  readonly approximateMatches?: readonly Match[];
   readonly links: readonly GraphLink[];
   readonly fragmentId?: string;
   readonly supporters?: Readonly<Record<string, readonly string[]>>;
@@ -135,8 +136,19 @@ function provenanceRow(anchorId: string, fragmentId: string): unknown {
   };
 }
 
+function nodeHitRow(m: Match): unknown {
+  return {
+    node_id: m.id,
+    canonical_name: `Name ${m.id}`,
+    status: "active",
+    score: m.score,
+    matched_alias_ids: [],
+  };
+}
+
 function knownNodeIds(world: World): Set<string> {
-  const ids = new Set<string>(world.matches.map((m) => m.id));
+  const matched = [...world.matches, ...(world.approximateMatches ?? [])];
+  const ids = new Set<string>(matched.map((m) => m.id));
   for (const link of world.links) {
     ids.add(link.source);
     ids.add(link.target);
@@ -148,16 +160,11 @@ function respondToSearchLayers(world: World, sql: string): Rows | undefined {
   if (sql.includes("websearch_to_tsquery") && sql.includes("AS q")) {
     return result([{ q: "'termo'" }]);
   }
+  if (sql.includes("word_similarity")) {
+    return result((world.approximateMatches ?? []).map(nodeHitRow));
+  }
   if (sql.includes("FROM node_alias na")) {
-    return result(
-      world.matches.map((m) => ({
-        node_id: m.id,
-        canonical_name: `Name ${m.id}`,
-        status: "active",
-        score: m.score,
-        matched_alias_ids: [],
-      }))
-    );
+    return result(world.matches.map(nodeHitRow));
   }
   if (
     sql.includes("FROM information_fragment f") &&
@@ -546,5 +553,30 @@ describe("searchKnowledgeService: a matched node no fragment supports", () => {
       .filter((item) => item.provenance.length === 0)
       .map((item) => item.id);
     expect(itemsWithoutProvenance).toEqual([]);
+  });
+});
+
+const APPROXIMATE_MATCH_SCORE = 0.72;
+
+describe("searchKnowledgeService expansion: a knowledge node matched approximately", () => {
+  it("expands from it like any matched node, scoring a link at hop h at 0.5 raised to h times the score of the matched node it was reached from, whether that node was matched exactly or approximately", async () => {
+    const world: World = {
+      matches: [{ id: "node-x", score: SECOND_MATCH_SCORE }],
+      approximateMatches: [{ id: "node-a", score: APPROXIMATE_MATCH_SCORE }],
+      links: [...CHAIN_FROM_A, ...CHAIN_FROM_X],
+    };
+
+    const body = await searchOver(world);
+
+    expect(
+      scoresOf(body, ["link-1", "link-2", "link-3", "link-x1", "link-x2", "link-x3"])
+    ).toEqual({
+      "link-1": 0.36,
+      "link-2": 0.18,
+      "link-3": 0.09,
+      "link-x1": 0.2,
+      "link-x2": 0.1,
+      "link-x3": 0.05,
+    });
   });
 });

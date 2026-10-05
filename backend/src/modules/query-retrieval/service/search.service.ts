@@ -24,6 +24,7 @@ import {
   parseTsQuery,
   searchChunkLayer,
   searchFragmentLayer,
+  searchNodeAliasApproximateLayer,
   searchNodeAliasLayer,
   type ChunkHitRow,
   type FragmentHitRow,
@@ -121,11 +122,7 @@ export async function searchKnowledgeService(
     );
   }
   if (layers.has("node")) {
-    nodeHits = await searchNodeAliasLayer(
-      client,
-      input.query,
-      PER_LAYER_FETCH_LIMIT
-    );
+    nodeHits = await searchNodeLayer(client, input.query);
   }
   if (layers.has("chunk")) {
     chunkHits = await searchChunkLayer(
@@ -277,6 +274,25 @@ export async function searchKnowledgeService(
     items: sliced.map(toSearchItem),
   };
   return response;
+}
+
+async function searchNodeLayer(
+  client: PoolClient,
+  query: string
+): Promise<readonly NodeAliasHitRow[]> {
+  const exactHits = await searchNodeAliasLayer(
+    client,
+    query,
+    PER_LAYER_FETCH_LIMIT
+  );
+  const remaining = PER_LAYER_FETCH_LIMIT - exactHits.length;
+  if (remaining <= 0) return exactHits;
+  const approximateHits = await searchNodeAliasApproximateLayer(client, {
+    query,
+    limit: remaining,
+    excludedNodeIds: exactHits.map((hit) => hit.node_id),
+  });
+  return [...exactHits, ...approximateHits];
 }
 
 function scoreMatchedNodes(
