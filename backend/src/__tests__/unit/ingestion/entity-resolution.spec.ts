@@ -103,6 +103,13 @@ function buildClient(cfg: StubConfig, state: StubState) {
         state.lockArg = String(params[0]);
         return { rows: [{}], rowCount: 1 };
       }
+      if (sql.startsWith("SELECT a.alias")) {
+        const proposed = Array.isArray(params[0]) ? params[0].map(String) : [];
+        return {
+          rows: proposed.map((alias) => ({ alias, admitted: true, is_name: false })),
+          rowCount: proposed.length,
+        };
+      }
       // 3) Exact alias_norm match — step 1 of BR-25.
       //    Distinguished from the trigram query by the WHERE clause shape
       //    (`alias_norm = norm(`) vs trigram (`alias_norm %`).

@@ -198,6 +198,13 @@ function buildFakeClient(store: FakeStore): import("pg").PoolClient {
       if (sql.toLowerCase().includes("pg_advisory_xact_lock")) {
         return { rows: [{}], rowCount: 1 };
       }
+      if (sql.startsWith("SELECT a.alias")) {
+        const proposed = Array.isArray(params[0]) ? params[0].map(String) : [];
+        return {
+          rows: proposed.map((alias) => ({ alias, admitted: true, is_name: false })),
+          rowCount: proposed.length,
+        };
+      }
       if (
         sql.startsWith("SELECT na.node_id") &&
         sql.includes("FROM node_alias na") &&

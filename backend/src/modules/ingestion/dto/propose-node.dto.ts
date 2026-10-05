@@ -1,10 +1,3 @@
-// MCP `ingest.propose_node` input/output contract (UC-09).
-//
-// Entity resolution belongs to a future domain (`entity-resolution`) — this TC
-// implements the structural layer plus the create-with-advisory-lock path
-// (BR-20). When that future domain is wired in, the handler delegates to it
-// from inside this same transaction.
-
 import { z } from "zod";
 
 export const ProposeNodeInputSchema = z.object({
@@ -32,7 +25,15 @@ export type ProposeNodeInput = z.infer<typeof ProposeNodeInputSchema>;
 
 export type ProposeNodeResolution = "matched_existing" | "created_new" | "needs_review";
 
+export const ALIAS_NOT_IN_SOURCE = "ALIAS_NOT_IN_SOURCE" as const;
+
+export interface AliasNotAdmitted {
+  readonly alias: string;
+  readonly reason: typeof ALIAS_NOT_IN_SOURCE;
+}
+
 export interface ProposeNodeResult {
   readonly node_id: string;
   readonly resolution: ProposeNodeResolution;
+  readonly aliases_not_admitted?: readonly AliasNotAdmitted[];
 }

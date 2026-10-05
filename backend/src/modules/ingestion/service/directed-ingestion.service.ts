@@ -72,17 +72,10 @@ import {
   setCachedAffectedNodes,
   type AffectedNode,
 } from "./affected-nodes.js";
+import { DIRECTED_MODEL, DIRECTED_PROMPT_VERSION } from "./directed-run.js";
 import { ingestRawInformation } from "./ingestion.service.js";
 
-// --------------------------------------------------------------------------
-// Constants — sentinels for the directed path.
-// --------------------------------------------------------------------------
-
-/** Sentinel `model` for every directed run — NEVER an Anthropic model id. */
-export const DIRECTED_MODEL = "directed" as const;
-
-/** Sentinel `prompt_version` for every directed run — never resolved by `selectPromptModule`. */
-export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;
+export { DIRECTED_MODEL, DIRECTED_PROMPT_VERSION };
 
 // --------------------------------------------------------------------------
 // Input schema — Zod-validated at the service boundary.

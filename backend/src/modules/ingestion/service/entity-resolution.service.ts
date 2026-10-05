@@ -1,102 +1,160 @@
-// Entity-resolution pipeline (§4 of `remember-modelagem-v7.md`, BR-25 of
-// `ingestion.back.md`, BR-24 of `ingestion.spec.md`).
-//
-// Single export: `resolveOrCreateNode(client, args)`. Called by
-// `propose-node.service.ts` BETWEEN the structural catalog lookup (BR-14) and
-// the alias-attachment step. Implements the deterministic three-way A12
-// decision (matched_existing / needs_review / created_new) under the
-// `pg_advisory_xact_lock` of BR-20.
-//
-// Why the thresholds are constants (BR-25): tuning belongs to a code change,
-// not a runtime knob. The §16 metrics (acceptance rate, `needs_review` rate)
-// are the calibration input — see the "thresholds calibration" note in the
-// back spec.
-
 import type { PoolClient } from "pg";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
-import type { ProposeNodeResolution } from "../dto/propose-node.dto.js";
+import {
+  ALIAS_NOT_IN_SOURCE,
+  type AliasNotAdmitted,
+  type ProposeNodeResolution,
+} from "../dto/propose-node.dto.js";
+
+import { DIRECTED_MODEL, DIRECTED_PROMPT_VERSION } from "./directed-run.js";
 
 export const MATCH_STRONG = 0.85;
 
 export const MATCH_FLOOR = 0.55;
 
-/**
- * Hard cap on the trigram candidate set the decision considers. Matches the
- * `LIMIT 10` in the candidate query of BR-25 step 2 / §4.2.
- */
 const TRIGRAM_CANDIDATE_LIMIT = 10;
 
-/**
- * Arguments to the pipeline. The caller (propose-node.service) is expected to
- * have already resolved `node_type` -> `nodeTypeId` against the catalog
- * (BR-14).
- */
 export interface ResolveOrCreateNodeArgs {
-  /** Resolved `node_type.id` from the catalog (already validated by BR-14). */
   readonly nodeTypeId: string;
-  /** Canonical name proposed by the LLM (already trimmed by Zod, BR-22 doesn't
-   *  apply to nodes). */
   readonly name: string;
-  /** Additional aliases the LLM supplied; appended to the resolved/created
-   *  node via `ON CONFLICT DO NOTHING`. May be undefined/empty. */
   readonly aliases?: readonly string[];
-  /** The active run's id — used as `node_alias.created_by_run_id`. */
   readonly llmRunId: string;
-  /** Read-only catalog snapshot. Currently unused by the resolver itself but
-   *  kept on the signature for symmetry with `proposeNodeService` and for
-   *  forward compatibility (future per-`node_type` threshold overrides would
-   *  read it from here). */
   readonly catalog: CatalogSnapshot;
 }
 
-/** Pipeline output. `resolution` mirrors the `ProposeNodeResolution` union. */
-export interface ResolveOrCreateNodeResult {
+interface ResolvedNode {
   readonly node_id: string;
   readonly resolution: ProposeNodeResolution;
 }
 
-/** A single trigram candidate row, as returned by step 2 of BR-25. */
+export interface ResolveOrCreateNodeResult extends ResolvedNode {
+  readonly aliases_not_admitted: readonly AliasNotAdmitted[];
+}
+
 interface TrigramCandidate {
   readonly node_id: string;
   readonly sim: number;
 }
 
-/**
- * Resolve an entity to an existing `KnowledgeNode` or create a new one,
- * following §4 / BR-25 strictly. The function:
- *
- *   1. Acquires `pg_advisory_xact_lock(hashtextextended(nt || '\\x1F' || norm(name), 0))`
- *      BEFORE any read on `node_alias` (BR-20).
- *   2. Tries exact `alias_norm = norm(name)` match against active nodes of
- *      `nodeTypeId`. Hit → reuse; resolution = `matched_existing`.
- *   3. Otherwise, fetches up to 10 trigram candidates via the GIN
- *      `node_alias_norm_trgm_idx` (`%` operator), each carrying its max
- *      `similarity` against the proposed name.
- *   4. Applies the A12 decision:
- *      - Strong-unique → reuse, resolution = `matched_existing`.
- *      - Ambiguous → INSERT a new node with `status = 'needs_review'`, one
- *        `entity_match_review` row per candidate with `sim >= MATCH_FLOOR`,
- *        resolution = `needs_review`.
- *      - Novel → INSERT a new node with `status = 'active'`,
- *        resolution = `created_new`.
- *   5. In all branches: every alias supplied by the LLM (plus the canonical
- *      name for newly created nodes) is INSERTed into `node_alias` with
- *      `ON CONFLICT (node_id, alias_norm) DO NOTHING`.
- *
- * The function assumes it is running inside an open transaction; it does not
- * issue BEGIN/COMMIT/ROLLBACK. The advisory lock is released by the caller's
- * commit/rollback (this is the `pg_advisory_XACT_lock` flavour).
- */
+interface AliasAdmission {
+  readonly admitted: readonly string[];
+  readonly admittedOtherThanName: readonly string[];
+  readonly notAdmitted: readonly AliasNotAdmitted[];
+}
+
+interface AdmissionRow {
+  readonly alias: string;
+  readonly admitted: boolean;
+  readonly is_name: boolean;
+}
+
+type NewNodeStatus = "active" | "needs_review";
+
+const INSERT_NODE_SQL: Record<NewNodeStatus, string> = {
+  active: `INSERT INTO knowledge_node (node_type_id, canonical_name, status)
+     VALUES ($1, $2, 'active')
+     RETURNING id`,
+  needs_review: `INSERT INTO knowledge_node (node_type_id, canonical_name, status)
+       VALUES ($1, $2, 'needs_review')
+       RETURNING id`,
+};
+
+const ALIAS_ADMISSION_SQL = `SELECT a.alias,
+        COALESCE(
+          r.directed
+            OR (norm(a.alias) <> '' AND strpos(r.content_norm, norm(a.alias)) > 0),
+          false
+        ) AS admitted,
+        norm(a.alias) = norm($5::text) AS is_name
+   FROM unnest($1::text[]) WITH ORDINALITY AS a(alias, ord)
+   LEFT JOIN (
+     SELECT (lr.model = $2 AND lr.prompt_version = $3) AS directed,
+            norm(ri.content) AS content_norm
+       FROM llm_run lr
+       JOIN raw_information ri ON ri.id = lr.input_raw_information_id
+      WHERE lr.id = $4
+   ) r ON true
+  ORDER BY a.ord`;
+
 export async function resolveOrCreateNode(
   client: PoolClient,
   args: ResolveOrCreateNodeArgs
 ): Promise<ResolveOrCreateNodeResult> {
-  // ---- BR-20: advisory lock BEFORE the first node_alias read ---------------
-  // Key composition matches §4.5 / the prior code path of propose-node:
-  //   hashtextextended(node_type_id || '\x1F' || norm(name), 0)
-  // We compute the inner string on the DB so that `norm(name)` uses the
-  // canonical implementation from migration 0001 (not a JS approximation).
+  await acquireNameLock(client, args);
+  const admission = await admitAliases(client, args);
+  const resolved = await resolveWithAdmittedAliases(client, args, admission);
+  return { ...resolved, aliases_not_admitted: admission.notAdmitted };
+}
+
+async function resolveWithAdmittedAliases(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs,
+  admission: AliasAdmission
+): Promise<ResolvedNode> {
+  const exactNodeId = await findExactMatch(client, args);
+  if (exactNodeId !== null) {
+    return await matchExisting(client, args, exactNodeId, admission);
+  }
+
+  const decision = decideFromCandidates(
+    await findTrigramCandidates(client, args)
+  );
+  if (decision.kind === "strong_unique") {
+    return await matchExisting(client, args, decision.nodeId, admission);
+  }
+
+  return await createNewNode(client, args, {
+    reviewCandidates: decision.kind === "ambiguous" ? decision.candidates : [],
+    aliases: admission.admitted,
+  });
+}
+
+async function matchExisting(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs,
+  nodeId: string,
+  admission: AliasAdmission
+): Promise<ResolvedNode> {
+  await attachAliases(client, {
+    nodeId,
+    aliases: admission.admittedOtherThanName,
+    runId: args.llmRunId,
+  });
+  return { node_id: nodeId, resolution: "matched_existing" };
+}
+
+async function createNewNode(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs,
+  plan: {
+    reviewCandidates: readonly TrigramCandidate[];
+    aliases: readonly string[];
+  }
+): Promise<ResolvedNode> {
+  const needsReview = plan.reviewCandidates.length > 0;
+  const nodeId = await insertNode(
+    client,
+    args,
+    needsReview ? "needs_review" : "active"
+  );
+  await insertMatchReviews(client, nodeId, plan.reviewCandidates);
+  await attachCanonicalAndAliases(client, {
+    nodeId,
+    canonicalName: args.name,
+    aliases: plan.aliases,
+    runId: args.llmRunId,
+  });
+  return {
+    node_id: nodeId,
+    resolution: needsReview ? "needs_review" : "created_new",
+  };
+}
+
+async function acquireNameLock(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs
+): Promise<void> {
   const lockKeyRes = await client.query<{ key: string }>(
     `SELECT (CAST($1::text AS text) || E'\\x1F' || norm($2::text)) AS key`,
     [args.nodeTypeId, args.name]
@@ -107,9 +165,40 @@ export async function resolveOrCreateNode(
     `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
     [lockKey]
   );
+}
 
-  // ---- Step 1: exact alias_norm match (score = 1.0) ------------------------
-  const exactRes = await client.query<{ node_id: string }>(
+async function admitAliases(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs
+): Promise<AliasAdmission> {
+  const proposed = args.aliases ?? [];
+  if (proposed.length === 0) {
+    return { admitted: [], admittedOtherThanName: [], notAdmitted: [] };
+  }
+  const res = await client.query<AdmissionRow>(ALIAS_ADMISSION_SQL, [
+    proposed,
+    DIRECTED_MODEL,
+    DIRECTED_PROMPT_VERSION,
+    args.llmRunId,
+    args.name,
+  ]);
+  const admitted = res.rows.filter((r) => r.admitted);
+  return {
+    admitted: admitted.map((r) => r.alias),
+    admittedOtherThanName: admitted
+      .filter((r) => !r.is_name)
+      .map((r) => r.alias),
+    notAdmitted: res.rows
+      .filter((r) => !r.admitted)
+      .map((r) => ({ alias: r.alias, reason: ALIAS_NOT_IN_SOURCE })),
+  };
+}
+
+async function findExactMatch(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs
+): Promise<string | null> {
+  const res = await client.query<{ node_id: string }>(
     `SELECT na.node_id
        FROM node_alias na
        JOIN knowledge_node kn ON kn.id = na.node_id
@@ -119,22 +208,14 @@ export async function resolveOrCreateNode(
       LIMIT 1`,
     [args.name, args.nodeTypeId]
   );
-  if (exactRes.rows.length > 0) {
-    const nodeId = exactRes.rows[0]!.node_id;
-    await attachAliases(client, {
-      nodeId,
-      // Canonical name not re-inserted on match (already present by virtue of
-      // alias_norm hit). LLM-supplied aliases still attempt insert.
-      aliases: args.aliases,
-      runId: args.llmRunId,
-    });
-    return { node_id: nodeId, resolution: "matched_existing" };
-  }
+  return res.rows[0]?.node_id ?? null;
+}
 
-  // ---- Step 2: trigram candidates -----------------------------------------
-  // The `na.alias_norm % norm($1)` predicate triggers the GIN trgm index
-  // `node_alias_norm_trgm_idx` (pg_trgm `gin_trgm_ops`).
-  const candRes = await client.query<{ node_id: string; sim: string }>(
+async function findTrigramCandidates(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs
+): Promise<TrigramCandidate[]> {
+  const res = await client.query<{ node_id: string; sim: string }>(
     `SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim
        FROM node_alias na
        JOIN knowledge_node kn ON kn.id = na.node_id
@@ -143,78 +224,41 @@ export async function resolveOrCreateNode(
         AND na.alias_norm % norm($1::text)
       GROUP BY na.node_id
       ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
-      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}`,
-    [args.name, args.nodeTypeId]
+      LIMIT $3`,
+    [args.name, args.nodeTypeId, TRIGRAM_CANDIDATE_LIMIT]
   );
-  const candidates: TrigramCandidate[] = candRes.rows
+  return res.rows
     .map((r) => ({ node_id: r.node_id, sim: Number(r.sim) }))
-    // Defensive: filter NaN (should never happen — pg_trgm returns numeric).
     .filter((c) => Number.isFinite(c.sim));
-
-  // ---- Step 3: A12 decision -----------------------------------------------
-  const decision = decideFromCandidates(candidates);
-
-  if (decision.kind === "strong_unique") {
-    const nodeId = decision.nodeId;
-    await attachAliases(client, {
-      nodeId,
-      aliases: args.aliases,
-      runId: args.llmRunId,
-    });
-    return { node_id: nodeId, resolution: "matched_existing" };
-  }
-
-  if (decision.kind === "ambiguous") {
-    // Create new node with status = 'needs_review' (ST-KN partial, UC-09).
-    const insRes = await client.query<{ id: string }>(
-      `INSERT INTO knowledge_node (node_type_id, canonical_name, status)
-       VALUES ($1, $2, 'needs_review')
-       RETURNING id`,
-      [args.nodeTypeId, args.name]
-    );
-    const nodeId = insRes.rows[0]!.id;
-
-    for (const cand of decision.candidates) {
-      await client.query(
-        `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (node_id, candidate_node_id) DO NOTHING`,
-        [nodeId, cand.node_id, cand.sim]
-      );
-    }
-
-    // Attach canonical + LLM aliases.
-    await attachCanonicalAndAliases(client, {
-      nodeId,
-      canonicalName: args.name,
-      aliases: args.aliases,
-      runId: args.llmRunId,
-    });
-    return { node_id: nodeId, resolution: "needs_review" };
-  }
-
-  // decision.kind === "novel" — create active node (created_new branch).
-  const insRes = await client.query<{ id: string }>(
-    `INSERT INTO knowledge_node (node_type_id, canonical_name, status)
-     VALUES ($1, $2, 'active')
-     RETURNING id`,
-    [args.nodeTypeId, args.name]
-  );
-  const nodeId = insRes.rows[0]!.id;
-  await attachCanonicalAndAliases(client, {
-    nodeId,
-    canonicalName: args.name,
-    aliases: args.aliases,
-    runId: args.llmRunId,
-  });
-  return { node_id: nodeId, resolution: "created_new" };
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+async function insertNode(
+  client: PoolClient,
+  args: ResolveOrCreateNodeArgs,
+  status: NewNodeStatus
+): Promise<string> {
+  const res = await client.query<{ id: string }>(INSERT_NODE_SQL[status], [
+    args.nodeTypeId,
+    args.name,
+  ]);
+  return res.rows[0]!.id;
+}
 
-/** Discriminated decision of the §4 candidate analysis. */
+async function insertMatchReviews(
+  client: PoolClient,
+  nodeId: string,
+  candidates: readonly TrigramCandidate[]
+): Promise<void> {
+  for (const cand of candidates) {
+    await client.query(
+      `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (node_id, candidate_node_id) DO NOTHING`,
+      [nodeId, cand.node_id, cand.sim]
+    );
+  }
+}
+
 type Decision =
   | { readonly kind: "strong_unique"; readonly nodeId: string }
   | {
@@ -233,22 +277,13 @@ export function decideFromCandidates(
     return { kind: "novel" };
   }
 
-  // Strong-unique requires exactly one strong AND no second above the floor.
   if (strong.length === 1 && aboveFloor.length === 1) {
     return { kind: "strong_unique", nodeId: strong[0]!.node_id };
   }
 
-  // Everything else with at least one above-floor candidate is ambiguous:
-  //  - any candidate in [MATCH_FLOOR, MATCH_STRONG), OR
-  //  - two-or-more candidates >= MATCH_STRONG.
   return { kind: "ambiguous", candidates: aboveFloor };
 }
 
-/**
- * Attach the canonical name as the first alias (`kind = 'canonical'`) plus
- * any LLM-supplied aliases (`kind = 'alias'`) to a newly created node.
- * UNIQUE(node_id, alias_norm) handles dedup via ON CONFLICT.
- */
 async function attachCanonicalAndAliases(
   client: PoolClient,
   args: {
@@ -271,10 +306,6 @@ async function attachCanonicalAndAliases(
   });
 }
 
-/**
- * Attach LLM-supplied aliases (only) — used both when reusing an existing
- * node (`matched_existing`) and after the canonical insert on new nodes.
- */
 async function attachAliases(
   client: PoolClient,
   args: {
