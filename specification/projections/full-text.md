@@ -17366,6 +17366,28 @@ entries:
   why: The resolver fetches ten candidates by similarity before filtering by the floor, so no more are ever paired.
 ---
 
+=== rules/knowledge-base/approximate-match-similarity
+---
+type: invariant
+statement: The similarity a search item carries for a knowledge node the node layer matched approximately is the highest word similarity of that node's aliases to the query text, with no layer weight applied.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/node-match
+---
+
+## Description
+
+This rule sets the value of a search item's similarity for an approximately matched knowledge node. It does not set the item's score, which approximate-match-strength and layer-weights govern. It does not set which items carry a similarity, which node-item-shows-match governs.
+
+=== rules/knowledge-base/approximate-match-similarity.log
+---
+entries:
+- field: statement
+  unstated: No node and no part of the material says what value the similarity carried by an approximately matched knowledge node takes. The material says only that the approximate item also reports the similarity, so that the uncertainty of the match is explicit. No node says whether that value is the raw word similarity or the strength after the node layer weight.
+  decided: The similarity is the highest word similarity of the node's aliases to the query text, with no layer weight applied.
+  why: The field exists to show the reader how uncertain the match is. The raw word similarity is the measure the 0.6 admission threshold is compared against, so only the unweighted value can be read against that threshold. The node layer weight already reaches the item through its score.
+---
+
 === rules/knowledge-base/approximate-match-strength
 ---
 type: invariant
@@ -19319,6 +19341,27 @@ entries:
   why: A dispute on such a link type arises precisely between links to different targets, so requiring one target leaves every such dispute unresolvable.
 ---
 
+=== rules/knowledge-base/document-context-entity-type-in-catalog
+---
+type: invariant
+statement: A preliminary reading that lists an entity under a node type the catalog does not hold yields a document context without that entity.
+constrains:
+- domain/knowledge-base/document-context
+---
+
+## Description
+
+This rule covers which entities from a preliminary reading's entity list the extraction keeps in the document context. It does not decide which document context status the run records. rules/knowledge-base/document-context-status-recorded decides that.
+
+=== rules/knowledge-base/document-context-entity-type-in-catalog.log
+---
+entries:
+- field: statement
+  unstated: The material says the document context lists each entity with its node type and the names the document uses for it. domain/knowledge-base/document-entity references a node type of the catalog. No node and no intake material says what an extraction records when the preliminary reading lists an entity under a node type the catalog does not hold. The entity could be dropped or kept, or the reading could count as failed.
+  decided: A preliminary reading that lists an entity under a node type the catalog does not hold yields a document context without that entity. The reading still counts as having produced a document context.
+  why: A document entity references a node type the catalog holds, so it cannot be kept under a type the catalog lacks. That leaves dropping the entity or failing the reading. The overlong-summary case was already decided by cutting the summary and keeping the reading (rules/knowledge-base/document-context-summary-cut-to-five-lines). That decision rested on two points that hold here too. The material calls the document context only a reading aid. Failing the whole reading would also discard the valid summary and the other entities over a defect in one entry. Dropping the entity keeps what each chunk reading is shown equal to what is recorded for audit. It also never offers the model a node type that rules/knowledge-base/node-type-in-catalog would refuse in a proposal.
+---
+
 === rules/knowledge-base/document-context-model
 ---
 type: invariant
@@ -19334,7 +19377,7 @@ None.
 === rules/knowledge-base/document-context-read-first
 ---
 type: invariant
-statement: Under prompt version v5 and later, an extraction whose raw information holds more than one chunk and at most 100000 characters reads that whole content once, before its first chunk, to produce the run's document context when the run holds none.
+statement: Under prompt version v5 and later, an extraction whose raw information holds more than one chunk and a content of at most 100000 UTF-16 code units reads that whole content once, before its first chunk, to produce the run's document context when the run holds none.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/document-context
@@ -19344,10 +19387,42 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/document-context-read-first.log
+---
+entries:
+- field: statement
+  unstated: The unit the 100000 limit on a raw information's content is counted in, which decides whether the preliminary reading is made. The statement and the material ("mais de 100.000 caracteres") both say only "characters", and these differ from Unicode code points when the content has characters outside the Basic Multilingual Plane.
+  decided: The 100000 limit counts the raw information's content in UTF-16 code units, the same unit in both rules/knowledge-base/document-context-read-first and rules/knowledge-base/document-context-status-recorded.
+  why: The limit measures the same field that rules/knowledge-base/content-length already bounds in UTF-16 code units. Using that unit means a raw information's content has one length everywhere it is checked. Unicode code points are the unit for chunk offsets and chunk sizes, which measure positions inside chunks, not the whole content. No log entry decided this unit before.
+---
+
+=== rules/knowledge-base/document-context-status-kept-on-reuse
+---
+type: invariant
+statement: Under prompt version v5 and later, an extraction that makes no preliminary reading because its run already holds a document context leaves the run's document context status as it was.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/document-context-status
+---
+
+## Description
+
+Governs the document context status of a run whose extraction reuses the document context the run already holds.
+It does not decide the status an extraction records when it makes a preliminary reading or cannot make one; rules/knowledge-base/document-context-status-recorded decides that.
+
+=== rules/knowledge-base/document-context-status-kept-on-reuse.log
+---
+entries:
+- field: statement
+  unstated: No node said what an extraction does to the run's document context status when it skips the preliminary reading because the run already holds a document context, as happens when a run is retried.
+  decided: The extraction leaves the run's document context status as it was.
+  why: The status says whether the run's document context was produced. When the context is reused, the run still holds the same context, which an earlier attempt produced and recorded. No new preliminary reading happens that could produce a different outcome. The intake says a retry reuses the recorded context, and keeping the status keeps the audit record matching the context the model was shown.
+---
+
 === rules/knowledge-base/document-context-status-recorded
 ---
 type: invariant
-statement: Under prompt version v5 and later, an extraction records its run's document context status as single-chunk when the raw information holds one chunk, too-long when its content exceeds 100000 characters, failed when the preliminary reading fails and produced when it yields a document context.
+statement: Under prompt version v5 and later, an extraction records its run's document context status as single-chunk when the raw information holds one chunk whatever its length, too-long when it holds more than one chunk and its content exceeds 100000 UTF-16 code units, failed when the preliminary reading fails and produced when it yields a document context.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/document-context-status
@@ -19357,10 +19432,40 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/document-context-status-recorded.log
+---
+entries:
+- field: statement
+  unstated: Which document context status a run records when its raw information holds one chunk and its content also exceeds 100000 characters. The statement lists single-chunk and too-long as separate conditions and does not say which one wins when both hold.
+  decided: single-chunk applies to a one-chunk raw information of any length, and too-long applies only to a raw information of more than one chunk whose content exceeds 100000 characters.
+  why: Under rules/knowledge-base/document-context-read-first, a one-chunk raw information never gets a preliminary reading, whatever its length, and the material says a one-chunk document has no preliminary reading. So the reason no context exists is the single chunk. The 100000-character limit only stops a reading that would otherwise happen, which is true only when there is more than one chunk.
+---
+
+=== rules/knowledge-base/document-context-summary-cut-to-five-lines
+---
+type: invariant
+statement: A preliminary reading whose summary runs past 5 lines yields a document context whose summary is that summary's first 5 lines.
+constrains:
+- domain/knowledge-base/document-context
+---
+
+## Description
+
+This rule covers what the extraction keeps of a preliminary reading's summary when the summary is longer than the limit that rules/knowledge-base/document-context-summary-lines sets. It does not decide which document context status the run records. rules/knowledge-base/document-context-status-recorded decides that.
+
+=== rules/knowledge-base/document-context-summary-cut-to-five-lines.log
+---
+entries:
+- field: statement
+  unstated: The material gives the document context a summary of up to 5 lines, and rules/knowledge-base/document-context-summary-lines holds that limit. Neither says what an extraction records when the preliminary reading returns a longer summary. It could cut the summary or treat the reading as failed.
+  decided: A preliminary reading whose summary runs past 5 lines yields a document context whose summary is that summary's first 5 lines. The reading still counts as having produced a document context.
+  why: The material calls the document context only a reading aid and lets an extraction go on without it. Treating an overlong summary as a failed reading would throw away the reading's entity list, which is valid, over a defect in the summary alone. Cutting keeps the summary within the 5-line limit. The recorded context is also exactly what each chunk reading is shown, so the audit purpose of recording it still holds.
+---
+
 === rules/knowledge-base/document-context-summary-lines
 ---
 type: invariant
-statement: A document context's summary holds at most 5 lines.
+statement: A document context's summary holds at most 5 lines, where a line ends at a newline character or at the summary's end, a carriage return ends no line, an empty line counts as a line, and a newline that ends the summary starts no further line.
 constrains:
 - domain/knowledge-base/document-context
 ---
@@ -19368,6 +19473,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/document-context-summary-lines.log
+---
+entries:
+- field: statement
+  unstated: The material gives the document context a summary of up to 5 lines, and no node says what one line of that summary is. No node says which line-break sequences end a line, whether empty lines count, or whether a trailing line break starts a new line, and the same answer governs both counting against the limit and keeping the first 5 lines.
+  decided: A line ends at a newline character or at the summary's end. A carriage return ends no line. An empty line counts as a line. A newline that ends the summary starts no further line.
+  why: The specification already defines a line as ending at a newline character in rules/knowledge-base/chunker-lines-end-at-newline, so the same document text has one notion of line. Empty lines count because the summary is shown to the model as written, so every line it shows is a line of the summary. A trailing newline starts no line because otherwise a summary ending in a newline would count one line more than it shows.
+---
 
 === rules/knowledge-base/document-ingestion-extracts-new-content
 ---
@@ -19589,6 +19703,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/exact-node-item-carries-no-similarity
+---
+type: invariant
+statement: A knowledge node search item that the node layer matched exactly carries no similarity, even when one of the node's aliases has a word similarity to the query text that would be enough for an approximate match.
+constrains:
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+Governs whether an exactly matched knowledge node search item carries a similarity. It does not decide which match a node that meets both ways takes (rules/knowledge-base/node-layer-approximate-match), nor what an approximately matched item carries (rules/knowledge-base/node-item-shows-match).
+
+=== rules/knowledge-base/exact-node-item-carries-no-similarity.log
+---
+entries:
+- field: statement
+  unstated: Neither the material nor any node says whether a knowledge node search item matched exactly carries a similarity when one of its aliases also reaches the approximate threshold; the material says only that a node matching both ways appears once as exact, and that the approximate item also reports the similarity.
+  decided: A knowledge node search item matched exactly carries no similarity, whatever its aliases' word similarity to the query text.
+  why: The material gives the similarity to the approximate item so that the uncertainty of a trigram match is visible to the reader, and an exact match carries no such uncertainty, so showing a similarity on it would suggest one.
+---
 
 === rules/knowledge-base/expanded-link-layer-is-node
 ---
@@ -19845,6 +19980,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-answers-proposals-as-contract
+---
+type: invariant
+statement: An extraction hands back to the model each proposal call whose arguments parse with the answer the published ingestion contract gives that proposal, a node proposal's answer carrying each proposed alias that was not admitted and its reason.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+Governs what the language model is told, within an extraction, about each fragment, node, link and attribute proposal it makes whose arguments parse.
+What each proposal answers on acceptance and refusal is stated by contracts/knowledge-base/ingestion; a proposal call whose arguments do not parse is governed by rules/knowledge-base/extraction-malformed-arguments-refused, and a call to a tool outside the four proposals by rules/knowledge-base/extraction-unknown-tool-refused.
+
+=== rules/knowledge-base/extraction-answers-proposals-as-contract.log
+---
+entries:
+- field: statement
+  unstated: No node states what an extraction hands back to the model for a proposal whose arguments parse. The material makes propose_node list each alias it did not record and the reason, but it states that only for the published contract (MCP and the REST mirror), not for the extraction loop's own answer to the model.
+  decided: For each proposal call whose arguments parse, an extraction hands back to the model the answer the published ingestion contract gives that proposal. For a node proposal, that answer carries each proposed alias that was not admitted and its reason.
+  why: The extraction loop sends a parsed proposal to the same proposal handlers the contract publishes and hands their answer back to the model. So one answer serves both paths, and the model learns which of its aliases were not recorded. A second wording for the loop would be a second answer to one question. Calls whose arguments do not parse, and calls to a tool outside the four proposals, already have their own rules, so this statement stays clear of them.
+---
+
 === rules/knowledge-base/extraction-asks-for-other-names
 ---
 type: invariant
@@ -19857,6 +20014,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+---
+type: invariant
+statement: Under prompt versions v1 to v4, an extraction does not ask the model to propose other names of an entity with each node.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+Governs what an extraction under prompt versions v1 to v4 leaves out of its instructions about a node's other names. What an extraction under v5 and later asks for is governed by rules/knowledge-base/extraction-asks-for-other-names. Whether a proposed alias is recorded on its node is governed by rules/knowledge-base/new-node-aliases and rules/knowledge-base/matched-node-gains-only-aliases.
+
+=== rules/knowledge-base/extraction-before-v5-asks-for-no-other-names.log
+---
+entries:
+- field: statement
+  unstated: No node stated whether an extraction under prompt versions v1 to v4 asks the model to propose other names of an entity with each node.
+  found: /home/siegfriedneto/projects/eternal/siegard-work/aliases-fuzzy-context/intake/material-aliases-fuzzy-contexto.md — "Nenhuma versão do prompt de extração (v1 a v4) menciona aliases."
+---
 
 === rules/knowledge-base/extraction-chunk-turn-limit
 ---
@@ -20042,6 +20220,28 @@ entries:
   why: v5 is v4 plus the alias and document-context instructions; dropping v4 relative-date handling would make the new default regress on dates.
 ---
 
+=== rules/knowledge-base/extraction-prompt-v5-keeps-v4
+---
+type: invariant
+statement: The extraction system prompt of prompt version v5 contains every instruction that the extraction system prompt of prompt version v4 contains.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+Governs what the v5 extraction system prompt keeps from v4. It does not say which instructions v4 carries: the rules scoped to v4, or to an earlier version and later, decide that. It does not say what v5 adds either: rules/knowledge-base/extraction-asks-for-other-names and the document-context rules decide that.
+
+=== rules/knowledge-base/extraction-prompt-v5-keeps-v4.log
+---
+entries:
+- field: statement
+  unstated: The material creates prompt version v5 and makes it the default, but it does not say whether the v5 extraction system prompt keeps every instruction of the v4 one.
+  decided: The extraction system prompt of prompt version v5 contains every instruction that the extraction system prompt of prompt version v4 contains.
+  why: Earlier decisions already treat v5 as v4 plus the alias and document-context instructions. Those decisions scoped the v4 relative-date rules (extraction-prompt-names-relative-date-words, extraction-relative-date-falls-back-to-reception) to "v4 and later", so the same answer holds here. Dropping any v4 instruction would make the new default prompt regress.
+---
+
 === rules/knowledge-base/extraction-prompt-values-ascending
 ---
 type: invariant
@@ -20071,7 +20271,7 @@ None.
 === rules/knowledge-base/extraction-reads-chunks-in-order
 ---
 type: invariant
-statement: An extraction reads its raw information's chunks one at a time in index order, showing the model each one with the source's type, document date, title and reception time, the last 200 characters of the chunk before it and the run's document context when it holds one.
+statement: An extraction reads its raw information's chunks one at a time in index order, showing the model each one with the source's type, document date, title and reception time, the last 200 Unicode code points of the chunk before it and the run's document context when it holds one.
 constrains:
 - domain/knowledge-base/llm-run
 ---
@@ -20079,6 +20279,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/extraction-reads-chunks-in-order.log
+---
+entries:
+- field: statement
+  unstated: The unit in which the extraction counts the 200-character tail of the previous chunk that it shows the model with each chunk. The statement says only "the last 200 characters of the chunk before it". The material says the same ("os últimos 200 caracteres do chunk anterior", "Os 200 caracteres do chunk anterior continuam"). Unicode code points and UTF-16 code units give different results when the chunk holds characters outside the Basic Multilingual Plane.
+  decided: The tail shown is the last 200 Unicode code points of the chunk before the one being read.
+  why: The tail is measured inside a chunk. Every other measure inside a chunk already uses Unicode code points. That includes the chunk offsets in rules/knowledge-base/chunk-offsets-count-code-points and the chunk sizes in rules/knowledge-base/short-block-one-chunk, rules/knowledge-base/long-block-sentence-chunks and rules/knowledge-base/long-sentence-own-chunk. The entry in rules/knowledge-base/document-context-read-first.log.md also keeps UTF-16 code units for lengths of the whole content and code points for measures inside chunks. Counting in code points also means the cut never splits a surrogate pair. No log entry decided this unit before.
+---
 
 === rules/knowledge-base/extraction-relative-date-falls-back-to-reception
 ---
@@ -20729,6 +20938,30 @@ consistency: eventual
 ## Description
 
 None.
+
+=== rules/knowledge-base/link-and-fragment-items-carry-no-match
+---
+type: invariant
+statement: A search item for a knowledge link or an information fragment carries no node match and no similarity.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/node-match
+---
+
+## Description
+
+This rule says which search items do not carry a node match or a similarity. These are link items, including links a search's expansion reaches, and fragment items, including fragments the chunk layer surfaces.
+It does not say what a knowledge node item carries. rules/knowledge-base/node-item-shows-match covers that.
+It does not set the score or the rank of an item that the search reached through an approximately matched knowledge node. rules/knowledge-base/approximate-match-strength and rules/knowledge-base/search-ranking cover those.
+
+=== rules/knowledge-base/link-and-fragment-items-carry-no-match.log
+---
+entries:
+- field: statement
+  unstated: No node says whether a search item for a knowledge link or an information fragment carries a node match and a similarity. The material says only that every node-layer item tells how it matched and that items reached by expansion get no marking of their own.
+  decided: A search item for a knowledge link or an information fragment carries no node match and no similarity.
+  why: A node match describes how the node layer matched a knowledge node, and the node layer never matches link or fragment items. The fragment and chunk layers stay full-text only, and the material says the items that expansion reaches from an approximately matched node get no marking of their own. Their uncertainty already shows in their rank, which places them after all the others.
+---
 
 === rules/knowledge-base/link-confidence-range
 ---
@@ -21524,6 +21757,29 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/no-document-context-before-v5
+---
+type: invariant
+statement: Under prompt version v4 or any earlier prompt version, an extraction makes no preliminary reading of the whole document and records no document context and no document context status.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/document-context
+- domain/knowledge-base/document-context-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/no-document-context-before-v5.log
+---
+entries:
+- field: statement
+  unstated: The preliminary reading and the context status recorded on a run are stated only under prompt version v5 and later, and no node said what an extraction under v4 or an earlier version does about them.
+  decided: Under prompt version v4 or any earlier prompt version, an extraction makes no preliminary reading of the whole document and records no document context and no document context status.
+  why: The material puts the preliminary reading into the new prompt version v5 and describes the earlier extraction as reading each chunk alone. A run made under an earlier version should repeat the behavior of that version. Both run attributes are optional, so a run under v4 can simply have neither, and no status value has to be invented for "not applicable".
+---
 
 === rules/knowledge-base/node-item-shows-match
 ---
@@ -22507,6 +22763,29 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/retry-keeps-document-context-status
+---
+type: invariant
+statement: Retrying an LLM run leaves its document context status unchanged.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/document-context-status
+---
+
+## Description
+
+The retry itself neither sets nor clears the run's document context status.
+What an extraction under the retried run records is governed by rules/knowledge-base/document-context-status-recorded.
+
+=== rules/knowledge-base/retry-keeps-document-context-status.log
+---
+entries:
+- field: statement
+  unstated: The material has a retry reopen the run and reuse its recorded document context, without saying whether the retry keeps, clears or resets the run's recorded document context status.
+  decided: Retrying an LLM run leaves its document context status unchanged.
+  why: The status is the record of whether the run holds a context and why not, and the retry keeps the context, so it keeps the status as well. Clearing it would leave a reused context with no status, because rules/knowledge-base/document-context-status-recorded records produced only when a preliminary reading yields a context. An extraction that does read again after an earlier failure still records its own outcome under that rule.
+---
+
 === rules/knowledge-base/retry-rejects-orphaned-fragments
 ---
 type: policy
@@ -22779,7 +23058,7 @@ None.
 === rules/knowledge-base/search-ranking
 ---
 type: invariant
-statement: Search items are ranked with every item the search reached only through knowledge nodes it matched approximately after all the others, and within each group by score descending, then by recording time descending with a knowledge node counting as never recorded, then by identifier ascending.
+statement: Search items are ranked with every item the search reached only through knowledge nodes it matched approximately after all the others, and within each group by score descending, then by recording time descending with an information fragment counting as recorded at its creation time and a knowledge node counting as never recorded and so after every knowledge link and information fragment of equal score, then by identifier ascending.
 constrains:
 - domain/knowledge-base/search-item
 ---
@@ -22795,6 +23074,14 @@ entries:
   unstated: The material ranks a knowledge node matched only approximately below every knowledge node matched exactly, but says nothing of fragments, of other items, or of links expansion reaches from it.
   decided: Every item the search reached only through approximately matched knowledge nodes ranks after all the others, then by score within each group.
   why: A link reached from a misspelled name would otherwise outrank an exact match whenever its decayed similarity beat a low full-text rank.
+- field: statement
+  unstated: The statement counts a knowledge node as never recorded in a most-recent-first order, but no node and no intake material says whether a never-recorded item comes after or before every knowledge link and information fragment with the same score.
+  decided: A knowledge node comes after every knowledge link and information fragment with the same score.
+  why: An item with no recording time is never more recent than an item that has one, so in a most-recent-first order it comes last. The delivered search service already ranks nodes this way, because it gives a node a recording time of zero before sorting most recent first.
+- field: statement
+  unstated: The ranking breaks ties of equal score by recording time, but an information fragment declares no recording time, only a creation time and a supersession time, so no node says which time a fragment item is ordered by.
+  decided: An information fragment search item counts as recorded at its information fragment's creation time.
+  why: The creation time is the only required time an information fragment declares and the moment the fragment entered the store, so it plays the part a knowledge link's recording time plays. The search service already orders fragment items by it, through f.created_at in search.repository.ts and recordedAtTs from created_at in search.service.ts.
 ---
 
 === rules/knowledge-base/search-total-before-pagination

@@ -1,0 +1,7 @@
+---
+entries:
+- field: statement
+  unstated: The material says the document context lists each entity with its node type and the names the document uses for it. domain/knowledge-base/document-entity references a node type of the catalog. No node and no intake material says what an extraction records when the preliminary reading lists an entity under a node type the catalog does not hold. The entity could be dropped or kept, or the reading could count as failed.
+  decided: A preliminary reading that lists an entity under a node type the catalog does not hold yields a document context without that entity. The reading still counts as having produced a document context.
+  why: A document entity references a node type the catalog holds, so it cannot be kept under a type the catalog lacks. That leaves dropping the entity or failing the reading. The overlong-summary case was already decided by cutting the summary and keeping the reading (rules/knowledge-base/document-context-summary-cut-to-five-lines). That decision rested on two points that hold here too. The material calls the document context only a reading aid. Failing the whole reading would also discard the valid summary and the other entities over a defect in one entry. Dropping the entity keeps what each chunk reading is shown equal to what is recorded for audit. It also never offers the model a node type that rules/knowledge-base/node-type-in-catalog would refuse in a proposal.
+---
