@@ -1,0 +1,43 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the mutationFn of useCreateConversation(), lines 23-34
+    evidence: |-
+      const body: CreateConversationVariables = vars ?? {};
+      const wire = await http<ConversationWire>("/api/v1/conversations", {
+        method: "POST",
+        ...
+        body: JSON.stringify(body),
+      });
+      return toConversation(wire);
+  - node: rules/chat-workspace/create-and-delete-do-not-navigate
+    held_at: |-
+      the onSuccess handler of useCreateConversation(), lines 35-39, which only invalidates queries
+    evidence: |-
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: conversationKeys.all,
+        });
+      },
+  - node: rules/chat-workspace/create-refreshes-every-conversation-read
+    held_at: |-
+      the onSuccess handler of useCreateConversation(), lines 35-39
+    evidence: |-
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.all,
+      });
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the mutationFn of useCreateConversation(), lines 23-34. It has no catch, no error mapping and no text of its own, so a failure from the request helper propagates as raised.
+    evidence: |-
+      const wire = await http<ConversationWire>("/api/v1/conversations", {
+  - node: rules/chat-workspace/title-is-sent-as-given
+    held_at: |-
+      the body construction in the mutationFn, lines 24 and 31
+    evidence: |-
+      const body: CreateConversationVariables = vars ?? {};
+      ...
+      body: JSON.stringify(body),
+looked_past: |-
+  The `conversationKeys.all` prefix, the `toConversation` transform that drops the rolling summary and update time, and `authHeader` live in other files (`./keys`, `./_transforms`, `./_request`), so I did not judge them here.

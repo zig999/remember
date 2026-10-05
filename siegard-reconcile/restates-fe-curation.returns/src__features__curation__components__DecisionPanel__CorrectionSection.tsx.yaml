@@ -1,0 +1,53 @@
+findings: []
+read:
+  - node: rules/curation-workspace/changing-the-item-restarts-the-correction
+    held_at: |-
+      nowhere in this file. The file keeps its own `open` state and never resets it when `itemId` changes. The restart is held by the caller, `DecisionPanel.tsx` (outside the file set), which mounts the section as `<CorrectionSection key={correctionItemId}`.
+    evidence: |-
+      const [open, setOpen] = useState(false);
+      (caller, DecisionPanel.tsx line 245: key={correctionItemId})
+  - node: rules/curation-workspace/correction-opens-inline-and-returns-focus
+    held_at: |-
+      the `open` state, the `open ? (<CorrectionForm ... onCancel={close} />) : (<Button ref={correctButtonRef} ...>` branch, and `close()`
+    evidence: |-
+      function close(): void {
+          setOpen(false);
+          requestAnimationFrame(() => {
+            correctButtonRef.current?.focus();
+          });
+        }
+  - node: rules/curation-workspace/correction-refusals-reach-the-form
+    held_at: |-
+      `correctionServerError()` and the `serverError={correctionServerError(serverError)}` prop passed to `CorrectionForm`. The panel's alert is outside this file.
+    evidence: |-
+      return serverError.code === "BUSINESS_TEMPORAL_INCOHERENT" ||
+          serverError.code === "BUSINESS_CORRECTION_NO_CHANGES" ||
+          serverError.code === "BUSINESS_DATE_UNJUSTIFIED" ||
+          serverError.code === "BUSINESS_FRAGMENT_NOT_ACCEPTED"
+          ? serverError
+          : null;
+  - node: rules/curation-workspace/every-decision-waits-for-the-evidence
+    held_at: |-
+      the correction `Button`'s `aria-disabled` and `onClickCapture` handler
+    evidence: |-
+      aria-disabled={!evidenceViewed || undefined}
+      onClickCapture={(e) => {
+        if (!evidenceViewed) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
+  - node: rules/curation-workspace/form-hands-the-request-to-its-caller
+    held_at: |-
+      the `onSubmit` prop passed to `CorrectionForm`, and the `onCorrect` prop. The file submits nothing itself, and the server error comes back in as a prop carrying `code`.
+    evidence: |-
+      onSubmit={(body) => {
+        onCorrect(body);
+      }}
+  - node: rules/curation-workspace/fragment-filter-reaches-the-picker
+    held_at: |-
+      the `fragmentFilter` prop and its spread into `CorrectionForm`
+    evidence: |-
+      {...(fragmentFilter ? { fragmentFilter } : {})}
+looked_past: |-
+  The "Corrigir…" button label and the `border-t border-border p-md` classes are surface that no node in this set constrains, so I did not judge them.

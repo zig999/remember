@@ -1,0 +1,61 @@
+read:
+  - node: rules/chat-workspace/active-conversation-is-named-by-the-address
+    held_at: |-
+      Line 13 reads the conversation parameter from the address, and line 55 hands it to the message list.
+    evidence: |-
+      const { conversation } = chatRoute.useSearch();
+      <ConversationView conversationId={conversation} />
+  - node: rules/chat-workspace/changing-conversation-clears-the-graph-and-the-detail
+    held_at: |-
+      The effect at lines 29-32, which runs whenever `conversation` changes.
+    evidence: |-
+      useEffect(() => {
+        useGraphStore.getState().clear();
+        setSelectedNode(null);
+      }, [conversation]);
+  - node: rules/chat-workspace/changing-conversation-does-not-stop-the-turn
+    held_at: |-
+      The render of ConversationView at line 55, which has no `key`, so a change of conversation does not remount it. The abort itself is not in this file.
+    evidence: |-
+      <ConversationView conversationId={conversation} />
+  - node: rules/chat-workspace/clicking-a-node-swaps-the-pane-to-its-detail
+    held_at: |-
+      The ternary at lines 62-79, driven by `selectedNode`, together with handleNodeSelect and handleDetailClose.
+    evidence: |-
+      {selectedNode !== null ? (
+        <NodeDetailPanel
+          nodeId={selectedNode.id}
+          ...
+          onClose={handleDetailClose}
+        />
+      ) : (
+        <GraphSpace
+  - node: rules/chat-workspace/graph-pane-receives-the-status-and-the-error
+    held_at: |-
+      The props passed to GraphSpace at lines 74-75, read from the graph store at lines 23-24.
+    evidence: |-
+      status={status}
+      {...(errorMessage !== undefined ? { errorMessage } : {})}
+  - node: rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation
+    held_at: |-
+      The call to useGraphPersistence at line 34, which delegates to the hook in another file. This file holds the call and the conversation it is given.
+    evidence: |-
+      useGraphPersistence(conversation);
+  - node: rules/chat-workspace/node-detail-receives-the-clicked-label
+    held_at: |-
+      handleNodeSelect at lines 36-42 captures the label at click time. Lines 65-67 pass it to NodeDetailPanel only when it is defined.
+    evidence: |-
+      const node = nodesMap.get(nodeId);
+      setSelectedNode({ id: nodeId, label: node?.label });
+      {...(selectedNode.label !== undefined
+        ? { nodeLabel: selectedNode.label }
+        : {})}
+  - node: rules/chat-workspace/selecting-a-node-sends-nothing
+    held_at: |-
+      handleNodeSelect and handleDetailClose at lines 36-46, which only set local selection state.
+    evidence: |-
+      const handleDetailClose = useCallback(() => {
+        setSelectedNode(null);
+      }, []);
+looked_past: |-
+  The responsive layout classes (`@lg:w-2/5`, `@lg:w-3/5`, `p-lg`) and the unused `graphRef` ref are presentation and code-review matters, not domain facts.

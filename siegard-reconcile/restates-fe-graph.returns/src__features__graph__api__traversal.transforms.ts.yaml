@@ -1,0 +1,47 @@
+read:
+  - node: rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node
+    held_at: |-
+      toLinkView, line 28, the isOutgoing comparison, and line 29, which derives direction from it
+    evidence: |-
+      const isOutgoing = wire.source_node_id === currentNodeId;
+      const direction: LinkDirection = isOutgoing ? "outgoing" : "incoming";
+      toTraversalResult passes wire.starting_node_id as currentNodeId, so a link from the node to itself has source equal to the start and comes out outgoing.
+  - node: rules/graph-explorer/a-relationship-shows-fixed-fields
+    held_at: |-
+      the object returned by toLinkView, lines 34-51
+    evidence: |-
+      linkType: wire.link_type, effectiveStatus: wire.effective_status, isInEffect: wire.is_in_effect, confidence: wire.confidence, confidenceLabel: formatConfidenceLabel(wire.confidence) ?? "0%", validFromLabel: formatDateLabel(wire.valid_from), validToLabel: formatDateLabel(wire.valid_to), flags: wire.flags ?? [], provenance: (wire.provenance ?? []).map(toProvenanceEntryView)
+      The object carries none of status, is_current, recorded_at, superseded_at, hop or score.
+  - node: rules/graph-explorer/an-unformatted-confidence-shows-zero-percent
+    held_at: |-
+      toLinkView, line 46
+    evidence: |-
+      confidenceLabel: formatConfidenceLabel(wire.confidence) ?? "0%",
+  - node: rules/graph-explorer/direction-picks-the-link-wording
+    held_at: |-
+      toLinkView, lines 37 and 39
+    evidence: |-
+      directionLabel: isOutgoing ? wire.link_type : wire.link_inverse_name,
+      directionArrow: isOutgoing ? "→" : "←",
+  - node: rules/graph-explorer/lists-keep-the-answered-order
+    held_at: |-
+      toTraversalResult, line 60, and indexNodes, lines 15-21
+    evidence: |-
+      links: wire.links.map((l) => toLinkView(l, wire.starting_node_id, nodesById)),
+      The map keeps the order of wire.links, and the nodes are only indexed by id, so no sort or reorder is applied.
+  - node: rules/graph-explorer/missing-flags-and-provenance-are-empty-lists
+    held_at: |-
+      toLinkView, lines 49-50
+    evidence: |-
+      flags: wire.flags ?? [],
+      provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  - node: rules/graph-explorer/the-neighbour-is-the-other-end
+    held_at: |-
+      toLinkView, lines 30-33 and 40-42
+    evidence: |-
+      const neighborId = isOutgoing ? wire.target_node_id : wire.source_node_id;
+      const neighbor = nodesById.get(neighborId);
+      const neighborName = neighbor?.canonical_name ?? neighborId;
+      const neighborType = neighbor?.node_type ?? "";
+looked_past: |-
+  Date label formatting (formatDateLabel), confidence formatting (formatConfidenceLabel) and provenance entry shaping (toProvenanceEntryView) are held in ./_transforms, a file outside this set, so they are another file's judgment.

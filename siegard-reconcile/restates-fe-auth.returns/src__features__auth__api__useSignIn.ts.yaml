@@ -1,0 +1,125 @@
+findings:
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      readRedirectParam(), lines 16-24
+    evidence: |-
+      const params = new URLSearchParams(window.location.search);
+      return params.get("redirect");
+    cost: |-
+      The name of the query parameter that carries the requested destination is a fact about the sign-in address, and it lives only in this function. The node says only that the owner goes to "the destination the address requested" and never names the parameter. Anything that builds a sign-in address with a destination has to match the string "redirect", and the next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: |-
+      The analysis would have to give the parameter name a node. The natural home is rules/owner-access/sign-in-destination-defaults-to-chat, or the sign-in-destination value object, or the sign-in contract's open-sign-in operation.
+    node: rules/owner-access/sign-in-destination-defaults-to-chat
+
+read:
+  - node: contracts/owner-access/sign-in
+    held_at: |-
+      the success path of signIn() (lines 80-88) and its failure path (lines 95-98). The notice texts, the form-level alert and the open-sign-in notice are not in this file.
+    evidence: |-
+      void navigate({ to: target });
+      ...
+      setError(classified);
+      toast.error(SIGN_IN_ERROR_MESSAGE[classified.type]);
+  - node: domain/owner-access/sign-in-attempt
+    held_at: |-
+      useSignIn() and its signIn operation, lines 64-103. Credentials go in, the failure kind is held as state, and the destination is resolved. The credentials and failure-kind shapes are declared in ../schema.
+    evidence: |-
+      const [error, setError] = useState<SignInError | null>(null);
+      ...
+      await signInWithEmail(values.login, values.senha);
+      const jwt = await fetchAccessToken();
+      ...
+      const target = resolveSafeRedirect(redirectParam);
+  - node: domain/owner-access/sign-in-destination
+    held_at: |-
+      resolveSafeRedirect(), lines 26-35
+    evidence: |-
+      export function resolveSafeRedirect(candidate: string | null): "/chat" | string {
+  - node: rules/owner-access/access-token-is-held-before-the-owner-moves-on
+    held_at: |-
+      signIn(), lines 82-88. The token is stored before navigate is called.
+    evidence: |-
+      useAuthStore.getState().setToken(jwt);
+      ...
+      void navigate({ to: target });
+  - node: rules/owner-access/any-other-sign-in-failure-is-unknown
+    held_at: |-
+      classifySignInError(), the default branch and the final return, lines 47-48 and 61
+    evidence: |-
+      default:
+        return { type: "unknown" };
+      ...
+      return { type: "unknown" };
+  - node: rules/owner-access/missing-session-or-token-is-a-session-failure
+    held_at: |-
+      classifySignInError(), lines 44-46. The AuthError codes are produced in neon-auth.ts.
+    evidence: |-
+      case "NO_SESSION":
+      case "NO_TOKEN":
+        return { type: "session" };
+  - node: rules/owner-access/network-looking-failure-is-a-network-failure
+    held_at: |-
+      classifySignInError(), lines 51-60. This branch runs only for a failure that is not an AuthError, so only for one that did not come out of the exchange.
+    evidence: |-
+      if (reason instanceof TypeError) return { type: "network" };
+      ...
+      if (lower.includes("failed to fetch") || lower.includes("network")) {
+  - node: rules/owner-access/rejected-credentials-are-a-credential-failure
+    held_at: |-
+      classifySignInError(), lines 40-41
+    evidence: |-
+      case "INVALID_EMAIL_OR_PASSWORD":
+        return { type: "credential" };
+  - node: rules/owner-access/sign-in-destination-defaults-to-chat
+    held_at: |-
+      resolveSafeRedirect(), lines 26-35, applied in signIn() at lines 86-88
+    evidence: |-
+      if (candidate === null) return "/chat";
+      if (candidate.length === 0) return "/chat";
+      ...
+      const target = resolveSafeRedirect(redirectParam);
+  - node: rules/owner-access/sign-in-destination-is-a-local-path
+    held_at: |-
+      resolveSafeRedirect(), lines 29-33
+    evidence: |-
+      if (candidate.length > 2048) return "/chat";
+      if (!candidate.startsWith("/")) return "/chat";
+      if (candidate.startsWith("//")) return "/chat";
+      if (candidate.includes("://")) return "/chat";
+      if (candidate.includes("\\")) return "/chat";
+  - node: rules/owner-access/sign-in-failure-shows-only-its-kind-message
+    held_at: |-
+      signIn(), line 97. The toast text is chosen by the failure kind only, and the thrown error's message is never shown. The message table itself is in ../components/SignInForm.
+    evidence: |-
+      toast.error(SIGN_IN_ERROR_MESSAGE[classified.type]);
+  - node: rules/owner-access/token-is-requested-after-credentials-accepted
+    held_at: |-
+      signIn(), lines 80-82. The token request comes after signInWithEmail resolves, in the same try block.
+    evidence: |-
+      await signInWithEmail(values.login, values.senha);
+
+      const jwt = await fetchAccessToken();
+  - node: rules/owner-access/unreachable-provider-is-a-network-failure
+    held_at: |-
+      classifySignInError(), lines 42-43. The AuthError code NETWORK is produced in neon-auth.ts.
+    evidence: |-
+      case "NETWORK":
+        return { type: "network" };
+  - node: scenarios/owner-access/external-destination-falls-back-to-chat
+    held_at: |-
+      resolveSafeRedirect(), line 31
+    evidence: |-
+      if (candidate.startsWith("//")) return "/chat";
+  - node: scenarios/owner-access/offline-fetch-error-is-a-network-failure
+    held_at: |-
+      classifySignInError(), lines 52-59, with the toast at line 97
+    evidence: |-
+      if (lower.includes("failed to fetch") || lower.includes("network")) {
+        return { type: "network" };
+      }
+
+looked_past: |-
+  The AuthError code strings and the SIGN_IN_ERROR_MESSAGE texts are declared in neon-auth.ts and SignInForm, files outside this set, so I did not judge them here.
+
+candidates_opened: []

@@ -1,0 +1,41 @@
+read:
+  - node: rules/graph-explorer/a-failed-relationships-read-always-offers-a-retry
+    held_at: |-
+      the `query.isError` branch (lines 33-58): a `role="alert"` container showing `NODE_DETAIL_COPY.relationshipsError` and a button with `NODE_DETAIL_COPY.relationshipsRetry` that calls `query.refetch()`. The branch tests only `isError` and never inspects an error code. The strings sit in NodeDetailPanel.copy.ts (lines 23-24).
+    evidence: |-
+      } else if (query.isError) {
+        body = (
+          <div ... role="alert" data-testid="node-detail-relationships-error">
+      ...
+      <span>{NODE_DETAIL_COPY.relationshipsError}</span>
+      ...
+      onClick={() => { void query.refetch(); }}
+      ...
+      {NODE_DETAIL_COPY.relationshipsRetry}
+      Copy file: relationshipsError: "Não foi possível carregar as relações.", relationshipsRetry: "Tentar novamente"
+  - node: rules/graph-explorer/relationship-rows-keep-the-answered-order
+    held_at: |-
+      the list branch (lines 68-78), which maps `query.data.links` directly to `NodeRelationshipRow` elements with no sort, filter or regrouping.
+    evidence: |-
+      {query.data.links.map((l) => (
+        <NodeRelationshipRow key={l.id} link={l} />
+      ))}
+  - node: rules/graph-explorer/relationships-are-a-named-busy-section
+    held_at: |-
+      the returned `<section>` (lines 81-92), carrying `aria-label` and `aria-busy`, together with the if / else-if chain in lines 18-79 that checks pending, then error, then empty, then the list.
+    evidence: |-
+      <section ... aria-label={NODE_DETAIL_COPY.relationshipsHeading} ... aria-busy={query.isPending ? "true" : "false"}>
+      if (query.isPending) { ... } else if (query.isError) { ... } else if (query.data === undefined || query.data.links.length === 0) { ... } else { ... }
+      Copy file: relationshipsHeading: "Relações"
+  - node: rules/graph-explorer/relationships-say-loading-or-none
+    held_at: |-
+      the pending branch (lines 18-32), a `<span aria-live="polite">` showing `NODE_DETAIL_COPY.relationshipsLoading`, and the empty branch (lines 59-67), a `<p>` showing `NODE_DETAIL_COPY.relationshipsEmpty`. The strings sit in NodeDetailPanel.copy.ts (lines 21-22).
+    evidence: |-
+      <span aria-live="polite" className="text-xs text-muted-foreground">
+        {NODE_DETAIL_COPY.relationshipsLoading}
+      </span>
+      ...
+      {NODE_DETAIL_COPY.relationshipsEmpty}
+      Copy file: relationshipsLoading: "Carregando relações…", relationshipsEmpty: "Nenhuma relação encontrada."
+looked_past: |-
+  Styling classes, data-testid attributes and the loader and alert icons are surface that no node in the set speaks to, and I left them to another judgment.

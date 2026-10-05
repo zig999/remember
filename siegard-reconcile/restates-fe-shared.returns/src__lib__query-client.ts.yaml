@@ -1,0 +1,88 @@
+findings: []
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the onError handlers in createQueryClient(), lines 79-86 and 89-96. They give the non-envelope fallback toast on show-failure. The wording of the other codes is held in src/lib/error-routing.ts, which this file calls.
+    evidence: |-
+      reportError(err);
+              toast.error("Algo deu errado. Tente novamente.");
+  - node: rules/application-shell/a-forbidden-failure-reads-access-denied
+    held_at: |-
+      the "boundary" case of applyErrorAction(), lines 38-40. It shows the routed message as a danger toast. The text "Acesso negado." and the choice of the boundary action for AUTH_FORBIDDEN are held in src/lib/error-routing.ts.
+    evidence: |-
+      case "boundary":
+            toast.error(action.message);
+            return;
+  - node: rules/application-shell/a-gone-resource-reads-removed-for-compliance
+    held_at: |-
+      the "inline-gone" case of applyErrorAction(), lines 43-45. It shows no toast, so the state stays inline. The text "Esta fonte foi removida por conformidade." is held in src/lib/error-routing.ts.
+    evidence: |-
+      case "inline-empty":
+          case "inline-gone":
+            return;
+  - node: rules/application-shell/a-missing-conversation-returns-to-chat
+    held_at: |-
+      the "toast-and-navigate" case of applyErrorAction(), lines 24-28. It shows the toast, then navigates to action.to with empty search through the router, so there is no page reload. The text "Conversa não encontrada." and the chat address are held in src/lib/error-routing.ts. contextFromQuery() and contextFromMutation() supply the conversation-resource context.
+    evidence: |-
+      void router.navigate({ to: action.to, search: {} as never });
+  - node: rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state
+    held_at: |-
+      the "inline-empty" case of applyErrorAction(), lines 43-45. It shows no toast. The message choice and the "Nenhum resultado encontrado." text are held in src/lib/error-routing.ts.
+    evidence: |-
+      case "inline-empty":
+          case "inline-gone":
+            return;
+  - node: rules/application-shell/a-read-is-retried-once
+    held_at: |-
+      the defaultOptions of createQueryClient(), lines 68-76
+    evidence: |-
+      queries: {
+              retry: 1,
+              staleTime: STABLE_STALE_MS,
+              refetchOnWindowFocus: false,
+            },
+            mutations: {
+              retry: 0,
+            },
+  - node: rules/application-shell/a-read-stays-fresh-five-minutes-by-default
+    held_at: |-
+      STABLE_STALE_MS (line 14), VOLATILE_STALE_MS (line 16), and the queries defaults in createQueryClient()
+    evidence: |-
+      export const STABLE_STALE_MS = 5 * 60 * 1000;
+
+      export const VOLATILE_STALE_MS = 0;
+      ...
+      staleTime: STABLE_STALE_MS,
+              refetchOnWindowFocus: false,
+  - node: rules/application-shell/a-toast-keeps-its-tone
+    held_at: |-
+      the "toast" and "toast-and-navigate" cases of applyErrorAction(), lines 20-28
+    evidence: |-
+      if (action.tone === "danger") toast.error(action.message);
+            else toast.warning(action.message);
+  - node: rules/application-shell/an-invalid-format-is-a-form-error
+    held_at: |-
+      the "set-error" case of applyErrorAction(), lines 41-42. It shows no toast. The message choice, the "Há campos inválidos no formulário." fallback and the passing on of details are held in src/lib/error-routing.ts.
+    evidence: |-
+      case "set-error":
+            return;
+  - node: rules/application-shell/every-failure-goes-to-the-router
+    held_at: |-
+      the QueryCache and MutationCache onError handlers in createQueryClient(), lines 78-97
+    evidence: |-
+      if (err instanceof EnvelopeError) {
+                applyErrorAction(routeError(err, contextFromQuery(query)));
+                return;
+              }
+              reportError(err);
+              toast.error("Algo deu errado. Tente novamente.");
+  - node: rules/application-shell/one-client-serves-reads-and-writes
+    held_at: |-
+      the module-level constant on line 101. One QueryClient serves reads and writes and is created once when the module loads.
+    evidence: |-
+      export const queryClient: QueryClient = createQueryClient();
+looked_past: |-
+  The "redirect" branch of applyErrorAction(), which clears the auth store and assigns window.location, belongs to the application-shell rule an-authorization-failure-sends-the-owner-to-sign-in. That rule is outside this file's node set, so it is not a finding. It is a matter for the trace binding.
+candidates_opened:
+  - rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+  - domain/application-shell/failure-router

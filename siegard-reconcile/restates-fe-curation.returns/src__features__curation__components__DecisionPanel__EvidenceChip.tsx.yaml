@@ -1,0 +1,29 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/EvidenceChip.tsx
+    where: >-
+      the aria-label prop on the root span, lines 14-18
+    evidence: |-
+      aria-label={
+        viewed
+          ? "Evidência vista."
+          : "Veja a evidência antes de decidir"
+      }
+    cost: |-
+      The node says the indicator reads "Ver evidência" until the evidence is viewed, then "Evidência vista". The visible text does that. An aria-label replaces an element's accessible name, so a screen reader announces "Veja a evidência antes de decidir" for the unviewed state and "Evidência vista." with a trailing period for the viewed state. This is the hint wording that curation-screen carries on a blocked decision. Here it is a different string (no final period) used as the indicator's own name, and it is also the second place the hint is spelled. Anyone who changes the hint, or the indicator's wording, finds two spellings. What the owner hears and what the owner sees differ.
+    kind: contradicts
+    correction: |-
+      The accessible name of the indicator would have to be the node's wording ("Ver evidência" / "Evidência vista"), for example by dropping the aria-label so the visible text is the name. Where the hint "Veja a evidência antes de decidir." is meant to be announced, the contract that holds it is contracts/curation-workspace/curation-screen (operation read-decision-panel), and it belongs to the blocked decision, not to this indicator.
+    node: rules/curation-workspace/evidence-indicator-pulses-until-viewed
+read:
+  - node: rules/curation-workspace/evidence-indicator-pulses-until-viewed
+    held_at: >-
+      the viewed branches of the root span, lines 21-23 (pulse class on the unviewed branch) and line 32 (the label text)
+    evidence: |-
+      "border-border-glass bg-surface-glass-panel text-foreground motion-safe:animate-pulse"
+      ...
+      {viewed ? "Evidência vista" : "Ver evidência"}
+looked_past: >-
+  The visual tokens, the lucide icons and the aria-live="polite" attribute state no domain fact and belong to another judgment.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
+  - scenarios/curation-workspace/keep-decision-waits-for-the-evidence

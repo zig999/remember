@@ -1,0 +1,86 @@
+findings: []
+read:
+  - node: rules/application-shell/a-bubble-shows-its-tool-chips-first
+    held_at: |-
+      The toolChips block of ChatBubble, which renders ToolChipStub for each chip in the order given above the GlassSurface text. ToolChipStub carries the pending, ok and error tones.
+    evidence: |-
+      {toolChips.map((chip, i) => (
+        <ToolChipStub key={`${chip.tool}:${i}`} tool={chip.tool} ok={chip.ok} />
+      ))}
+      ...
+      ok === null
+        ? "border-border-glass text-muted-foreground"
+        : ok
+          ? "border-border-accepted text-state-accepted-fg"
+          : "border-border-error text-state-disputed-fg";
+      ...
+      {tool}
+  - node: rules/application-shell/a-bubble-shows-plain-text
+    held_at: |-
+      The `<p data-testid="bubble-content">` element, which renders `{content}` as a plain child with whitespace-pre-wrap.
+    evidence: |-
+      <p
+        data-testid="bubble-content"
+        className="whitespace-pre-wrap break-words text-xs text-foreground"
+      >
+        {content}
+  - node: rules/application-shell/a-bubble-state-is-resolved-in-order
+    held_at: |-
+      The `data-state` expression on the root div, which tests error, then streaming, then stopNotice, then falls back to idle.
+    evidence: |-
+      data-state={
+        error
+          ? "error"
+          : streaming
+            ? "streaming"
+            : stopNotice !== undefined
+              ? "stopped"
+              : "idle"
+      }
+  - node: rules/application-shell/a-bubble-takes-one-role
+    held_at: |-
+      The single `variant` prop. It sets `data-variant` and the `chatBubble({ variant })` classes (the side is decided in ChatBubble.variants, outside this file). It also sets glassFill, which is the fill.
+    evidence: |-
+      const glassFill = variant === "user" ? "ambient" : "ambient-accent";
+      ...
+      data-variant={variant}
+      ...
+      className={cn(chatBubble({ variant }), className)}
+  - node: rules/application-shell/a-streaming-bubble-is-busy
+    held_at: |-
+      The ariaBusy constant spread onto the root div, and StreamingCursorStub rendered after the content only while streaming.
+    evidence: |-
+      const ariaBusy = streaming ? "true" : undefined;
+      ...
+      {...(ariaBusy !== undefined ? { "aria-busy": ariaBusy } : {})}
+      ...
+      aria-hidden="true"
+      data-testid="streaming-cursor"
+      ...
+      {streaming ? <StreamingCursorStub /> : null}
+  - node: rules/application-shell/an-errored-bubble-adds-no-wording
+    held_at: |-
+      The glassAccent constant passed as the accent of GlassSurface. The error state adds no text element; the only text elements are the content paragraph and the stop notice.
+    evidence: |-
+      const glassAccent = error ? "error" : "none";
+      ...
+      <GlassSurface
+        level="modal"
+        accent={glassAccent}
+  - node: rules/application-shell/only-a-cancelled-reply-shows-a-notice
+    held_at: |-
+      The STOP_NOTICE_BY_REASON table, the stopNotice lookup, and the conditional stop-notice paragraph below the bubble.
+    evidence: |-
+      const STOP_NOTICE_BY_REASON: Readonly<Record<string, string>> = {
+        cancelled: "Resposta interrompida",
+      };
+      ...
+      const stopNotice =
+        stopReason !== undefined ? STOP_NOTICE_BY_REASON[stopReason] : undefined;
+      ...
+      {stopNotice !== undefined ? (
+        <p
+          data-testid="stop-notice"
+looked_past: |-
+  The file gates the bubble's entry animation on an `animate` prop and on `useReducedMotion()`, and applies a `transitionGlassModal` motion source. No node of this set or in the specification root holds any of that for the bubble, so it is presentation that I did not weigh as a domain fact. It is for whoever judges the surface.
+candidates_opened: []

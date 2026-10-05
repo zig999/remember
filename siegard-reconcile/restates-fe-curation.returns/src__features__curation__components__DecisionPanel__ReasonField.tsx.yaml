@@ -1,0 +1,39 @@
+findings: []
+read:
+  - node: rules/curation-workspace/blank-reason-blocks-a-destructive-decision
+    held_at: |-
+      validateOnSubmit() in the useImperativeHandle block of ReasonField (lines 37-47). It trims the value, and when nothing is left it sets the error, focuses the field and returns false, which is the signal the caller needs to send nothing.
+    evidence: |-
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        setError("Informe um motivo para continuar.");
+        const el = document.getElementById(id) as HTMLTextAreaElement | null;
+        el?.focus();
+        return false;
+      }
+  - node: rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+    held_at: |-
+      setServerError() in the useImperativeHandle block (lines 48-54), together with the error paragraph rendered under the Textarea (lines 85-89). It stores the server's message, focuses the field, and the message shows beneath it.
+    evidence: |-
+      setServerError(message) {
+        setError(message);
+        if (message !== null) {
+          const el = document.getElementById(id) as HTMLTextAreaElement | null;
+          el?.focus();
+        }
+      },
+      ...
+      {error && (
+        <p id={errorId} role="alert" className="text-xs text-destructive">
+  - node: rules/curation-workspace/typing-clears-the-reason-error
+    held_at: |-
+      the onChange handler of the Textarea (lines 72-75). It forwards the new value and clears the error when one is showing.
+    evidence: |-
+      onChange={(e) => {
+        onChange(e.currentTarget.value);
+        if (error) setError(null);
+      }}
+looked_past: |-
+  The reason label "Motivo", the required marker, and the two placeholders ("Explique brevemente a decisão (obrigatório)." and "(opcional).") are control surface, not a refusal or notice. The decision log of contracts/curation-workspace/curation-screen treats a control label or placeholder as surface rather than a fact, so I raised no finding against them.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen

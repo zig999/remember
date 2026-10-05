@@ -1,0 +1,60 @@
+findings:
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      line 52, the placeholder prop of CommandInput
+    evidence: |-
+      <CommandInput placeholder="Buscar áreas e ações…" />
+    cost: |-
+      The palette's search-field wording is shown to the owner on every opening, and no node holds it. The palette node fixes only the group label, the destination labels and the empty reading "Nada encontrado.". The next reader who looks in the specification for what the field says will not find it, and the text can change with no node moving. The text also promises "ações", although the node offers one group of five destinations and no actions.
+    kind: unstated
+    correction: |-
+      The analysis would have to give this text a node, either by extending rules/application-shell/the-palette-offers-five-destinations or by a node of its own. Alternatively it would have to be decided out of the field.
+    node: rules/application-shell/the-palette-offers-five-destinations
+  - file: src/shell/CommandPalette.tsx
+    where: |-
+      lines 20-26, the AREAS table, the `to` member of each entry
+    evidence: |-
+      { to: "/graph", label: "Grafo", icon: Network },
+        { to: "/search", label: "Buscar", icon: Search },
+        { to: "/ingest", label: "Ingerir", icon: Upload },
+        { to: "/curation", label: "Curar", icon: Scale },
+        { to: "/history", label: "Histórico", icon: History },
+    cost: |-
+      Which address each destination leads to is decided only in this table. The node names the five destinations by label and order and never says where they lead. The addresses are also declared in src/router/routes.tsx. Moving or renaming an address there leaves this table unreached by any node, and nothing says which of the two was decided.
+    kind: unstated
+    correction: |-
+      The analysis would have to state the address of each palette destination in a node, in the-palette-offers-five-destinations or in the node that holds the declared addresses.
+    node: rules/application-shell/the-palette-offers-five-destinations
+read:
+  - node: rules/application-shell/choosing-a-destination-closes-the-palette-first
+    held_at: |-
+      the run() function and its use in the onSelect of each CommandItem, lines 45-48 and 60
+    evidence: |-
+      function run(action: () => void) {
+          setOpen(false);
+          action();
+        }
+      ...
+      onSelect={() => run(() => void navigate({ to: a.to }))}
+  - node: rules/application-shell/the-palette-offers-five-destinations
+    held_at: |-
+      the AREAS table and the CommandGroup and CommandEmpty in the render, lines 20-26 and 54-66
+    evidence: |-
+      <CommandEmpty>Nada encontrado.</CommandEmpty>
+        <CommandGroup heading="Ir para">
+          {AREAS.map((a) => (
+            <CommandItem
+              key={a.to}
+              value={a.label}
+  - node: rules/application-shell/the-shortcut-toggles-the-palette
+    held_at: |-
+      the useEffect keydown listener on window, lines 34-43
+    evidence: |-
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            e.preventDefault();
+            toggle();
+          }
+        }
+        window.addEventListener("keydown", onKey);
+looked_past: |-
+  The lucide icon chosen for each destination and the icon's class names are surface choices that no node holds, and I left them to the surface route.

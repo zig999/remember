@@ -1,0 +1,104 @@
+findings:
+  - file: src/router/routes.tsx
+    where: |-
+      the path declarations of graphRoute, searchRoute, ingestRoute, historyRoute and notFoundRoute (lines 102, 108, 114, 161, 167)
+    evidence: |-
+      path: "/graph",
+      path: "/search",
+      path: "/ingest",
+      path: "/history",
+      path: "/not-found",
+    cost: |-
+      The literal addresses for the graph, search, ingest, history and not-found areas are decided only in this file. The rules name them as "the graph, search and history addresses" and "the not-found address" and never state the path. The next reader looks for these paths in the specification and does not find them. Other nodes do state `/chat`, `/curation` and `/sign-in`, so these five are the ones left to the code.
+    kind: unstated
+    correction: |-
+      Give the address vocabulary of the application shell a node. `domain/application-shell/application-shell` already carries an `address` attribute and is the natural home for the path of each area.
+    node: domain/application-shell/application-shell
+
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the not-found route and the three placeholder routes (lines 100-110, 159-175), plus the guard redirect (lines 36-44)
+    evidence: |-
+      title="Página não encontrada."
+      hint="O endereço solicitado não existe ou foi removido."
+      <StubPage title="Grafo" testId="graph-page" />
+      throw redirect({ to: "/sign-in", search: { reason: "session_expired" } });
+  - node: domain/application-shell/application-shell
+    held_at: |-
+      routeTree (lines 177-189), which declares the addresses and puts every address except sign-in under protectedLayoutRoute
+    evidence: |-
+      export const routeTree = RootRoute.addChildren([
+        signInRoute,
+        protectedLayoutRoute.addChildren([
+  - node: rules/application-shell/a-fresh-owner-skips-sign-in
+    held_at: |-
+      signInRoute beforeLoad (lines 86-96)
+    evidence: |-
+      try { fresh = useAuthStore.getState().isFresh(); } catch { fresh = false; }
+      if (fresh) { throw redirect({ to: "/chat" }); }
+  - node: rules/application-shell/a-loading-workspace-says-so-politely
+    held_at: |-
+      the Suspense fallbacks of chatRoute, ingestRoute and curationRoute (lines 66-80, 115-129, 142-156)
+    evidence: |-
+      role="status" aria-live="polite" ... Carregando conversa… / Carregando ingestão… / Carregando curadoria…
+  - node: rules/application-shell/an-unknown-address-says-page-not-found
+    held_at: |-
+      notFoundRoute (lines 165-175) shows the required title and hint for the not-found address. The fallback for an address that matches no route, which must render without guard or shell, is not in this file.
+    evidence: |-
+      title="Página não encontrada."
+      hint="O endereço solicitado não existe ou foi removido."
+      testId="not-found-page"
+  - node: rules/application-shell/chat-and-curation-keep-one-search-key
+    held_at: |-
+      validateSearch of chatRoute (lines 59-65) and curationRoute (lines 135-141)
+    evidence: |-
+      if (typeof raw === "string" && raw.length > 0) { return { conversation: raw }; }
+      return {};
+      if (typeof raw === "string" && raw.length > 0) { return { item: raw }; }
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: |-
+      protectedLayoutRoute and ProtectedLayout (lines 25-46), parent of every route except signInRoute
+    evidence: |-
+      <AppShell><Outlet /></AppShell>
+      getParentRoute: () => protectedLayoutRoute,
+  - node: rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file only mounts `component: () => <SignInPage />` and declares no search handling for `reason`. The notice is read in SignInPage, which is outside this file.
+  - node: rules/application-shell/sign-in-sits-outside-the-guarded-shell
+    held_at: |-
+      signInRoute with RootRoute as parent (lines 83-85, 178)
+    evidence: |-
+      export const signInRoute = createRoute({
+        getParentRoute: () => RootRoute,
+        path: "/sign-in",
+  - node: rules/application-shell/some-addresses-show-only-a-placeholder
+    held_at: |-
+      graphRoute, searchRoute and historyRoute (lines 100-110, 159-163) set the titles. The line "Conteúdo em breve." is rendered by StubPage, outside this file.
+    evidence: |-
+      <StubPage title="Grafo" testId="graph-page" />
+      <StubPage title="Busca" testId="search-page" />
+      <StubPage title="Histórico" testId="history-page" />
+  - node: rules/application-shell/the-guard-needs-a-fresh-token
+    held_at: |-
+      protectedLayoutRoute beforeLoad (lines 36-44)
+    evidence: |-
+      const fresh = useAuthStore.getState().isFresh();
+      if (!fresh) { throw redirect({ to: "/sign-in", search: { reason: "session_expired" } }); }
+  - node: rules/application-shell/the-palette-lives-inside-the-shell
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file mounts `<AppShell>` only inside ProtectedLayout and references no palette or shortcut. The palette mounting sits in AppShell, outside this file.
+  - node: rules/application-shell/the-root-address-leads-to-chat
+    held_at: |-
+      indexRoute (lines 48-54), a child of protectedLayoutRoute, so it runs after the freshness guard
+    evidence: |-
+      getParentRoute: () => protectedLayoutRoute,
+      path: "/",
+      beforeLoad: () => { throw redirect({ to: "/chat" }); },
+
+looked_past: |-
+  The `testId` strings, the lazy-import and Suspense structure, and the question of where the unmatched-address fallback lives are test hooks and code structure, or sit outside this file, so I did not report them.

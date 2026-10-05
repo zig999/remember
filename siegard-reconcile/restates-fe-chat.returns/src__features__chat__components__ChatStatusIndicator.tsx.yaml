@@ -1,0 +1,36 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: |-
+      The two copy constants, `label` selection, and the early return in the component body. This file holds the show-turn-progress hint only. It does not hold the tool-call chips, the usage counts, or any other operation of the contract.
+    evidence: |-
+      const COPY_THINKING = "pensando…";
+      const COPY_TOOL_PREFIX = "consultando a memória…";
+      ...
+      label =
+        active !== null ? `${COPY_TOOL_PREFIX} (${active})` : COPY_TOOL_PREFIX;
+  - node: rules/chat-workspace/hint-hides-in-every-other-phase
+    held_at: The early return before the label is computed.
+    evidence: |-
+      if (chatStatus !== "thinking" && chatStatus !== "tool_running") {
+        return null;
+      }
+  - node: rules/chat-workspace/hint-is-a-polite-atomic-status-region
+    held_at: The attributes on the root `div` of the returned element.
+    evidence: |-
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+  - node: rules/chat-workspace/tool-call-waits-while-its-outcome-is-null
+    held_at: The `chip.ok === null` test inside `pickActiveToolName`. The file reads this one field of a chip shape declared in `../types`.
+    evidence: |-
+      if (chip !== undefined && chip.ok === null) return chip.tool;
+  - node: rules/chat-workspace/tool-hint-names-the-waiting-tool
+    held_at: |-
+      `pickActiveToolName` scans from the last chip backwards and returns the first waiting tool, or null. The `label` assignment then names it in parentheses, or shows the bare prefix when none waits.
+    evidence: |-
+      for (let i = chips.length - 1; i >= 0; i -= 1) {
+      ...
+      active !== null ? `${COPY_TOOL_PREFIX} (${active})` : COPY_TOOL_PREFIX;
+looked_past: |-
+  The `data-testid`, `data-state` and Tailwind class strings, and the `motion-safe:animate-spin` spinner, are presentation and test hooks. They state no domain fact, so I left them to other judgments.

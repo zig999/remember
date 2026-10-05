@@ -1,0 +1,107 @@
+findings:
+  - file: src/features/graph/components/GraphCanvas/GraphCanvas.tsx
+    where: |-
+      the visible label inside the reorganize Button, line 207
+    evidence: |-
+      <Shuffle aria-hidden="true" className="size-4" />
+                        Reorganizar
+    cost: |-
+      The text a person reads on the control is "Reorganizar". The only node that speaks of it, rules/graph-explorer/the-reorganize-control-needs-its-handler, fixes the control's name as "Reorganizar o layout do grafo", which the aria-label carries. A search of the specification finds no node holding the visible text. Anyone changing the control's wording looks in the specification, finds only the accessible name, and has no node that decides what is displayed.
+    kind: unstated
+    correction: |-
+      The visible text of the reorganize control would need a node to hold it, most naturally by extending rules/graph-explorer/the-reorganize-control-needs-its-handler or the graph-screen contract. That is a change to the specification, not to this file.
+    node: rules/graph-explorer/the-reorganize-control-needs-its-handler
+read:
+  - node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+    held_at: |-
+      handleNodeClick, lines 134-140
+    evidence: |-
+      if (!onNodeSelect) return;
+              onNodeSelect(node.id);
+  - node: rules/graph-explorer/a-node-without-position-sits-at-the-origin
+    held_at: |-
+      toRfNodes, line 52
+    evidence: |-
+      position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
+  - node: rules/graph-explorer/fit-and-recenter-take-300-milliseconds
+    held_at: |-
+      the fitView and recenter members of the imperative handle, lines 121-129, with DEFAULT_VIEWPORT on line 41
+    evidence: |-
+      rfApi.fitView({ duration: 300, padding: 0.1 });
+      rfApi.setViewport(
+                { x: DEFAULT_VIEWPORT.x, y: DEFAULT_VIEWPORT.y, zoom: DEFAULT_VIEWPORT.zoom },
+                { duration: 300 },
+              );
+      const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 0.75 } as const;
+  - node: rules/graph-explorer/focusing-a-node-centres-it-at-zoom-one
+    held_at: |-
+      the focusNode member of the imperative handle, lines 113-120
+    evidence: |-
+      const node = rfApi.getNode(id);
+              if (!node) return;
+              const cx = node.position.x + (measured?.width ?? 0) / 2;
+              const cy = node.position.y + (measured?.height ?? 0) / 2;
+              rfApi.setCenter(cx, cy, { zoom: 1, duration: 300 });
+  - node: rules/graph-explorer/layout-controls-need-nodes-and-a-handler
+    held_at: |-
+      the Panel condition, lines 180-182
+    evidence: |-
+      {visibleNodes.length > 0 &&
+              (onResetLayout || (layoutAlgorithm && onLayoutAlgorithmChange)) && (
+                <Panel position="top-right">
+  - node: rules/graph-explorer/nodes-drag-only-when-a-commit-is-wired
+    held_at: |-
+      handleNodesChange, lines 142-155, and the nodesDraggable prop, line 173
+    evidence: |-
+      onNodePositionCommit(change.id, {
+                  x: change.position.x,
+                  y: change.position.y,
+                });
+      nodesDraggable={onNodePositionCommit !== undefined}
+  - node: rules/graph-explorer/only-revealed-nodes-are-shown
+    held_at: |-
+      visibleNodes and visibleLinks, lines 87-102
+    evidence: |-
+      revealedIds === undefined
+              ? nodes
+              : nodes.filter((n) => revealedIds.has(n.id)),
+      : links.filter(
+                  (l) => revealedIds.has(l.source) && revealedIds.has(l.target),
+                ),
+  - node: rules/graph-explorer/the-canvas-opens-at-three-quarters-zoom
+    held_at: |-
+      the ReactFlow props defaultViewport, fitView and fitViewOptions, lines 167 and 170-171
+    evidence: |-
+      defaultViewport={DEFAULT_VIEWPORT}
+      fitView
+      fitViewOptions={{ padding: 0.1 }}
+  - node: rules/graph-explorer/the-layout-picker-needs-the-algorithm-and-its-setter
+    held_at: |-
+      LAYOUT_ALGORITHM_LABELS and LAYOUT_ALGORITHM_ORDER, lines 27-36, and the Select block, lines 184-197
+    evidence: |-
+      force: "Força",
+        tree: "Árvore",
+        radial: "Radial",
+      {layoutAlgorithm && onLayoutAlgorithmChange && (
+      aria-label="Algoritmo de layout do grafo"
+  - node: rules/graph-explorer/the-owner-cannot-draw-links
+    held_at: |-
+      the ReactFlow props, lines 174-177
+    evidence: |-
+      nodesConnectable={false}
+            elementsSelectable={true}
+            panOnDrag
+            zoomOnScroll
+  - node: rules/graph-explorer/the-reorganize-control-needs-its-handler
+    held_at: |-
+      the Button block, lines 198-209
+    evidence: |-
+      {onResetLayout && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onResetLayout}
+                  aria-label="Reorganizar o layout do grafo"
+looked_past: |-
+  Styling classes (h-full w-full, gap-sm, w-auto min-w-3xs, size-4), the secondary variant and sm size of the button, and the Select and Button components themselves are visual or code-quality matters that no node here governs, so they are not reported.

@@ -1,0 +1,50 @@
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      useCancelTurn, the mutationFn: the cancel-turn operation, the only one of the contract's operations this file touches.
+    evidence: |-
+      http<CancelWire>(
+        `/api/v1/conversations/${encodeURIComponent(conversationId)}/cancel`,
+        {
+          method: "POST",
+          headers: authHeader(),
+        },
+      );
+  - node: rules/chat-workspace/aborting-and-cancelling-do-not-trigger-each-other
+    held_at: |-
+      nowhere. This file only issues the cancel request. It holds no stream, no AbortController and no abort call, so the rule's other half sits in the stream-sending code, which is outside this file set.
+    evidence: |-
+      mutationFn: async () => {
+        return http<CancelWire>(
+          `/api/v1/conversations/${encodeURIComponent(conversationId)}/cancel`,
+  - node: rules/chat-workspace/cancel-goes-through-the-back-end-request-helper
+    held_at: |-
+      useCancelTurn, the mutationFn: the request goes through the shared `http` helper.
+    evidence: |-
+      import { http } from "@/lib/http";
+      ...
+      return http<CancelWire>(
+  - node: rules/chat-workspace/cancel-targets-the-conversation-it-was-created-for
+    held_at: |-
+      The useCancelTurn signature and the mutation's void variables: the conversation is closed over from the hook's argument, and the mutation takes none.
+    evidence: |-
+      export function useCancelTurn(
+        conversationId: string,
+      ): UseMutationResult<CancelWire, Error, void> {
+  - node: rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+    held_at: |-
+      useCancelTurn, the mutationFn: a POST to the conversation's cancel endpoint with no body option and with the headers from authHeader().
+    evidence: |-
+      {
+        method: "POST",
+        headers: authHeader(),
+      },
+  - node: rules/chat-workspace/successful-cancel-reads-the-usage-again
+    held_at: |-
+      useCancelTurn, the onSuccess handler: it invalidates the usage key and no messages key.
+    evidence: |-
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: conversationKeys.usage(conversationId),
+        });
+      },

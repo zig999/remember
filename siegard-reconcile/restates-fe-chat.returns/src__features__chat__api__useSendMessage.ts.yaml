@@ -1,0 +1,253 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      The send-message half is split. Here the url, body and headers are built in mutationFn, lines 139-155. The frame reading and refusal answers sit in streamChat in chat-stream.ts, which is outside this file.
+    evidence: |-
+      `/api/v1/conversations/${encodeURIComponent(vars.conversationId)}/messages`; `"Idempotency-Key": idempotencyKey`; `const body: { content: string; model?: string } = {`; `if (vars.model !== undefined) body.model = vars.model;`
+  - node: domain/chat-workspace/send-outcome
+    held_at: |-
+      The `SendMessageResult` interface, lines 31-36, declares the shape.
+    evidence: |-
+      export interface SendMessageResult {
+        readonly stopReason: string | null;
+        readonly errorCode: string | null;
+        readonly errorMessage: string | null;
+        readonly idempotencyKey: string;
+      }
+  - node: rules/chat-workspace/a-turn-is-never-resent-by-the-screen
+    held_at: |-
+      Line 209. The mutation is built with no retry option and mutationFn opens the stream once per call, in the single `streamChat(url, body, {` call at line 163.
+    evidence: |-
+      return useMutation({ mutationFn });
+  - node: rules/chat-workspace/aborting-and-cancelling-do-not-trigger-each-other
+    held_at: |-
+      Lines 116-120 and 189-192. The controller is created and stored, and then released. The file never calls `abort()` and never issues a cancel request.
+    evidence: |-
+      const controller = new AbortController();
+      actions.setAbortController(controller);
+      ...
+      actions.setAbortController(null);
+  - node: rules/chat-workspace/aborting-ends-the-reading-quietly
+    held_at: |-
+      Lines 162-207. The signal is passed to streamChat. Abort adds no error here, and after the loop the messages and usage reads are invalidated.
+    evidence: |-
+      signal: controller.signal,
+      ...
+      void queryClient.invalidateQueries({ queryKey: messagesKey });
+  - node: rules/chat-workspace/content-is-sent-as-the-caller-gives-it
+    held_at: |-
+      Lines 152-154. The body takes vars.content untouched, with no trim and no length check.
+    evidence: |-
+      const body: { content: string; model?: string } = {
+        content: vars.content,
+      };
+  - node: rules/chat-workspace/done-settles-the-turn-and-makes-the-status-idle
+    held_at: |-
+      The "done" case of dispatchFrame, lines 261-264, and the stopReason assignment at lines 182-183.
+    evidence: |-
+      case "done":
+        useGraphStore.getState().settleTurn("done");
+        actions.setChatStatus("idle");
+      ...
+      stopReason = frame.stop_reason;
+  - node: rules/chat-workspace/error-settles-the-turn-and-makes-the-status-error
+    held_at: |-
+      The "error" case of dispatchFrame, lines 265-268, and the code and message assignment at lines 184-186. The graph store's `settleTurn` accepts "done" or "error", and "error" is the failed settlement.
+    evidence: |-
+      case "error":
+        useGraphStore.getState().settleTurn("error");
+        actions.setChatStatus("error");
+      ...
+      errorCode = frame.code;
+      errorMessage = frame.message;
+  - node: rules/chat-workspace/error-status-stays-until-the-next-send
+    held_at: |-
+      The finally block, lines 189-192, clears only streaming and the abort handle and leaves the status alone. The status is cleared by resetTurn at the start of the next send, line 118.
+    evidence: |-
+      } finally {
+        actions.setStreaming(false);
+        actions.setAbortController(null);
+      }
+  - node: rules/chat-workspace/every-send-has-a-new-idempotency-key
+    held_at: |-
+      newIdempotencyKey(), lines 71-73, called once per mutationFn invocation at line 115.
+    evidence: |-
+      return crypto.randomUUID();
+      ...
+      const idempotencyKey = newIdempotencyKey();
+  - node: rules/chat-workspace/first-graph-delta-replaces-and-later-ones-add
+    held_at: |-
+      The graph_delta branch of the frame loop, lines 168-180, with the per-send flag graphReplacedThisTurn.
+    evidence: |-
+      if (graphReplacedThisTurn) {
+        gs.addNodes(delta);
+      } else {
+        gs.replaceNodes(delta);
+        graphReplacedThisTurn = true;
+      }
+  - node: rules/chat-workspace/graph-delta-with-no-nodes-leaves-the-graph
+    held_at: |-
+      Lines 169-170. The frame is converted, and the store is touched only when the slice has nodes.
+    evidence: |-
+      const delta = mapWireToGraphDelta(frame);
+      if (delta.nodes.length > 0) {
+  - node: rules/chat-workspace/graph-tool-start-puts-the-graph-pane-into-loading
+    held_at: |-
+      The GRAPH_TOOLS set, lines 212-218, isGraphTool, and the tool_start case at lines 251-253. The match is by exact name through Set.has.
+    evidence: |-
+      const GRAPH_TOOLS: ReadonlySet<string> = new Set<string>([
+        "traverse",
+        "get_node",
+        "list_nodes",
+        "search",
+        "ingest_directed",
+      ]);
+      ...
+      if (isGraphTool(frame.tool)) {
+        useGraphStore.getState().setStatus("loading");
+      }
+  - node: rules/chat-workspace/last-terminal-frame-sets-the-result
+    held_at: |-
+      Lines 182-187. Each done or error frame overwrites the local result variables, so the last one wins.
+    evidence: |-
+      if (frame.type === "done") {
+        stopReason = frame.stop_reason;
+      } else if (frame.type === "error") {
+        errorCode = frame.code;
+        errorMessage = frame.message;
+      }
+  - node: rules/chat-workspace/llm-start-makes-the-status-thinking
+    held_at: |-
+      The "llm_start" case of dispatchFrame, lines 237-239.
+    evidence: |-
+      case "llm_start":
+        actions.setChatStatus("thinking");
+  - node: rules/chat-workspace/reading-continues-after-a-terminal-frame
+    held_at: |-
+      The `for await` loop, lines 167-188. It has no break or return on done or error, so it ends only when the stream ends.
+    evidence: |-
+      for await (const frame of stream) {
+        ...
+        dispatchFrame(frame, actions);
+        if (frame.type === "done") {
+  - node: rules/chat-workspace/refused-send-keeps-the-owner-message-until-reread
+    held_at: |-
+      The optimistic append, lines 123-137, with no removal or rollback anywhere in the file. The invalidation at lines 194-195 is what replaces the cache.
+    evidence: |-
+      return { ...prev, items: [...prev.items, optimistic] };
+      ...
+      void queryClient.invalidateQueries({ queryKey: messagesKey });
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: |-
+      Lines 144-150. The token is read once from the auth store, and the Authorization header is set only when it is not null.
+    evidence: |-
+      const token = useAuthStore.getState().accessToken;
+      const headers: Record<string, string> = {
+        "Idempotency-Key": idempotencyKey,
+      };
+      if (token !== null) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+  - node: rules/chat-workspace/send-clears-the-previous-turn
+    held_at: |-
+      Lines 118-121, before the optimistic message and the request.
+    evidence: |-
+      actions.resetTurn();
+      actions.setIdempotencyKey(idempotencyKey);
+      actions.setAbortController(controller);
+      actions.setStreaming(true);
+  - node: rules/chat-workspace/send-resolves-with-the-turn-outcome
+    held_at: |-
+      The result variables initialised to null at lines 157-159 and returned at lines 199-204. Failed sends arrive as error frames from streamChat and so resolve instead of throwing.
+    evidence: |-
+      let stopReason: string | null = null;
+      let errorCode: string | null = null;
+      let errorMessage: string | null = null;
+      ...
+      return {
+        stopReason,
+        errorCode,
+        errorMessage,
+        idempotencyKey,
+      };
+  - node: rules/chat-workspace/stream-end-clears-streaming-and-the-handle
+    held_at: |-
+      The finally block, lines 189-192.
+    evidence: |-
+      } finally {
+        actions.setStreaming(false);
+        actions.setAbortController(null);
+      }
+  - node: rules/chat-workspace/stream-end-reads-messages-and-usage-again
+    held_at: |-
+      Lines 194-197, after the finally block.
+    evidence: |-
+      void queryClient.invalidateQueries({ queryKey: messagesKey });
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.usage(vars.conversationId),
+      });
+  - node: rules/chat-workspace/text-delta-appends-and-makes-the-status-streaming
+    held_at: |-
+      The "text_delta" case of dispatchFrame, lines 240-243. It does not depend on llm_start.
+    evidence: |-
+      case "text_delta":
+        actions.appendText(frame.delta);
+        actions.setChatStatus("streaming");
+  - node: rules/chat-workspace/tool-result-settles-the-last-chip
+    held_at: |-
+      The "tool_result" case of dispatchFrame, lines 255-258.
+    evidence: |-
+      case "tool_result":
+        actions.updateLastToolChip(frame.ok);
+        actions.setChatStatus("streaming");
+  - node: rules/chat-workspace/tool-start-adds-a-chip-and-makes-the-status-tool-running
+    held_at: |-
+      The "tool_start" case of dispatchFrame, lines 244-250.
+    evidence: |-
+      actions.addToolChip({
+        tool: frame.tool,
+        argsSummary: frame.argsSummary,
+        ok: null,
+      });
+      actions.setChatStatus("tool_running");
+  - node: rules/chat-workspace/turn-state-holds-the-abort-handle-while-the-stream-is-open
+    held_at: |-
+      Lines 116-120 store the controller before the request. The finally block at lines 189-192 releases it.
+    evidence: |-
+      actions.setAbortController(controller);
+      actions.setStreaming(true);
+  - node: rules/chat-workspace/turn-text-and-chips-stay-until-the-next-send
+    held_at: |-
+      The file clears the turn state only through resetTurn at the start of a send, line 118. The finally block and the post-stream code do not clear text or chips.
+    evidence: |-
+      actions.resetTurn();
+  - node: rules/chat-workspace/turn-without-a-terminal-frame-keeps-the-last-status
+    held_at: |-
+      The dispatchFrame switch, which sets the status only on frames. The end of the stream sets none, as the finally block at lines 189-192 shows.
+    evidence: |-
+      } finally {
+        actions.setStreaming(false);
+        actions.setAbortController(null);
+      }
+  - node: rules/chat-workspace/turn-without-a-terminal-frame-resolves-empty
+    held_at: |-
+      Lines 157-159, which initialise the three result values to null, and the return at lines 199-204.
+    evidence: |-
+      let stopReason: string | null = null;
+      let errorCode: string | null = null;
+      let errorMessage: string | null = null;
+  - node: scenarios/chat-workspace/second-graph-delta-adds-to-the-first
+    held_at: |-
+      Lines 172-177. The first delta with nodes replaces and the second is added.
+    evidence: |-
+      if (graphReplacedThisTurn) {
+        gs.addNodes(delta);
+      } else {
+        gs.replaceNodes(delta);
+        graphReplacedThisTurn = true;
+      }
+looked_past: |-
+  The optimistic message is built in the file and held by rules/chat-workspace/owner-message-is-appended-before-the-answer, which is outside this set. That rule says the identifier is built from the idempotency key and the browser's time, and the code builds `optimistic-${args.idempotencyKey}` with `createdAt: new Date()`. Whether the two agree belongs to a judgment over that node.
+candidates_opened:
+  - rules/chat-workspace/owner-message-is-appended-before-the-answer

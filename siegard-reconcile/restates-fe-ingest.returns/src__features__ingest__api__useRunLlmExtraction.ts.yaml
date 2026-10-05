@@ -1,0 +1,27 @@
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      the mutationFn of useRunLlmExtraction (lines 16-27), for the run-extraction operation. The other operations of the node are held in other files.
+    evidence: |-
+      const wire = await httpIngest<LlmRunWire>(
+        `/api/v1/ingest/llm-runs/${encodeURIComponent(llm_run_id)}/run`,
+        {
+          method: "POST",
+          headers: { ...authHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+          ingest: true,
+        },
+      );
+      return toLlmRun(wire);
+  - node: rules/ingest-workspace/extraction-has-no-client-cutoff
+    held_at: |-
+      the `ingest: true` option on the httpIngest call (line 23). The file sets no signal and no timer of its own. In _request.ts, `if (ingestMode === true) { signal = userSignal;` skips the thirty-second timeout, so the request waits for as long as the BFF keeps the connection open.
+    evidence: |-
+      ingest: true,
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      the headers of the httpIngest call (line 21). The file spreads authHeader() into the request headers. How authHeader() decides between a bearer and no Authorization header is held in _request.ts, which the node is also bound to.
+    evidence: |-
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+
+candidates_opened: []

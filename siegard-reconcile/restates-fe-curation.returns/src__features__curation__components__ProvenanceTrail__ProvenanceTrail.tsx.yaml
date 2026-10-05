@@ -1,0 +1,68 @@
+findings: []
+read:
+  - node: rules/curation-workspace/chunk-excerpt-is-cut-to-200-characters
+    held_at: |-
+      the chunk excerpt line in the chunk loop of the fragment list, calling the shared truncate helper
+    evidence: |-
+      {truncate(chunk.excerpt, 200)} with truncate defined as `if (text.length <= max) return text; return `${text.slice(0, max - 1).trimEnd()}…`;`
+  - node: rules/curation-workspace/chunk-shows-its-source-date-and-offsets
+    held_at: |-
+      the chunk metadata paragraph inside frags.chunks.map
+    evidence: |-
+      {formatSourceType(chunk.rawInformation.sourceType)} ·{" "}
+      {formatDate(chunk.rawInformation.receivedAt)} · trecho{" "}
+      {chunk.offsetStart}–{chunk.offsetEnd}  with formatDate returning d.toLocaleDateString("pt-BR")
+  - node: rules/curation-workspace/fragment-shows-its-confidence-as-a-percentage
+    held_at: |-
+      the fragment header span
+    evidence: |-
+      <span>confiança {(frag.confidence * 100).toFixed(0)}%</span>
+  - node: rules/curation-workspace/fragment-text-is-cut-to-280-characters
+    held_at: |-
+      truncate() with its default max of 280, applied to the fragment text
+    evidence: |-
+      function truncate(text: string, max = 280): string {
+        if (text.length <= max) return text;
+        return `${text.slice(0, max - 1).trimEnd()}…`;
+      }  and  <p className="text-xs text-foreground">{truncate(frag.text)}</p>
+  - node: rules/curation-workspace/trail-keeps-the-answered-order
+    held_at: |-
+      the nested maps over the answer's fragments and their chunks, with no sorting
+    evidence: |-
+      {fragments.map((frag) => ( <article key={frag.id} ...> ... {frag.chunks.map((chunk) => (
+  - node: rules/curation-workspace/trail-reads-by-link-or-by-attribute
+    held_at: |-
+      the two provenance hook calls and the choice of the active query
+    evidence: |-
+      const linkQ = useProvenanceByLink(itemKind === "link" ? itemId : undefined);
+      const attrQ = useProvenanceByAttribute(itemKind === "attribute" ? itemId : undefined);
+      const active = itemKind === "link" ? linkQ : attrQ;
+  - node: rules/curation-workspace/trail-signals-that-the-evidence-was-viewed-once
+    held_at: |-
+      the useEffect holding the focusin listener and the IntersectionObserver
+    evidence: |-
+      const IO_THRESHOLD = 0.25;  el.addEventListener("focusin", onFocus);  if (typeof IntersectionObserver !== "undefined") { observer = new IntersectionObserver(..., { threshold: IO_THRESHOLD }); observer.observe(el); }  with the sentinel region carrying tabIndex={0}
+  - node: rules/curation-workspace/unlabelled-source-type-shows-as-it-is
+    held_at: |-
+      formatSourceType()
+    evidence: |-
+      function formatSourceType(t: string): string {
+        return SOURCE_TYPE_LABELS[t] ?? t;
+      }
+  - node: rules/curation-workspace/viewed-signal-fires-once-per-mount
+    held_at: |-
+      firedRef, a ref that is never reset and is checked in both the effect guard and fire()
+    evidence: |-
+      const firedRef = useRef(false);  if (!dataReady || firedRef.current) return;  function fire(): void { if (firedRef.current) return; firedRef.current = true; onEvidenceViewed(); }
+  - node: rules/curation-workspace/viewed-signal-may-fire-on-an-empty-trail
+    held_at: |-
+      the empty-fragments branch, which attaches the sentinel ref to a focusable region
+    evidence: |-
+      if (fragments.length === 0) { return ( <GlassSurface level="ambient" role="region" ref={sentinelRef} aria-label="Sem proveniência" tabIndex={0} ...
+  - node: rules/curation-workspace/viewed-signal-never-fires-on-a-failed-trail
+    held_at: |-
+      the dataReady gate on the effect, and the loading, compliance-deleted and error branches, which never attach sentinelRef
+    evidence: |-
+      const dataReady = !isPending && !isError && data !== undefined;  if (!dataReady || firedRef.current) return;  with rawDeleted tested on `error.code === "BUSINESS_RAW_INFORMATION_DELETED"`
+looked_past: |-
+  The aria-labels "Sem proveniência", "Trilha de evidência", "Proveniência indisponível" and "Erro ao carregar proveniência" are accessible names that curation-screen's show-evidence operation does not state, and I did not report them as unstated because they are surface wording; the visible texts, the source type labels and the "Fragmento · confiança N%" and "trecho" wording do match that contract.

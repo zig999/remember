@@ -1,0 +1,75 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DisputeSideCard.tsx
+    where: >-
+      SOURCE_LABEL (lines 14-20) and the caption line of the returned button (lines 69-73)
+    evidence: |-
+      const SOURCE_LABEL: Readonly<
+        Record<DisputedItemSide["validFromSource"], string>
+      > = Object.freeze({
+        stated: "Declarada",
+        document: "Doc.",
+        received: "Receb.",
+      });
+      ...
+      Vigência: {fmt(side.validFrom)} – {fmt(side.validTo)} ·{" "}
+      Fonte: {SOURCE_LABEL[side.validFromSource]} ·{" "}
+      Confiança {(side.confidence * 100).toFixed(0)}%
+    cost: >-
+      The node requires "the label of its valid-from basis" but gives no wording. The abbreviations
+      "Doc." and "Receb." and the captions "Vigência:", "Fonte:" and "Confiança" are shown to the
+      curator, and no node holds them. A grep of the specification, outside the projection, finds
+      none of them. The only nearby wording is in contracts/curation-workspace/curation-screen,
+      which names the date-justification bases "Declarada no fragmento", "Data do documento" and
+      "Data de recebimento". That wording is for a different surface and differs from this card's.
+      The next reader looking for what a dispute side calls its basis will not find it in the
+      specification, and the two surfaces can drift apart without anything noticing.
+    kind: unstated
+    correction: >-
+      The node rules/curation-workspace/side-shows-its-validity-basis-and-confidence would have to
+      state the label shown for each of stated, document and received, and the captions of the
+      validity, basis and confidence fields, or state that the labels of the justification bases
+      are reused.
+    node: rules/curation-workspace/side-shows-its-validity-basis-and-confidence
+read:
+  - node: rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+    held_at: >-
+      the fmt function (lines 22-24), used for both validFrom and validTo on line 70
+    evidence: |-
+      return d === null ? "—" : d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  - node: rules/curation-workspace/every-side-is-listed-and-selectable
+    held_at: >-
+      the button's role="radio" and onClick (lines 44-49). This file renders one side and reports
+      the selection through onSelect. Listing every side and recording the winner sit in the
+      caller and are not read here.
+    evidence: |-
+      role="radio"
+      aria-checked={selected}
+      aria-label={label}
+      onClick={() => onSelect(side.itemId)}
+  - node: rules/curation-workspace/link-side-is-named-by-its-target
+    held_at: >-
+      the isLink and label computation (lines 32-41), with the node type shown on lines 63-65
+    evidence: |-
+      const isLink = side.value === null && side.targetNodeId !== null;
+      ...
+      ? (targetName ??
+        (nodeQ.isPending
+          ? "Carregando…"
+          : `nó ${side.targetNodeId?.slice(0, 8) ?? "?"}`))
+  - node: rules/curation-workspace/side-shows-its-validity-basis-and-confidence
+    held_at: >-
+      the caption span (lines 69-73). Validity dates, the basis label and the confidence
+      percentage are all rendered; a missing date shows as — through fmt. The wording of the
+      labels is the unstated finding above.
+    evidence: |-
+      Vigência: {fmt(side.validFrom)} – {fmt(side.validTo)} ·{" "}
+      Fonte: {SOURCE_LABEL[side.validFromSource]} ·{" "}
+      Confiança {(side.confidence * 100).toFixed(0)}%
+  - node: rules/curation-workspace/value-side-is-named-by-its-value
+    held_at: >-
+      the non-link branch of the label expression (line 41)
+    evidence: |-
+      : (side.value ?? "—");
+looked_past: >-
+  The Tailwind classes, aria-label and focus-ring styling, and the StateBadge state="disputed" are
+  presentation and accessibility choices, not domain facts any of these nodes address.

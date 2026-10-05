@@ -1,0 +1,32 @@
+read:
+  - node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+    held_at: |-
+      buildSpanningTree, the link loop at lines 23-30, guard at line 27
+    evidence: |-
+      const srcSet = adj.get(source);
+      const tgtSet = adj.get(target);
+      if (!srcSet || !tgtSet) continue;
+  - node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+    held_at: |-
+      SUPER_ROOT_ID at line 1 and the closing return of buildSpanningTree, lines 70-76. The file declares the id and builds the virtual root over two or more component roots. The part that the virtual root is never given a position is not stated in this file, because the file only builds the tree and positions nothing.
+    evidence: |-
+      export const SUPER_ROOT_ID = "__super_root__";
+      if (componentRoots.length === 1) {
+        return componentRoots[0]!;
+      }
+      return {
+        id: SUPER_ROOT_ID,
+        children: componentRoots,
+      };
+  - node: rules/graph-explorer/tree-and-radial-layouts-share-one-spanning-tree
+    held_at: |-
+      buildSpanningTree, lines 13-77. Adjacency is undirected and deduplicated through Set, self-links are skipped at line 24, component roots are ordered by degree descending then id ascending (lines 35-40), and the BFS visits neighbours sorted ascending (line 56).
+    evidence: |-
+      if (source === target) continue;
+      srcSet.add(target);
+      tgtSet.add(source);
+      if (da !== db) return db - da;
+      return a < b ? -1 : a > b ? 1 : 0;
+      const neighbours = [...adj.get(currentId)!].sort();
+looked_past: |-
+  The null return for an empty node list (line 17) is a technical guard that states no domain fact, so I did not report it.

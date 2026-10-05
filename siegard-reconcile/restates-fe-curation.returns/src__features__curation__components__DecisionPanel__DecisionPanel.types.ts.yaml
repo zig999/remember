@@ -1,0 +1,40 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.types.ts
+    where: |-
+      the function itemKindOf, lines 43-48
+    evidence: |-
+      export function itemKindOf(item: ReviewQueueItem): ItemKind {
+        if (item.kind === "entity_match") {
+          return "link";
+        }
+        return item.itemKind;
+      }
+    cost: |-
+      The rule that an entity match is treated as a link when an item kind is needed lives only in this function. No node holds it. The closest node says only that an item kind of link selects the link reads. The next reader will look in the specification for what kind an entity match carries and will not find it. Any change to that mapping would be made here, with no node to decide it.
+    kind: unstated
+    correction: |-
+      Give the mapping a node. rules/curation-workspace/link-items-use-link-reads-and-others-attribute-reads is the closest and does not state it. Either that node or a sibling would have to say that an entity match item has the item kind of link.
+read:
+  - node: rules/curation-workspace/evidence-viewed-is-supplied-by-the-caller
+    held_at: |-
+      the evidenceViewed member of DecisionPanelProps, line 28
+    evidence: |-
+      readonly evidenceViewed: boolean;
+  - node: rules/curation-workspace/fragment-filter-reaches-the-picker
+    held_at: |-
+      the fragmentFilter member of DecisionPanelProps, lines 34-37. This file only declares the prop's shape. The code that forwards it to the picker is not in this file.
+    evidence: |-
+      readonly fragmentFilter?: {
+          readonly llmRunId?: string;
+          readonly rawInformationId?: string;
+        };
+  - node: rules/curation-workspace/staleness-is-never-detected-by-the-panel
+    held_at: |-
+      the stale and onRefetch members of DecisionPanelProps, lines 29-30
+    evidence: |-
+      readonly stale?: boolean;
+        readonly onRefetch?: () => void;
+looked_past: |-
+  The file's prop and action shapes (surface, className, submitting, serverError, provenanceSlot) are presentation and wiring, not domain facts, and are another judgment's.
+candidates_opened:
+  - rules/curation-workspace/link-items-use-link-reads-and-others-attribute-reads

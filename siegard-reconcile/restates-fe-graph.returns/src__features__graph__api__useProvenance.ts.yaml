@@ -1,0 +1,33 @@
+findings: []
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the queryFn of useProvenance(), lines 21-27. It covers read-link-provenance and read-attribute-provenance only. read-node and traverse are not in this file.
+    evidence: |-
+      const wire = await http<ProvenanceResponseWire>(
+        `/api/v1/provenance/${kind}/${encodeURIComponent(id)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toProvenanceResponse(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: |-
+      the enabled option of the useQuery call, line 28
+    evidence: |-
+      enabled: enabled && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: |-
+      the STALE_MS constant (line 12) and the staleTime and refetchOnWindowFocus options (lines 29-30)
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: |-
+      the queryFn, lines 21-27. It has no catch or rewrap, so the error from http() propagates to the query result unchanged.
+    evidence: |-
+      const wire = await http<ProvenanceResponseWire>(
+        `/api/v1/provenance/${kind}/${encodeURIComponent(id)}`,
+        { method: "GET", headers: authHeader() },
+      );
+looked_past: |-
+  ProvenanceKind in provenance.types.ts also admits "fragments", which read-link-provenance and read-attribute-provenance do not name. That union is declared in another file outside this file set, so it is another judgment's.

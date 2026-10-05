@@ -1,0 +1,237 @@
+findings: []
+read:
+  - node: rules/curation-workspace/decision-removes-its-item-by-its-identifier
+    held_at: |-
+      optimisticIdOf(), the last function of the file
+    evidence: |-
+      case "resolve_entity_match_keep":
+          return d.nodeId;
+      case "resolve_dispute_keep":
+      case "resolve_dispute_adjust":
+          return d.body.item_ids[0] ?? null;
+      case "confirm_item":
+          return d.body.item_id;
+      case "correct_item":
+          return d.body.item_id;
+  - node: rules/curation-workspace/decision-shows-as-sending-until-answered
+    held_at: |-
+      commit(): the submitting state is set true before runMutation and false in finally
+    evidence: |-
+      setSubmitting(true);
+      try {
+        await runMutation(dispatch);
+      ...
+      } finally {
+        setSubmitting(false);
+      }
+  - node: rules/curation-workspace/destructive-decision-moves-on-twice
+    held_at: |-
+      dispatchDestructive() calls advance() when the decision is made, and commit() calls advance() after runMutation succeeds
+    evidence: |-
+      onItemRemove(optimisticId);
+      advance();
+      ...
+      await runMutation(dispatch);
+      if (!isDestructive) {
+        toast.success("Confirmado.", { duration: 2_000 });
+      }
+      advance();
+  - node: rules/curation-workspace/destructive-decision-opens-the-undo-toast
+    held_at: |-
+      dispatchDestructive(), the toast.custom call
+    evidence: |-
+      toast.custom(
+        (sonnerId) => (
+          <UndoToast
+            label={label}
+            deadlineMs={deadlineMs}
+      ...
+        { id: toastIdValue, duration: UNDO_WINDOW_MS },
+  - node: rules/curation-workspace/destructive-decision-removes-the-item-at-once
+    held_at: |-
+      dispatchDestructive(), before the toast and the timeout that sends it
+    evidence: |-
+      onItemRemove(optimisticId);
+      advance();
+
+      const deadlineMs = Date.now() + UNDO_WINDOW_MS;
+  - node: rules/curation-workspace/destructive-decisions-wait-for-undo
+    held_at: |-
+      The DestructiveDispatch union (merge, dispute prefer, reject_item) and dispatchDestructive(), which sends only from the timeout, commitPending or the unmount cleanup
+    evidence: |-
+      export type DestructiveDispatch =
+        | { readonly kind: "resolve_entity_match_merge"; ...
+        | { readonly kind: "resolve_dispute_prefer"; ...
+        | { readonly kind: "reject_item"; ...
+      const timeoutId = setTimeout(() => {
+        ...
+        void commit(snapshot.dispatch, snapshot.optimisticId, true);
+      }, UNDO_WINDOW_MS);
+  - node: rules/curation-workspace/destructive-success-shows-no-notice-and-moves-on
+    held_at: |-
+      commit(): the success toast is guarded by !isDestructive, and advance() runs either way
+    evidence: |-
+      if (!isDestructive) {
+        toast.success("Confirmado.", { duration: 2_000 });
+      }
+      advance();
+  - node: rules/curation-workspace/each-decision-uses-the-action-of-its-kind
+    held_at: |-
+      runMutation(), the switch on dispatch.kind
+    evidence: |-
+      case "resolve_entity_match_merge":
+      case "resolve_entity_match_keep":
+        await mEntityMatch.mutateAsync({
+      ...
+      case "resolve_dispute_prefer":
+      case "resolve_dispute_keep":
+      case "resolve_dispute_adjust":
+        await mDispute.mutateAsync(dispatch.body);
+      ...
+      case "confirm_item": await mConfirm.mutateAsync(dispatch.body);
+      case "reject_item": await mReject.mutateAsync(dispatch.body);
+      case "correct_item": await mCorrect.mutateAsync(dispatch.body);
+  - node: rules/curation-workspace/failed-decision-is-read-in-order
+    held_at: |-
+      handleError(): the branches run in this order. They are non-envelope, auth codes, VANISHED_CODES, INLINE_FIELD_CODES, httpStatus >= 500, then the fall-through.
+    evidence: |-
+      if (!isEnvelopeError(err)) {
+      ...
+      if (code === "AUTH_UNAUTHORIZED" || ...
+      if (VANISHED_CODES.has(code)) {
+      ...
+      if (INLINE_FIELD_CODES.has(code)) {
+      ...
+      if (httpStatus >= 500) {
+      ...
+      setServerError({ code, message, httpStatus });
+  - node: rules/curation-workspace/failure-without-an-envelope-leaves-the-item-removed
+    held_at: |-
+      commit() catch block: the restore is guarded by isEnvelopeError(err), and handleError for a non-envelope failure only toasts
+    evidence: |-
+      if (
+        isDestructive &&
+        isEnvelopeError(err) &&
+        !VANISHED_CODES.has(err.code) &&
+        optimisticId !== null
+      ) {
+        onItemRestore(optimisticId);
+      }
+  - node: rules/curation-workspace/field-code-wins-over-the-server-status
+    held_at: |-
+      handleError(): the INLINE_FIELD_CODES branch comes before the httpStatus >= 500 branch
+    evidence: |-
+      if (INLINE_FIELD_CODES.has(code)) {
+        setServerError({ code, message, httpStatus });
+        return;
+      }
+
+      if (httpStatus >= 500) {
+  - node: rules/curation-workspace/immediate-decisions-are-sent-at-once
+    held_at: |-
+      The NonDestructiveDispatch union and dispatchNonDestructive(), which calls commit() directly
+    evidence: |-
+      const optimisticId = optimisticIdOf(dispatch);
+      void commit(dispatch, optimisticId, false);
+  - node: rules/curation-workspace/immediate-success-confirms-and-moves-on
+    held_at: |-
+      commit(): success branch for a non-destructive dispatch
+    evidence: |-
+      if (!isDestructive) {
+        toast.success("Confirmado.", { duration: 2_000 });
+      }
+      advance();
+  - node: rules/curation-workspace/leaving-sends-the-pending-decision-at-once
+    held_at: |-
+      The unmount cleanup in the final useEffect
+    evidence: |-
+      if (pendingRef.current !== null) {
+        toast.info("Ação comprometida ao sair.");
+        const snapshot = pendingRef.current;
+        clearTimeout(snapshot.timeoutId);
+        toast.dismiss(snapshot.toastId);
+        pendingRef.current = null;
+        void commit(snapshot.dispatch, snapshot.optimisticId, true);
+  - node: rules/curation-workspace/moving-on-selects-the-next-item-and-counts-it
+    held_at: |-
+      advance()
+    evidence: |-
+      const next = getNextItem();
+      setSelectedItem(next);
+      incrementResolved();
+  - node: rules/curation-workspace/one-destructive-decision-waits-at-a-time
+    held_at: |-
+      dispatchDestructive() opening guard, together with commitPending()
+    evidence: |-
+      if (pendingRef.current !== null) {
+        commitPending();
+      }
+      ...
+      clearTimeout(p.timeoutId);
+      toast.dismiss(p.toastId);
+  - node: rules/curation-workspace/pending-decision-lives-in-memory-only
+    held_at: |-
+      The pending decision is held only in a useRef, never in the store or any storage
+    evidence: |-
+      const pendingRef = useRef<PendingDestructive | null>(null);
+  - node: rules/curation-workspace/refused-destructive-decision-restores-its-item
+    held_at: |-
+      commit() catch block
+    evidence: |-
+      if (
+        isDestructive &&
+        isEnvelopeError(err) &&
+        !VANISHED_CODES.has(err.code) &&
+        optimisticId !== null
+      ) {
+        onItemRestore(optimisticId);
+      }
+  - node: rules/curation-workspace/sending-a-decision-clears-the-previous-failure
+    held_at: |-
+      Start of commit()
+    evidence: |-
+      setServerError(null);
+      setStale(false);
+      setSubmitting(true);
+  - node: rules/curation-workspace/undo-keeps-the-selection-and-the-count
+    held_at: |-
+      cancelPending() calls only onItemRestore and never advance, setSelectedItem or incrementResolved
+    evidence: |-
+      clearTimeout(p.timeoutId);
+      toast.dismiss(p.toastId);
+      onItemRestore(p.optimisticId);
+      pendingRef.current = null;
+  - node: rules/curation-workspace/undo-restores-the-item-and-sends-nothing
+    held_at: |-
+      cancelPending()
+    evidence: |-
+      clearTimeout(p.timeoutId);
+      toast.dismiss(p.toastId);
+      onItemRestore(p.optimisticId);
+      pendingRef.current = null;
+  - node: rules/curation-workspace/undo-window-is-five-seconds
+    held_at: |-
+      dispatchDestructive(): the window is UNDO_WINDOW_MS, a constant imported from ../components/UndoToast and declared there as `export const UNDO_WINDOW_MS = 5_000;`. This file sends only when its setTimeout of that length fires.
+    evidence: |-
+      import { UndoToast, UNDO_WINDOW_MS } from "../components/UndoToast";
+      ...
+      const timeoutId = setTimeout(() => {
+        ...
+        void commit(snapshot.dispatch, snapshot.optimisticId, true);
+      }, UNDO_WINDOW_MS);
+  - node: rules/curation-workspace/vanished-item-is-not-restored
+    held_at: |-
+      handleError() VANISHED_CODES branch, plus the commit() catch guard that skips the restore for those codes
+    evidence: |-
+      if (VANISHED_CODES.has(code)) {
+        if (optimisticId !== null) {
+          onItemRemove(optimisticId);
+        }
+        toast.warning(vanishedToastMessage(code));
+        setStale(code === "BUSINESS_REVIEW_NOT_PENDING" ||
+          code === "BUSINESS_ITEM_NOT_DISPUTED");
+looked_past: |-
+  The vanished and inline-field code sets, the notice texts (for example "Já resolvido em outro lugar." and "Serviço temporariamente indisponível. Tente novamente em instantes.") and the authentication code list are held by contracts/curation-workspace/curation-screen (decide-item), which is outside this file's node set. The file states them identically to that contract, so I filed no finding.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
+  - scenarios/curation-workspace/vanished-item-is-not-restored

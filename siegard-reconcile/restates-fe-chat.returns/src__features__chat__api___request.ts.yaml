@@ -1,0 +1,44 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      httpVoid, lines 10-61, which holds the whole refusal table of delete-conversation. It forms the URL from VITE_BFF_URL and the path. It maps a thrown abort to SYSTEM_ABORTED and any other thrown error to SYSTEM_NETWORK, both with HTTP status 0. It reads the envelope's code, message and details from the answer. It falls back to SYSTEM_UPSTREAM at status 500 or above and to SYSTEM_UNKNOWN below 500. The other operations of the contract (send-message, cancel-turn, create, list, read, update, list-messages, usage) are held in the sibling use-*.ts files, outside this file. authHeader (lines 5-8) is the shared bearer helper those files use.
+    evidence: |-
+      code: isAbort ? "SYSTEM_ABORTED" : "SYSTEM_NETWORK",
+      httpStatus: 0,
+      message: isAbort
+        ? "Requisição cancelada."
+        : "Falha de rede ao contactar o servidor.",
+      ...
+      if (response.status === 204) return;
+      ...
+      typeof errObj?.code === "string"
+        ? errObj.code
+        : response.status >= 500
+          ? "SYSTEM_UPSTREAM"
+          : "SYSTEM_UNKNOWN",
+      httpStatus: response.status,
+      ...
+        ? "Algo deu errado. Tente novamente."
+        : "Erro desconhecido do servidor.",
+      details: errObj?.details,
+  - node: rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+    held_at: |-
+      authHeader, lines 5-8, which is the bearer-when-held part of the rule. The cancel endpoint and the body-less POST are in use-cancel-turn.ts, which calls authHeader() and sends no body. This file does not name the endpoint.
+    evidence: |-
+      const token = useAuthStore.getState().accessToken;
+      return token !== null ? { Authorization: `Bearer ${token}` } : {};
+  - node: rules/chat-workspace/no-body-request-has-no-cutoff-and-no-refresh
+    held_at: |-
+      httpVoid, lines 10-61. It calls fetch(url, init) directly, with no timer or signal added by this function, and it has no 401 branch and no token refresh. A 401 goes through the same envelope or fallback path as any other non-204 status.
+    evidence: |-
+      response = await fetch(url, init);
+      ...
+      httpStatus: response.status,
+  - node: rules/chat-workspace/no-body-request-succeeds-only-on-204
+    held_at: |-
+      httpVoid, line 34. Only status 204 returns normally, and every other status, 200 included, reaches the throw of EnvelopeError at lines 45-60.
+    evidence: |-
+      if (response.status === 204) return;
+looked_past: |-
+  The details payload { cause: String(err) } on the network and abort failures, and the trimming of the trailing slash from VITE_BFF_URL, are implementation detail rather than a domain fact, so I did not report them as a different judgment's concern.

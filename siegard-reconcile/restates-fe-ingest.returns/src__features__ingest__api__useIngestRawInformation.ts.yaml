@@ -1,0 +1,14 @@
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      The mutationFn of useIngestRawInformation (lines 25-35). It issues the ingest-raw-information request: the POST to the path, the JSON body of the variables as given, and the read of the answer through the transform. The variables interface (lines 11-17) declares the body's shape: source_type, content, model, prompt_version and an optional metadata.
+    evidence: |-
+      httpIngest<IngestRawInformationResponseWire>("/api/v1/ingest/raw-information", { method: "POST", headers: { ...authHeader(), "Content-Type": "application/json" }, body: JSON.stringify(vars) }); return toIngestRawInformationResult(wire);
+      readonly metadata?: Record<string, unknown>;
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      The headers of the request in mutationFn (line 30). The file spreads authHeader() into the request headers and adds no Authorization of its own. The bearer-when-held and nothing-otherwise decision sits in authHeader, imported from ./_request, which is outside this file.
+    evidence: |-
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+looked_past: |-
+  The mapping of the answer into IngestRawInformationResult, the transport failures and the timeout are done in ./_transforms and ./_request, which are outside this file, so none of that was judged here.

@@ -1,0 +1,32 @@
+findings: []
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      the queryFn of useIngestRunStatus (lines 31-37), which issues the read-llm-run GET and hands the wire answer to toLlmRun. The date-parsing refusal and the pass-through of status are not in this file; they belong to the toLlmRun transform in ./_transforms.
+    evidence: |-
+      const wire = await httpIngest<LlmRunWire>(
+        `/api/v1/ingest/llm-runs/${encodeURIComponent(params.llmRunId as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toLlmRun(wire);
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      line 34, where the read passes the headers of authHeader(). The bearer-or-no-header logic itself is not declared here.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+  - node: rules/ingest-workspace/run-is-polled-every-five-seconds
+    held_at: |-
+      INGEST_RUN_POLL_MS at line 12 and terminalAwareRefetchInterval at lines 14-20, wired as refetchInterval at line 41.
+    evidence: |-
+      export const INGEST_RUN_POLL_MS = 5_000;
+      if (status === "completed" || status === "failed") return false;
+      return INGEST_RUN_POLL_MS;
+  - node: rules/ingest-workspace/run-is-read-only-with-an-identity-and-the-gate
+    held_at: |-
+      the enabled computation at lines 25-27, passed to useQuery at line 38.
+    evidence: |-
+      const hasRunId =
+        typeof params.llmRunId === "string" && params.llmRunId.length > 0;
+      const enabled = hasRunId && (params.enabled ?? true);
+looked_past: |-
+  The query options retry: 2, staleTime: 0 and refetchOnWindowFocus: false are client query tuning, not domain facts, and are another judgment's.

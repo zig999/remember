@@ -1,0 +1,69 @@
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the root element of Footer(), lines 41-49. It is a contentinfo named "Rodapé" and holds the health span, the as-of popover trigger and the pending-curation link. This file holds only the footer part of show-shell.
+    evidence: |-
+      <GlassSurface
+            level="ambient"
+            role="contentinfo"
+            aria-label="Rodapé"
+  - node: rules/application-shell/as-of-starts-at-today
+    held_at: |-
+      formatAsOf(), lines 26-28, and the trigger label at line 62. The initial empty value comes from useAsOfStore, which is declared in another file, so this file only reads and renders it.
+    evidence: |-
+      function formatAsOf(asOf: Date | null): string {
+        return asOf ? asOf.toLocaleDateString("pt-BR") : "hoje";
+      }
+      ... <Clock className="size-3" aria-hidden="true" /> Como em: {formatAsOf(asOf)}
+  - node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+    held_at: |-
+      the activeRun prop and its conditional Link, lines 16, 34 and 100-107. The prop defaults to null, so the segment does not render unless a caller supplies a run. When it does render, it links to the history address.
+    evidence: |-
+      activeRun = null,
+      ...
+      {activeRun && (
+              <Link
+                to="/history"
+  - node: rules/application-shell/the-footer-shows-one-of-three-health-states
+    held_at: |-
+      the HealthStatus type, the HEALTH table and the health = "checking" default, lines 10, 19-24 and 32.
+    evidence: |-
+      ok: { dot: "bg-state-accepted", label: "online" },
+          down: { dot: "bg-destructive", label: "banco inacessível" },
+          checking: { dot: "bg-muted-foreground", label: "verificando…" },
+      ...
+      health = "checking",
+  - node: rules/application-shell/the-footer-shows-pending-curation
+    held_at: |-
+      the conditional Link at lines 91-98. It renders only when the total is above 0, links to /curation, and prints the number followed by "pendentes".
+    evidence: |-
+      {curationPending > 0 && (
+              <Link
+                to="/curation"
+      ...
+                <Scale className="size-3" aria-hidden="true" /> {curationPending} pendentes
+  - node: rules/application-shell/the-owner-picks-the-as-of-date
+    held_at: |-
+      the Popover at lines 56-88. It has the title "Recorte temporal" and a date Input with no min or max. Emptying the input calls setAsOf(null), and the "Voltar para hoje" button does the same.
+    evidence: |-
+      <p className="text-xs font-medium font-semibold text-foreground">Recorte temporal</p>
+      ...
+      <Input
+                type="date"
+                aria-label="Data do recorte"
+      ...
+      setAsOf(e.target.value ? new Date(e.target.value) : null)
+      ...
+      onClick={() => setAsOf(null)}
+      >
+                Voltar para hoje
+  - node: rules/application-shell/the-shell-regions-have-names
+    held_at: |-
+      the footer part only, lines 43-44 and 72. The contentinfo is named "Rodapé" and the date input is named "Data do recorte". The header banner, navigation, palette toggle and theme choice are not in this file.
+    evidence: |-
+      role="contentinfo"
+            aria-label="Rodapé"
+      ...
+      aria-label="Data do recorte"
+looked_past: |-
+  The popover helper text "Veja o que era verdade numa data (as_of)." and the possible one-day offset between the date chosen (parsed as UTC by new Date) and the date displayed (toLocaleDateString in local time) are not conformance matters, so I did not report them.

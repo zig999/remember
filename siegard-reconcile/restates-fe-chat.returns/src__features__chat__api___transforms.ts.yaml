@@ -1,0 +1,20 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      toConversation, toChatMessage, toUsageData, toConversationList and toMessageList (lines 64-112), plus the wire shapes ConversationWire, ChatMessageWire, UsageWire, CancelWire, ConversationListWire and MessageListWire (lines 10-52). The file declares and reads only the answers. Every request line, the send-message stream frames and the failure refusals are nowhere in this file.
+    evidence: |-
+      return { id: wire.id, title: wire.title, archivedAt: wire.archived_at !== null ? new Date(wire.archived_at) : null, createdAt: new Date(wire.created_at), };
+      messageCount: wire.messages,
+      items: wire.items.map(toChatMessage), nextBefore: wire.next_before,
+      nextCursor: wire.next_cursor,
+      readonly cancelled: true;
+      The contract names these reads: a conversation as id, title, archived_at and created_at with the summary and update time not kept; the message fields id, conversation_id, role, content, stop_reason, idempotency_key, model, tokens_in, tokens_out, latency_ms and created_at; items with next_before; items with next_cursor; usage messages kept as the message count; and the cancel answer { cancelled: true }. The file carries each of these.
+  - node: rules/chat-workspace/unparseable-timestamp-becomes-an-invalid-date
+    held_at: |-
+      The timestamp reads in toConversation (archivedAt and createdAt, lines 68-69) and toChatMessage (createdAt, line 94). Each is a bare Date construction with no throw, guard or validation.
+    evidence: |-
+      createdAt: new Date(wire.created_at),
+      createdAt: new Date(wire.created_at),
+      archivedAt: wire.archived_at !== null ? new Date(wire.archived_at) : null,
+      The construction yields an invalid date for an unparseable string and does not throw, so the read does not fail.

@@ -1,0 +1,50 @@
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      httpIngest (lines 86-207), together with authHeader (lines 6-9). The send-ingestion-request operation is held here. The other operations (ingest-raw-information, run-extraction, retry-llm-run, read-llm-run) name paths and bodies that this file does not state.
+    evidence: |-
+      A 2xx answer is returned as the JSON body, and a 204 gives no value: `if (response.status === 204) return undefined as unknown as T; return (await response.json()) as T;`.
+      A 2xx answer whose body is not JSON becomes `code: "SYSTEM_INVALID_RESPONSE" ... message: "Resposta do servidor não é JSON válido."`.
+      A failed fetch becomes SYSTEM_TIMEOUT "Tempo limite excedido na requisição.", SYSTEM_ABORTED "Requisição cancelada." or SYSTEM_NETWORK "Falha de rede ao contactar o servidor.".
+      An unrefreshable 401 throws `code: "AUTH_SESSION_EXPIRED", httpStatus: 401, message: "Sua sessão expirou. Faça login novamente."`.
+      A non-2xx answer takes `typeof errObj?.code === "string" ? errObj.code : response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN"` and passes `details: errObj?.details`.
+      The message is `typeof errObj?.message === "string" ? errObj.message : response.status >= 500 ? "Algo deu errado. Tente novamente." : "Erro desconhecido do servidor."`.
+  - node: rules/ingest-workspace/extraction-has-no-client-cutoff
+    held_at: |-
+      The `ingestMode === true` branch of httpIngest, lines 96-97. It sets no timer.
+    evidence: |-
+      `if (ingestMode === true) { signal = userSignal; } else { const timeoutController = new AbortController(); ... }`
+  - node: rules/ingest-workspace/first-unauthorized-answer-refreshes-the-token-once
+    held_at: |-
+      The 401 branch of httpIngest, lines 137-152, and trySilentRefresh, lines 73-84.
+    evidence: |-
+      `if (response.status === 401 && __retried !== true) { const refreshed = await trySilentRefresh(); if (refreshed) { ... nextHeaders.set("Authorization", `Bearer ${fresh}`); ... return httpIngest<T>(path, { ...opts, headers: ..., __retried: true }); }`
+      trySilentRefresh does `const newJwt = await fetchAccessToken(); useAuthStore.getState().setToken(newJwt);`.
+  - node: rules/ingest-workspace/ingestion-request-carries-the-access-token
+    held_at: |-
+      authHeader, lines 6-9. The resend in the 401 branch also sets the Bearer header, lines 143-146.
+    evidence: |-
+      `const token = useAuthStore.getState().accessToken; return token !== null ? { Authorization: `Bearer ${token}` } : {};`
+  - node: rules/ingest-workspace/ingestion-request-times-out-after-thirty-seconds
+    held_at: |-
+      DEFAULT_TIMEOUT_MS (line 17) and the non-ingest branch of httpIngest, lines 98-107. The error mapping for it is at lines 118-131.
+    evidence: |-
+      `const DEFAULT_TIMEOUT_MS = 30_000;`
+      `setTimeout(() => { timeoutController.abort(new DOMException("Request timed out after 30s", "TimeoutError")); }, DEFAULT_TIMEOUT_MS);`
+  - node: rules/ingest-workspace/resent-request-never-refreshes-again
+    held_at: |-
+      The `__retried` flag, which the 401 branch checks (line 137) and the resend sets (line 150).
+    evidence: |-
+      `if (response.status === 401 && __retried !== true) {` ... `__retried: true,`
+  - node: rules/ingest-workspace/unrefreshable-session-ends-at-sign-in
+    held_at: |-
+      The catch block of trySilentRefresh, lines 78-83.
+    evidence: |-
+      `useAuthStore.getState().clear(); redirectImpl("/sign-in?reason=session_expired"); return false;`, where redirectImpl defaults to `window.location.replace(url)`.
+  - node: scenarios/ingest-workspace/expired-token-is-refreshed-once-and-resent
+    held_at: |-
+      The 401 branch of httpIngest, lines 137-152. A refreshed token is stored by trySilentRefresh and the same request is sent again once.
+    evidence: |-
+      `const refreshed = await trySilentRefresh(); if (refreshed) { ... return httpIngest<T>(path, { ...opts, headers: Object.fromEntries(nextHeaders.entries()), __retried: true }); }`
+looked_past: |-
+  The details objects `{ cause: String(err) }` on the timeout, network, abort and invalid-response failures are not stated by the contract. The duplicated default redirect closure and the test-only `__setIngestRedirectForTests` setter are code-structure matters. I did not weigh any of them as domain facts.

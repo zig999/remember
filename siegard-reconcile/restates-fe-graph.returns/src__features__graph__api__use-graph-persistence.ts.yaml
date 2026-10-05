@@ -1,0 +1,78 @@
+read:
+  - node: contracts/graph-explorer/bff-graph-view
+    held_at: |-
+      restoreSnapshot() issues the GET and the debounced timer callback issues the PUT, both in useGraphPersistence
+    evidence: |-
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/graph`, { method: "GET", headers: authHeader() } ... method: "PUT", ... body: JSON.stringify(snapshot)
+  - node: domain/chat/graph-layout
+    held_at: |-
+      the layout_algorithm member of the version 2 arm of GraphViewSnapshot, lines 14-21
+    evidence: |-
+      readonly layout_algorithm: "force" | "tree" | "radial";
+  - node: domain/graph-explorer/graph-pane
+    held_at: |-
+      GraphViewSnapshot declares the pane attributes that are persisted (nodes, links, positions, user_pinned, layout_algorithm). The hook reads the store's nodes, positions and layoutNonce.
+    evidence: |-
+      readonly nodes: unknown[]; readonly links: unknown[]; readonly positions: Record<string, { x: number; y: number }>; readonly user_pinned: string[];
+  - node: domain/graph-explorer/graph-snapshot-version
+    held_at: |-
+      the version discriminant of the two arms of GraphViewSnapshot
+    evidence: |-
+      readonly version: 1; ... readonly version: 2;
+  - node: rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
+    held_at: |-
+      handleStoreChange(), lines 73-82
+    evidence: |-
+      if (!conversationId) return; const { nodes } = useGraphStore.getState(); if (nodes.size === 0) return; if (justHydrated.current) { justHydrated.current = false; return; }
+  - node: rules/graph-explorer/a-late-restore-answer-is-discarded
+    held_at: |-
+      the cancelled flag in the restore effect, lines 33, 42 and 70
+    evidence: |-
+      if (cancelled) return; ... return () => { cancelled = true; };
+  - node: rules/graph-explorer/a-pending-save-is-dropped-on-leaving
+    held_at: |-
+      the cleanup of the subscribe effect, lines 113-119. It reruns when conversationId changes, because handleStoreChange depends on it, and when the screen unmounts.
+    evidence: |-
+      return () => { unsubscribe(); if (debounceTimer.current !== null) { clearTimeout(debounceTimer.current); debounceTimer.current = null; } };
+  - node: rules/graph-explorer/a-save-follows-a-graph-change
+    held_at: |-
+      the useGraphStore.subscribe callback, lines 104-112
+    evidence: |-
+      state.nodes !== prevState.nodes || state.positions !== prevState.positions || state.layoutNonce !== prevState.layoutNonce
+  - node: rules/graph-explorer/a-save-is-a-put-of-json
+    held_at: |-
+      the request in the timer callback, lines 91-97
+    evidence: |-
+      method: "PUT", headers: { "Content-Type": "application/json", ...authHeader() }, body: JSON.stringify(snapshot),
+  - node: rules/graph-explorer/a-save-waits-800-milliseconds
+    held_at: |-
+      handleStoreChange(), lines 84-100
+    evidence: |-
+      if (debounceTimer.current !== null) { clearTimeout(debounceTimer.current); } debounceTimer.current = setTimeout(() => { ... }, 800);
+  - node: rules/graph-explorer/a-saved-view-holds-positions-and-pins
+    held_at: |-
+      the GraphViewSnapshot type, lines 6-21. The save body is built by getSnapshot() in the store, which is not in this file.
+    evidence: |-
+      readonly version: 2; readonly nodes: unknown[]; readonly links: unknown[]; readonly positions: Record<string, { x: number; y: number }>; readonly user_pinned: string[]; readonly layout_algorithm: "force" | "tree" | "radial";
+  - node: rules/graph-explorer/graph-view-requests-carry-the-same-token-header-as-chat
+    held_at: |-
+      the authHeader import and its two uses, on the GET and on the PUT
+    evidence: |-
+      import { authHeader } from "@/features/chat/api/_request"; ... headers: authHeader() ... headers: { "Content-Type": "application/json", ...authHeader() }
+  - node: rules/graph-explorer/restore-reads-the-saved-view-of-the-conversation
+    held_at: |-
+      restoreSnapshot(), lines 35-67. The read runs only when conversationId is set, a non-null snapshot is hydrated into the store, and null changes nothing.
+    evidence: |-
+      if (!conversationId) return; ... if (snapshot !== null) { justHydrated.current = true; ... useGraphStore.getState().hydrate({
+  - node: rules/graph-explorer/restore-restores-the-layout-of-a-version-2-view
+    held_at: |-
+      the version branch in restoreSnapshot(), lines 46-63
+    evidence: |-
+      if (snapshot.version === 2) { useGraphStore.getState().hydrate({ version: 2, ... layout_algorithm: snapshot.layout_algorithm, }); } else { useGraphStore.getState().hydrate({ version: 1, ...
+  - node: rules/graph-explorer/view-failures-are-silent
+    held_at: |-
+      the empty catch on the restore, line 65, and the empty .catch on the save, line 98. Neither retries.
+    evidence: |-
+      } catch { } ... ).catch(() => { });
+looked_past: |-
+  The timer callback re-checks snapshot.nodes.length === 0 before the PUT and hydratedFor is written but never read, both implementation detail that states no domain fact.

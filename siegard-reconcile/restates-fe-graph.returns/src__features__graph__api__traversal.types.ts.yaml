@@ -1,0 +1,62 @@
+findings:
+  - file: src/features/graph/api/traversal.types.ts
+    where: >-
+      the `directionArrow` member of `TraversalLinkView`, line 43
+    evidence: |-
+      readonly directionArrow: "→" | "←";
+    cost: >-
+      The rule that an outgoing link carries → and an incoming link ← is held by
+      rules/graph-explorer/direction-picks-the-link-wording, whose candidate index entry binds only
+      src/features/graph/api/traversal.transforms.ts. This file declares the two arrow characters
+      as a vocabulary of its own. If the node moves, `--check` does not reach this file, and the
+      two declarations can disagree with no way to tell which one was decided.
+    kind: contradicts
+    correction: >-
+      Bind rules/graph-explorer/direction-picks-the-link-wording to this file, since it is where
+      the shape of the arrow is declared. Code cannot read the specification, so only the bind
+      closes this.
+    node: rules/graph-explorer/direction-picks-the-link-wording
+  - file: src/features/graph/api/traversal.types.ts
+    where: >-
+      the `LinkDirection` type, line 36
+    evidence: |-
+      export type LinkDirection = "outgoing" | "incoming";
+    cost: >-
+      The two direction values are decided by rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node,
+      which the candidate index binds only to src/features/graph/api/traversal.transforms.ts. This
+      file declares the enumeration as its own vocabulary. A change to the node does not reach
+      this file through `--check`.
+    kind: contradicts
+    correction: >-
+      Bind rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node to this file, since
+      it declares the shape of the direction value.
+    node: rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: >-
+      `TraversalResultWire` and `TraversalLinkWire`, lines 9-34
+    evidence: |-
+      export interface TraversalResultWire {
+        readonly starting_node_id: string;
+        readonly nodes: ReadonlyArray<NodeSummaryWire>;
+        readonly links: ReadonlyArray<TraversalLinkWire>;
+      }
+      with `TraversalLinkWire` carrying `link_inverse_name`, `effective_status` and `confidence`
+  - node: rules/graph-explorer/a-relationship-shows-fixed-fields
+    held_at: >-
+      `TraversalLinkView`, lines 38-55
+    evidence: |-
+      readonly linkType: string;
+      readonly effectiveStatus: AttributeWireEffectiveStatus;
+      readonly isInEffect: boolean;
+      readonly confidenceLabel: string;
+      readonly validFromLabel: string | null;
+      readonly validToLabel: string | null;
+      readonly flags: ReadonlyArray<string>;
+      readonly provenance: ReadonlyArray<ProvenanceEntryView>;
+      The view declares no status, is_current, recorded_at, superseded_at, hop or score.
+looked_past: >-
+  I saw that the wire type declares status, is_current, recorded_at, superseded_at, hop and score as upstream response fields, and that the view type leaves them out; the view is what the fixed-fields rule governs, so I did not report them.
+candidates_opened:
+  - rules/graph-explorer/direction-picks-the-link-wording
+  - rules/graph-explorer/a-link-is-outgoing-when-it-starts-at-the-node

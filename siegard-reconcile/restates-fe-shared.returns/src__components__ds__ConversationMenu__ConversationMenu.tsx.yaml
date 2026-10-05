@@ -1,0 +1,145 @@
+findings:
+  - file: src/components/ds/ConversationMenu/ConversationMenu.tsx
+    where: |-
+      STRINGS.deleteBody, rendered in the delete dialog's DialogDescription (lines 49 and 403-405)
+    evidence: |-
+      deleteBody: "Tem certeza? Esta ação não pode ser desfeita.",
+      ...
+      <DialogDescription id="conversation-menu-delete-desc">
+        {STRINGS.deleteBody}
+      </DialogDescription>
+    cost: |-
+      The dialog tells the owner that deleting a conversation is irreversible. No node holds that claim. deleting-asks-first holds only the dialog's title, and only-the-confirmation-deletes holds who sends the delete. The statement about what deletion does therefore lives only in this file. The next reader looks for it in the specification and does not find it. If deletion semantics change, nothing flags this text.
+    kind: unstated
+    correction: |-
+      deleting-asks-first (or a node for the dialog's content) would have to state the dialog's body text, or the irreversibility of deleting a conversation. Alternatively the body would have to stop asserting it.
+    node: rules/application-shell/deleting-asks-first
+  - file: src/components/ds/ConversationMenu/ConversationMenu.tsx
+    where: |-
+      the STRINGS vocabulary for the row actions, the rename field and the dialog buttons (lines 39-51), and the aria-labels built from it (lines 246, 255, 313, 327, 341, 355)
+    evidence: |-
+      rename: "Renomear",
+      archive: "Arquivar",
+      delete: "Excluir",
+      confirmRename: "Confirmar renomeação",
+      cancelRename: "Cancelar renomeação",
+      deleteCancel: "Cancelar",
+      deleteConfirm: "Confirmar",
+      ...
+      aria-label={`Renomeando ${itemTitle}`}
+      aria-label={`Novo título para ${itemTitle}`}
+    cost: |-
+      The rules require rename, archive, reactivate, delete, confirm and cancel controls but name none of their labels, except that deleting-asks-first names the dialog title "Excluir conversa". The words the owner and assistive technology hear for these controls are decided only here. A relabelling or a translation has no node to answer to.
+    kind: unstated
+    correction: |-
+      The nodes that require these controls (a-row-offers-its-actions, a-rename-sends-the-trimmed-title, only-the-confirmation-deletes) would have to name their labels if the business holds them as fact. If they are surface vocabulary only, the project's surface route covers them.
+
+read:
+  - node: rules/application-shell/a-rename-sends-the-trimmed-title
+    held_at: |-
+      commitRename() and onRenameKeyDown(), lines 106-111 and 144-155
+    evidence: |-
+      const trimmed = renameDraft.trim();
+      if (trimmed.length > 0) onRename(id, trimmed);
+      setRenamingId(null);
+      setRenameDraft("");
+      ... if (e.key === "Enter") { e.preventDefault(); commitRename(id); }
+      The Input has no maxLength.
+  - node: rules/application-shell/a-row-offers-its-actions
+    held_at: |-
+      the action buttons inside each row's DropdownMenuItem, lines 305-361
+    evidence: |-
+      {isArchived ? ( ... handleUnarchive(c.id) ... ArchiveRestore ) : ( ... handleArchive(c.id) ... Archive )}
+      with the rename button (startRename) and the delete button (requestDelete) rendered for every row
+  - node: rules/application-shell/a-row-shows-its-title-and-archived-mark
+    held_at: |-
+      the per-row derivations and the badge, lines 234-239 and 294-303
+    evidence: |-
+      const isArchived = c.archivedAt !== null;
+      const itemTitle = c.title ?? STRINGS.titleFallback;
+      const itemAriaLabel = isArchived ? `${itemTitle} ${STRINGS.archivedSuffix}` : itemTitle;
+      {isArchived && (<span aria-hidden="true" ...>{STRINGS.archivedBadge}</span>)}
+  - node: rules/application-shell/archive-and-reactivate-need-no-confirmation
+    held_at: |-
+      handleArchive() and handleUnarchive(), lines 118-126
+    evidence: |-
+      function handleArchive(id: string): void { onArchive(id); setOpen(false); }
+      function handleUnarchive(id: string): void { onUnarchive(id); setOpen(false); }
+  - node: rules/application-shell/archived-conversations-are-opt-in
+    held_at: |-
+      the Switch row at the foot of the DropdownMenuContent, lines 369-386; the default is the includeArchived = false prop default (line 59)
+    evidence: |-
+      <Switch id="conversation-menu-include-archived" checked={includeArchived} onChange={onIncludeArchivedChange} ... />
+      with the label {STRINGS.showArchived} ("Mostrar arquivadas")
+      The component keeps no state of its own for the value.
+  - node: rules/application-shell/choosing-a-row-selects-it
+    held_at: |-
+      handleSelect() and the row's DropdownMenuItem onSelect, lines 91-94 and 284
+    evidence: |-
+      function handleSelect(id: string): void { onSelect(id); setOpen(false); }
+      onSelect={() => handleSelect(c.id)}
+  - node: rules/application-shell/deleting-asks-first
+    held_at: |-
+      requestDelete() and the Dialog, lines 128-131 and 390-406
+    evidence: |-
+      function requestDelete(id: string): void { setOpen(false); setDeletingId(id); }
+      <Dialog open={deletingId !== null} ...>
+      <DialogTitle>{STRINGS.deleteTitle}</DialogTitle>
+      with deleteTitle: "Excluir conversa"
+  - node: rules/application-shell/leaving-a-rename-sends-nothing
+    held_at: |-
+      cancelRename(), the Escape branch of onRenameKeyDown() and the close effect, lines 113-116, 151-154 and 157-164
+    evidence: |-
+      else if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
+      onClick={cancelRename}
+      if (wasOpenRef.current && !open && renamingId !== null) { setRenamingId(null); setRenameDraft(""); }
+  - node: rules/application-shell/only-the-confirmation-deletes
+    held_at: |-
+      confirmDelete(), cancelDelete() and the Dialog's onOpenChange, lines 133-142 and 390-394
+    evidence: |-
+      function confirmDelete(): void { if (deletingId !== null) onDelete(deletingId); setDeletingId(null); ... }
+      function cancelDelete(): void { setDeletingId(null); ... }
+      onOpenChange={(o) => { if (!o) cancelDelete(); }}
+  - node: rules/application-shell/renaming-opens-a-field-with-the-title
+    held_at: |-
+      startRename() and the renamingId branch of the row map, lines 101-104 and 241-278
+    evidence: |-
+      function startRename(id: string, currentTitle: string | null): void { setRenamingId(id); setRenameDraft(currentTitle ?? ""); }
+      if (renamingId === c.id) { return (<div ...><Input autoFocus value={renameDraft} ... />
+  - node: rules/application-shell/the-active-row-is-only-highlighted
+    held_at: |-
+      the className and aria-label of the row's DropdownMenuItem, lines 285-292
+    evidence: |-
+      aria-label={itemAriaLabel}
+      className={cn("min-h-10 gap-sm", isActive && "bg-elevated")}
+      data-active={isActive || undefined}
+  - node: rules/application-shell/the-first-entry-creates-a-conversation
+    held_at: |-
+      handleCreate() and the first DropdownMenuItem, lines 96-99 and 205-212
+    evidence: |-
+      function handleCreate(): void { onCreate(); setOpen(false); }
+      <DropdownMenuItem onSelect={handleCreate} ...> <span>{STRINGS.newConversation}</span>
+      onCreate is called with no argument.
+  - node: rules/application-shell/the-menu-lists-as-received
+    held_at: |-
+      the list branch inside DropdownMenuContent, lines 216-365
+    evidence: |-
+      {isLoading && conversations.length === 0 ? (<div ... data-testid="conversation-menu-skeleton"> ...) : conversations.length === 0 ? (<div ...>{STRINGS.empty}</div>) : (conversations.map((c) => {
+      with empty: "Nenhuma conversa ainda"; there is no sort, filter or slice
+  - node: rules/application-shell/the-menu-trigger-names-the-active-conversation
+    held_at: |-
+      triggerLabel and triggerAriaLabel, lines 84-89
+    evidence: |-
+      const triggerLabel = activeConversationId === null ? STRINGS.triggerFallback : (activeTitle ?? STRINGS.titleFallback);
+      const triggerAriaLabel = `Conversas — ${activeTitle ?? STRINGS.triggerFallback}`;
+  - node: rules/application-shell/the-trigger-is-off-while-loading
+    held_at: |-
+      the trigger Button, lines 170-196
+    evidence: |-
+      disabled={isLoading}
+      {isLoading ? (<Loader2 className="size-4 shrink-0 animate-spin ..." data-testid="conversation-menu-spinner" />) : (<ChevronDown ... />)}
+
+looked_past: |-
+  Layout, class names, data-testid values, the focus return after the dialog closes and the ref-merging helper are implementation or surface choices that state no domain fact, so I did not judge them.
+
+candidates_opened: []

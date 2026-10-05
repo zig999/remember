@@ -1,0 +1,53 @@
+read:
+  - node: rules/graph-explorer/a-validity-date-is-shown-day-month-year
+    held_at: |-
+      DATE_FORMATTER and formatDateLabel(), lines 40-64
+    evidence: |-
+      const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC", }); if (date === null) return null; if (parts.length !== 3) return date; ... if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) { return date; } ... if (Number.isNaN(dt.getTime())) return date; return DATE_FORMATTER.format(dt);
+  - node: rules/graph-explorer/an-attribute-hides-its-bookkeeping-fields
+    held_at: |-
+      toAttributeView(), lines 74-87
+    evidence: |-
+      return { id: wire.id, key: wire.attribute_key, value: wire.value, valueType: wire.value_type, effectiveStatus: wire.effective_status, isInEffect: wire.is_in_effect, state: mapAttributeStatusToBadge(wire.effective_status, wire.status), validFromLabel: formatDateLabel(wire.valid_from), validToLabel: formatDateLabel(wire.valid_to), provenance: (wire.provenance ?? []).map(toProvenanceEntryView), };
+  - node: rules/graph-explorer/an-attribute-without-provenance-has-an-empty-list
+    held_at: |-
+      the provenance field of toAttributeView(), line 85
+    evidence: |-
+      provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  - node: rules/graph-explorer/an-inline-entry-hides-what-it-lacks
+    held_at: |-
+      toProvenanceEntryView() and formatConfidenceLabel(), lines 89-129
+    evidence: |-
+      const confidence = typeof wire.confidence === "number" && Number.isFinite(wire.confidence) ? wire.confidence : null; return { fragmentId: wire.fragment_id, fragmentText: wire.fragment_text, confidence, confidenceLabel: formatConfidenceLabel(confidence), rawInformationId: wire.raw_information_id ?? null, sourceType: wire.source_type ?? null, receivedAtLabel: formatReceivedAtLabel(wire.received_at), excerpt: wire.excerpt ?? null, };
+  - node: rules/graph-explorer/an-inline-entry-shows-its-date-only
+    held_at: |-
+      RECEIVED_AT_FORMATTER and formatReceivedAtLabel(), lines 97-110
+    evidence: |-
+      const RECEIVED_AT_FORMATTER = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", }); if (iso === undefined || iso === null) return null; const dt = new Date(iso); if (Number.isNaN(dt.getTime())) return iso; return RECEIVED_AT_FORMATTER.format(dt);
+  - node: rules/graph-explorer/attribute-badge-follows-a-fixed-precedence
+    held_at: |-
+      mapAttributeStatusToBadge(), lines 29-38
+    evidence: |-
+      if (effective === "disputed") return "disputed"; if (effective === "uncertain") return "uncertain"; if (effective === "inactive") return "superseded"; if (assertion === "superseded") return "superseded"; return "accepted";
+  - node: rules/graph-explorer/attributes-in-effect-come-first-by-key
+    held_at: |-
+      sortAttributes(), lines 131-140
+    evidence: |-
+      return [...attrs].sort((a, b) => { if (a.isInEffect !== b.isInEffect) { return a.isInEffect ? -1 : 1; } return a.key.localeCompare(b.key, "pt-BR", { sensitivity: "base" }); });
+  - node: rules/graph-explorer/confidence-is-a-rounded-percentage
+    held_at: |-
+      formatConfidenceLabel(), lines 89-95
+    evidence: |-
+      return `${Math.round(confidence * 100)}%`;
+  - node: rules/graph-explorer/node-badge-follows-the-node-status
+    held_at: |-
+      mapNodeStatusToBadge(), lines 16-27
+    evidence: |-
+      case "active": return "accepted"; case "needs_review": return "uncertain"; case "merged": return "superseded"; case "deleted": return "superseded";
+  - node: rules/graph-explorer/node-detail-has-no-merged-into-by-default
+    held_at: |-
+      toNodeDetail() and toAliasView(), lines 66-72 and 142-154
+    evidence: |-
+      mergedIntoNodeId: wire.node.merged_into_node_id ?? null, aliases: wire.aliases.map(toAliasView), ... return { id: wire.id, alias: wire.alias, kind: wire.kind, };
+looked_past: |-
+  formatDateLabel() lets Date.UTC roll an out-of-range month or day (for example 2026-13-45) into a different date instead of showing the raw text. The node does not define what counts as unreadable, so I filed no finding.

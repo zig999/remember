@@ -1,0 +1,128 @@
+findings:
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      the Textarea in ComposerSendBand, line 262
+    evidence: |-
+      placeholder="Pergunte algo…"
+    cost: |-
+      The composer shows this hint text inside the empty field, and no node holds it. The contract for compose-message names the field's label, the send and stop buttons and the band, but not a placeholder. The wording therefore lives only in this file, so a reader who looks in the specification for what the empty field says will not find it.
+    kind: unstated
+    correction: |-
+      The accepted answer of compose-message in contracts/chat-workspace/chat-screen would have to state the placeholder, or a node would have to rule that the field carries none.
+    node: contracts/chat-workspace/chat-screen
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: |-
+      Composer (archived banner versus send band), ArchivedBanner, ComposerSendBand and the label, aria-label and notice constants at lines 21-36
+    evidence: |-
+      const LABEL_TEXTAREA = "Mensagem para o assistente"; const ARIA_SEND = "Enviar mensagem"; const ARIA_STOP = "Parar geração"; aria-label="Compositor de mensagem"; const ARCHIVED_BODY = "Esta conversa está arquivada. Reative para enviar novas mensagens."; const DISABLED_CHAT_DISABLED = "O chat está temporariamente indisponível (desativado)."; const DISABLED_PROVIDER_UNAVAILABLE = "O provedor do chat está indisponível. Tente novamente em instantes."
+  - node: rules/chat-workspace/any-other-code-leaves-the-composer-usable
+    held_at: |-
+      disabledNoticeFor, lines 116-122
+    evidence: |-
+      if (errorCode === "BUSINESS_CHAT_DISABLED") return DISABLED_CHAT_DISABLED; if (errorCode === "BUSINESS_CHAT_PROVIDER_UNAVAILABLE") { return DISABLED_PROVIDER_UNAVAILABLE; } return null;
+  - node: rules/chat-workspace/archived-conversation-offers-no-input
+    held_at: |-
+      Composer, lines 131-138
+    evidence: |-
+      if (isArchived) { return ( <ArchivedBanner onUnarchive={onUnarchive} ...
+  - node: rules/chat-workspace/composer-footer-is-empty
+    held_at: |-
+      the usage slot div, lines 309-312
+    evidence: |-
+      <div className="flex items-center justify-end" data-testid="composer-usage-slot" />
+  - node: rules/chat-workspace/composer-never-clears-the-last-outcome
+    held_at: |-
+      lastErrorCode derivation, lines 181-183; nothing in the file resets the mutation
+    evidence: |-
+      const lastErrorCode = mutation.data?.errorCode ?? null; const disabledNotice = disabledNoticeFor(lastErrorCode);
+  - node: rules/chat-workspace/composer-send-carries-the-identifier-and-the-content
+    held_at: |-
+      onSubmit, lines 185-196
+    evidence: |-
+      const result = await mutation.mutateAsync({ conversationId, content: values.content, });
+  - node: rules/chat-workspace/content-has-at-most-32768-characters
+    held_at: |-
+      MAX_CONTENT_LENGTH and composerSchema, lines 19 and 38-43
+    evidence: |-
+      const MAX_CONTENT_LENGTH = 32768; .max(MAX_CONTENT_LENGTH, MSG_TOO_LONG)
+  - node: rules/chat-workspace/content-is-checked-on-every-change
+    held_at: |-
+      useForm options, lines 164-170
+    evidence: |-
+      mode: "onChange",
+  - node: rules/chat-workspace/content-needs-a-character
+    held_at: |-
+      composerSchema, lines 38-43
+    evidence: |-
+      .string() .min(1, MSG_EMPTY)
+  - node: rules/chat-workspace/disabling-codes-lock-the-composer
+    held_at: |-
+      isTextareaDisabled, the send Button's disabled prop and the notice paragraph, lines 229, 287 and 295-307
+    evidence: |-
+      const isTextareaDisabled = isStreaming || disabledNotice !== null; disabled={disabledNotice !== null} {hasError ? errors.content?.message : disabledNotice}
+  - node: rules/chat-workspace/enter-sends-and-shift-enter-breaks-the-line
+    held_at: |-
+      onTextareaKeyDown, lines 200-208
+    evidence: |-
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); formRef.current?.requestSubmit(); }
+  - node: rules/chat-workspace/escape-aborts-the-turn-from-anywhere
+    held_at: |-
+      the useEffect with a document keydown listener, lines 210-222
+    evidence: |-
+      document.addEventListener("keydown", onKeyDown); if (e.key !== "Escape") return; const controller = useChatTurnStore.getState().abortController; if (controller !== null) { e.preventDefault(); controller.abort(); }
+  - node: rules/chat-workspace/invalid-content-sends-nothing
+    held_at: |-
+      the form's handleSubmit(onSubmit) combined with the resolver and composerSchema
+    evidence: |-
+      void handleSubmit(onSubmit)(e); resolver: safeZodResolver<ComposerFormValues, typeof composerSchema>( composerSchema, )
+  - node: rules/chat-workspace/invalid-field-is-marked-and-described
+    held_at: |-
+      hasError and describedBy, lines 230-232, with the Textarea props
+    evidence: |-
+      aria-invalid={hasError} aria-describedby={describedBy} const describedBy = hasError || disabledNotice !== null ? messageId : undefined;
+  - node: rules/chat-workspace/one-message-line-under-the-field
+    held_at: |-
+      the single message paragraph, lines 295-307
+    evidence: |-
+      {(hasError || disabledNotice !== null) && ( <p id={messageId} ... {hasError ? errors.content?.message : disabledNotice}
+  - node: rules/chat-workspace/one-validation-message-per-field
+    held_at: |-
+      safeZodResolver, lines 55-61
+    evidence: |-
+      if (errors[path] === undefined) { errors[path] = { type: issue.code, message: issue.message }; }
+  - node: rules/chat-workspace/stop-button-aborts-the-turn
+    held_at: |-
+      onStopClick, lines 224-227
+    evidence: |-
+      const controller = useChatTurnStore.getState().abortController; controller?.abort();
+  - node: rules/chat-workspace/streaming-disables-the-field-and-swaps-the-button
+    held_at: |-
+      isTextareaDisabled and the isStreaming ternary, lines 229 and 270-292
+    evidence: |-
+      {isStreaming ? ( <Button type="button" variant="destructive" ... aria-label={ARIA_STOP} onClick={onStopClick} data-testid="composer-stop-button" > ) : ( <Button type="submit" ...
+  - node: rules/chat-workspace/successful-send-empties-the-field
+    held_at: |-
+      onSubmit, lines 185-196
+    evidence: |-
+      if (result.errorCode === null) { reset({ content: "" }); }
+  - node: rules/chat-workspace/validation-message-is-an-alert
+    held_at: |-
+      the message paragraph's role prop, line 298
+    evidence: |-
+      role={hasError ? "alert" : undefined}
+  - node: rules/chat-workspace/whitespace-only-content-passes
+    held_at: |-
+      composerSchema, lines 38-43, which applies no trim
+    evidence: |-
+      content: z .string() .min(1, MSG_EMPTY) .max(MAX_CONTENT_LENGTH, MSG_TOO_LONG),
+  - node: scenarios/chat-workspace/escape-stops-a-streaming-turn
+    held_at: |-
+      the document-level Escape listener, lines 210-222
+    evidence: |-
+      document.addEventListener("keydown", onKeyDown); controller.abort();
+  - node: scenarios/chat-workspace/failed-send-keeps-the-typed-text
+    held_at: |-
+      onSubmit, lines 185-196, which resets the field only on success
+    evidence: |-
+      if (result.errorCode === null) { reset({ content: "" }); }

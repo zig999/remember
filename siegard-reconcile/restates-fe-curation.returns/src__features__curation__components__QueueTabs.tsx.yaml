@@ -1,0 +1,25 @@
+findings:
+  - file: src/features/curation/components/QueueTabs.tsx
+    where: |-
+      line 43, the aria-label on TabsList
+    evidence: |-
+      <TabsList aria-label="Filtrar fila por tipo">
+    cost: |-
+      The accessible name read to screen-reader users is text the running system emits, and no node holds it. The tab labels Tudo, Entidades and Disputas are held by the show-queue answer in contracts/curation-workspace/curation-screen, which does not mention this name. A reader looking for what the tab group announces will not find it in the specification, and the wording can change without any node moving.
+    kind: unstated
+    correction: |-
+      Either the show-queue answer of contracts/curation-workspace/curation-screen states the accessible name of the tab group, or the specification declares this text outside what it holds. Which one applies is a decision for a person.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: rules/curation-workspace/tabs-choose-the-queue-kind
+    held_at: |-
+      the TABS array (lines 20-24) with keyToFilter, and the onValueChange wiring at line 40
+    evidence: |-
+      { id: undefined, label: "Tudo", key: ALL_SENTINEL },
+        { id: "entity_match", label: "Entidades", key: "entity_match" },
+        { id: "disputed", label: "Disputas", key: "disputed" },
+      and onValueChange={(next) => onChange(keyToFilter(next))}. The filter is undefined for Tudo (both queues), entity_match for Entidades and disputed for Disputas. The file only emits the chosen filter. Which queue is then read is decided by whatever consumes onChange, in another file.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
+looked_past: |-
+  I saw data-testid and data-tab-key attributes and the tab id values entity_match and disputed, which are test hooks and an enumeration binding that belong to other judgments, and I reported none of them.

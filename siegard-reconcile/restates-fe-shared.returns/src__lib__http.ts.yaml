@@ -1,0 +1,164 @@
+findings:
+  - file: src/lib/http.ts
+    where: |-
+      the status >= 500 branch of http(), lines 177-192, the fallback message passed to EnvelopeError
+    evidence: |-
+      message:
+              extractEnvelopeMessage(raw) ?? "Algo deu errado. Tente novamente.",
+    cost: |-
+      When a 5xx body carries no readable message, this helper tells the owner "Algo deu errado. Tente novamente.". The only node in this file's set about a 5xx answer, a-server-error-is-always-a-failure, gives the code (SYSTEM_UPSTREAM) but states no fallback message. The same wording is held only in the contracts of other request helpers (contracts/curation-workspace/bff-curation, for example). The next reader of this helper's 5xx contract will not find the wording in the rule that governs it, and the code is the only place it is stated for this helper.
+    kind: unstated
+    correction: |-
+      Give the message used when a 5xx answer has no readable message a home in rules/application-shell/a-server-error-is-always-a-failure, or in the node that holds this helper's wordings.
+    node: rules/application-shell/a-server-error-is-always-a-failure
+read:
+  - node: constraints/failures-answer-one-envelope
+    held_at: |-
+      class EnvelopeError (lines 22-36) and the throw sites in http()
+    evidence: |-
+      constructor(payload: EnvelopeErrorPayload) {
+          super(payload.message);
+          this.code = payload.code;
+          this.httpStatus = payload.httpStatus;
+          if (payload.details !== undefined) {
+  - node: rules/application-shell/a-401-is-answered-with-one-silent-refresh
+    held_at: |-
+      the 401 branch of http(), lines 164-175, and trySilentRefresh()
+    evidence: |-
+      if (response.status === 401 && __retried !== true) {
+          const refreshed = await trySilentRefresh();
+      ...
+      const newJwt = await fetchAccessToken();
+  - node: rules/application-shell/a-failed-envelope-keeps-its-code
+    held_at: |-
+      the final throw of http(), lines 210-216
+    evidence: |-
+      code: error?.code ?? "SYSTEM_UNKNOWN",
+          httpStatus: response.status,
+          message: error?.message ?? "Erro desconhecido do servidor.",
+          details: error?.details,
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: |-
+      the catch of trySilentRefresh(), lines 114-119, and the throw at lines 170-174
+    evidence: |-
+      useAuthStore.getState().clear();
+          redirectImpl("/sign-in?reason=session_expired");
+          return false;
+      ...
+      code: "AUTH_SESSION_EXPIRED",
+  - node: rules/application-shell/a-failure-carries-code-status-message-and-details
+    held_at: |-
+      class EnvelopeError, lines 22-36
+    evidence: |-
+      this.code = payload.code;
+          this.httpStatus = payload.httpStatus;
+          if (payload.details !== undefined) {
+            this.details = payload.details;
+          }
+  - node: rules/application-shell/a-failure-to-complete-is-timeout-abort-or-network
+    held_at: |-
+      the catch around fetch() in http(), lines 135-161
+    evidence: |-
+      code: "SYSTEM_TIMEOUT",
+              httpStatus: 0,
+      ...
+      code: "SYSTEM_ABORTED",
+              httpStatus: 0,
+      ...
+      code: "SYSTEM_NETWORK",
+            httpStatus: 0,
+  - node: rules/application-shell/a-refreshed-token-repeats-the-request
+    held_at: |-
+      the refreshed branch of the 401 handling, lines 166-169, with buildSignal() rebuilding the cutoff on the repeat call
+    evidence: |-
+      useAuthStore.getState().setToken(newJwt);
+      ...
+      const retryOpts: HttpOptions = { ...opts, __retried: true };
+            return http<T>(path, retryOpts);
+  - node: rules/application-shell/a-repeated-request-never-refreshes-again
+    held_at: |-
+      the guard on the 401 branch, line 164, and the unchanged flow to the body judgment below it
+    evidence: |-
+      if (response.status === 401 && __retried !== true) {
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: |-
+      DEFAULT_TIMEOUT_MS (line 44) and buildSignal() (lines 84-97)
+    evidence: |-
+      export const DEFAULT_TIMEOUT_MS = 30_000;
+      ...
+      timeoutController.abort(new DOMException("Request timed out after 30s", "TimeoutError"));
+  - node: rules/application-shell/a-request-is-judged-in-a-fixed-order
+    held_at: |-
+      the sequence in http(): fetch catch (line 135), 401 on first attempt (line 164), status >= 500 (line 177), response.json() catch (lines 195-204), then body.ok (line 206)
+    evidence: |-
+      if (response.status === 401 && __retried !== true) {
+      ...
+      if (response.status >= 500) {
+      ...
+      body = (await response.json()) as Envelope<T>;
+      ...
+      if (body.ok === true) {
+  - node: rules/application-shell/a-server-error-is-always-a-failure
+    held_at: |-
+      the status >= 500 branch of http(), lines 177-192, with extractEnvelopeCode and extractEnvelopeMessage (lines 221-241). The fallback message is reported as an unstated finding.
+    evidence: |-
+      code: envelopeCode ?? "SYSTEM_UPSTREAM",
+          httpStatus: response.status,
+          message:
+            extractEnvelopeMessage(raw) ?? "Algo deu errado. Tente novamente.",
+          details: raw,
+  - node: rules/application-shell/an-answer-below-500-without-json-is-invalid
+    held_at: |-
+      the response.json() catch in http(), lines 194-204
+    evidence: |-
+      code: "SYSTEM_INVALID_RESPONSE",
+            httpStatus: response.status,
+            message: "Resposta do servidor não é JSON válido.",
+  - node: rules/application-shell/an-ingestion-request-has-no-cutoff
+    held_at: |-
+      the ingest branch of buildSignal(), lines 85-87
+    evidence: |-
+      if (opts.ingest === true) {
+          return { signal: opts.signal, cleanup: () => undefined };
+        }
+  - node: rules/application-shell/only-ok-true-returns-the-result
+    held_at: |-
+      lines 206-216
+    evidence: |-
+      if (body.ok === true) {
+          return body.result as T;
+        }
+      ...
+      throw new EnvelopeError({
+  - node: rules/application-shell/the-cutoff-ends-with-the-headers
+    held_at: |-
+      cleanup() in the fetch catch and straight after fetch resolves, lines 138 and 162. The body is read at lines 180 and 196 under no timer.
+    evidence: |-
+      cleanup: () => clearTimeout(timer),
+      ...
+      cleanup();
+
+        if (response.status === 401 && __retried !== true) {
+  - node: rules/application-shell/the-first-signal-aborts-the-request
+    held_at: |-
+      composeSignals() (lines 67-82), used by buildSignal() at line 92
+    evidence: |-
+      const signal = composeSignals([timeoutController.signal, opts.signal]);
+      ...
+      if (typeof anyFn === "function") return anyFn(real);
+  - node: rules/application-shell/transport-failures-read-their-wording
+    held_at: |-
+      the message fields of the throws at lines 143, 151, 158, 201 and 214
+    evidence: |-
+      message: "Tempo limite excedido na requisição.",
+      message: "Requisição cancelada.",
+      message: "Falha de rede ao contactar o servidor.",
+      message: "Resposta do servidor não é JSON válido.",
+      message: error?.message ?? "Erro desconhecido do servidor.",
+looked_past: |-
+  The `__setRedirectForTests` test seam, the `__retried` option and the `composeSignals` fallback for runtimes without `AbortSignal.any` are implementation shape, not domain facts, and belong to another judgment.
+candidates_opened:
+  - contracts/application-shell/shell-screen
+  - contracts/curation-workspace/bff-curation
+  - rules/application-shell/session-expired-failure-carries-no-details
+  - rules/application-shell/a-request-goes-to-the-back-end-address

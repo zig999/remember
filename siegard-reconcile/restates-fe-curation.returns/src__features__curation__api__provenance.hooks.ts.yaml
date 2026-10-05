@@ -1,0 +1,36 @@
+findings:
+  - file: src/features/curation/api/provenance.hooks.ts
+    where: |-
+      useListAcceptedFragments, the queryKey object (lines 108-109)
+    evidence: |-
+      limit: params.limit ?? 20,
+              offset: params.offset ?? 0,
+    cost: |-
+      The server's page defaults (20 items, offset 0) are held by rules/knowledge-base/page-defaults, and this file applies them a second time to build the cache key. If the node's default moves, this file is not bound to that node, so the check never reaches it. The key would then treat an omitted limit as 20 while the server returns another size.
+    kind: contradicts
+    correction: |-
+      Key the cache on the params as given (undefined when omitted) so the hook stops carrying the server's default. Alternatively, bind rules/knowledge-base/page-defaults to this file.
+    node: rules/knowledge-base/page-defaults
+read:
+  - node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+    held_at: |-
+      the `enabled` expressions of useProvenanceByLink, useProvenanceByAttribute and useProvenanceByFragment (lines 22, 41, 60), and of useListAcceptedFragments (lines 97-100)
+    evidence: |-
+      const enabled = typeof linkId === "string" && linkId.length > 0;
+      ...
+      const enabled =
+          (typeof params.llmRunId === "string" && params.llmRunId.length > 0) ||
+          (typeof params.rawInformationId === "string" &&
+            params.rawInformationId.length > 0);
+  - node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+    held_at: |-
+      the STABLE_STALE_MS constant (line 17) and the `staleTime` and `refetchOnWindowFocus` options of the four hooks
+    evidence: |-
+      const STABLE_STALE_MS = 5 * 60_000;
+      ...
+      staleTime: STABLE_STALE_MS,
+      refetchOnWindowFocus: false,
+looked_past: |-
+  The node and history reads of the same rules sit in node.hooks.ts, which is outside this file.
+candidates_opened:
+  - rules/knowledge-base/page-defaults

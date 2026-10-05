@@ -1,0 +1,100 @@
+findings:
+  - file: src/features/graph/types.ts
+    where: |-
+      line 31, the type GraphNodeWireStatus, used by GraphNodeWire.status at line 39
+    evidence: |-
+      export type GraphNodeWireStatus = "active" | "needs_review" | "merged" | "deleted";
+      The node domain/knowledge-base/node-status, which graph-delta-node names as the type of status, lists: "- active", "- needs-review", "- merged", "- deleted".
+    cost: |-
+      The enumeration spells the second value with a hyphen and the file declares it with an underscore. A reader who takes the enumeration as the vocabulary will not find the value the code compares against. The specification does not record which spelling the stream carries. The prose of rules/graph-explorer/node-state-follows-its-status-alone.md also uses the underscore ("status needs_review"). The two spellings coexist in the specification and nothing says which one is the wire spelling.
+    kind: contradicts
+    correction: |-
+      Either the node-status enumeration records the spelling the stream carries, or this declaration takes the node's spelling. That decision belongs to the specification. The code cannot read the node to settle it.
+    node: domain/chat/graph-delta-node
+  - file: src/features/graph/types.ts
+    where: |-
+      line 33, the type GraphLinkWireFlag, used by GraphLinkWire.flags at line 51
+    evidence: |-
+      export type GraphLinkWireFlag = "uncertain" | "disputed" | "low_confidence";
+      The node domain/knowledge-base/assertion-flag lists: "- uncertain", "- disputed", "- low-confidence".
+    cost: |-
+      The enumeration's third value is hyphenated and the declaration is underscored. The log of domain/graph-explorer/confidence-state records that the back end's flag uses an underscore and the screen a hyphen. The assertion-flag node, which graph-delta-link names as the type of flags, holds the hyphenated form. Whoever changes the enumeration will not know this declaration carries a differently spelled copy of it.
+    kind: contradicts
+    correction: |-
+      Either the assertion-flag node records the spelling the stream carries, or this declaration takes the node's spelling. That decision belongs to the specification.
+    node: domain/knowledge-base/assertion-flag
+read:
+  - node: domain/chat/graph-delta
+    held_at: |-
+      the interface GraphDeltaWire (lines 54-58) and its view-side counterpart GraphDelta (lines 23-27)
+    evidence: |-
+      export interface GraphDeltaWire {
+        readonly source_tool: string;
+        readonly nodes: readonly GraphNodeWire[];
+        readonly links: readonly GraphLinkWire[];
+      }
+  - node: domain/chat/graph-delta-link
+    held_at: |-
+      the interface GraphLinkWire (lines 42-52). The only difference from the node is the spelling of the flag value, filed as a finding.
+    evidence: |-
+      readonly link_type: string;
+      readonly link_type_label?: string;
+      readonly is_temporal: boolean;
+      readonly is_in_effect?: boolean;
+      readonly status?: string;
+      readonly flags?: readonly GraphLinkWireFlag[];
+  - node: domain/chat/graph-delta-node
+    held_at: |-
+      the interface GraphNodeWire (lines 35-40). The status values differ in spelling from the node's enumeration, filed as a finding.
+    evidence: |-
+      export interface GraphNodeWire {
+        readonly id: string;
+        readonly node_type: string;
+        readonly canonical_name: string;
+        readonly status: GraphNodeWireStatus;
+      }
+  - node: domain/graph-explorer/graph-link-view
+    held_at: |-
+      the interface GraphLinkData (lines 12-21). The attribute names are camelCase.
+    evidence: |-
+      readonly label: string;
+      readonly linkTypeLabel: string;
+      readonly isTemporal: boolean;
+      readonly inEffect?: boolean;
+      readonly state?: ConfidenceState;
+  - node: domain/graph-explorer/graph-node-view
+    held_at: |-
+      the interface GraphNodeData (lines 4-10). The type attribute uses GraphNodeType imported from "@/components/ds/GraphNode", and the state attribute uses ConfidenceState imported from "@/components/ds/StateBadge".
+    evidence: |-
+      export interface GraphNodeData {
+        readonly id: string;
+        readonly type: GraphNodeType;
+        readonly label: string;
+        readonly state?: ConfidenceState;
+        readonly subtitle?: string;
+      }
+  - node: domain/graph-explorer/graph-pane-status
+    held_at: |-
+      the type alias GraphStatus (line 29)
+    evidence: |-
+      export type GraphStatus = "empty" | "loading" | "revealing" | "ready" | "error";
+  - node: domain/knowledge-base/assertion-flag
+    held_at: |-
+      the type alias GraphLinkWireFlag (line 33), with the spelling difference filed as a finding
+    evidence: |-
+      export type GraphLinkWireFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: rules/chat/graph-delta-link-label
+    held_at: |-
+      the optional field link_type_label on GraphLinkWire (line 47). The file only declares that the label may be absent. Deciding what the label is, and when it is absent, is done elsewhere.
+    evidence: |-
+      readonly link_type_label?: string;
+  - node: rules/graph-explorer/link-type-slug-is-kept-apart-from-its-text
+    held_at: |-
+      the interface GraphLinkData (lines 12-21), which declares label and linkTypeLabel as two separate required fields. The file declares the shape only. Nothing in it says the label holds the slug or that the slug is never the shown text, so the rule's enforcement is outside this file.
+    evidence: |-
+      readonly label: string;
+      readonly linkTypeLabel: string;
+looked_past: |-
+  The type attribute of GraphNodeData is typed with GraphNodeType declared in another file, and the attribute names are camelCase against the nodes' snake_case. Both are shape and naming conventions of the code, not domain facts, so I did not report them.
+candidates_opened:
+  - domain/knowledge-base/node-status

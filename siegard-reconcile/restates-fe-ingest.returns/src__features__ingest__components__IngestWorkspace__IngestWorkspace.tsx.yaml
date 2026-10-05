@@ -1,0 +1,32 @@
+read:
+  - node: domain/ingest-workspace/ingest-session
+    held_at: |-
+      The `useState` declarations for `content` and `sourceType` at lines 14-15 hold two of the session's attributes in this file. `phase`, `summary`, `validationMessage` and the failure (`errorCode`, `errorMessage`) are destructured from `useIngestOrchestration` at lines 26-36 and passed to `IngestPanel`. The file does not declare the session's own shape. The remaining session attributes (`llm_run_id`, `affected_node_ids`) and the operations are not visible in this file.
+    evidence: |-
+      const [content, setContent] = useState<string>("");
+      const [sourceType, setSourceType] = useState<IngestSourceType | "">("");
+      ...
+      } = useIngestOrchestration({ content, sourceType, resetForm });
+  - node: rules/ingest-workspace/another-document-clears-the-session
+    held_at: |-
+      `resetForm` at lines 20-24 clears `content`, `sourceType` and `selectedNode`. It is handed to `useIngestOrchestration` at line 36, and `handleReset` (the reset handler) comes back from the same hook and is wired to `onReset` at line 76. The clearing of the run identity, affected nodes, summary, failure and validation message, and the return to idle, are not in this file. They sit in the hook, which is outside the file set.
+    evidence: |-
+      const resetForm = useCallback(() => {
+        setContent("");
+        setSourceType("");
+        setSelectedNode(null);
+      }, []);
+  - node: rules/ingest-workspace/selected-node-detail-replaces-the-graph
+    held_at: |-
+      The ternary at lines 84-103 renders `NodeDetailPanel` while `selectedNode !== null` and `GraphSpace` otherwise. `handleDetailClose` (lines 52-54) sets `selectedNode` back to `null`, and selecting or closing touches only `selectedNode`. `phase` is read from the orchestration hook and is not written by either handler.
+    evidence: |-
+      {selectedNode !== null ? (
+        <NodeDetailPanel
+          nodeId={selectedNode.id}
+          ...
+          onClose={handleDetailClose}
+        />
+      ) : (
+        <GraphSpace
+looked_past: |-
+  I saw layout classes, `data-testid` attributes and `revealStaggerMs={90}`; they are presentation values and not domain facts, so I did not report them.

@@ -1,0 +1,73 @@
+findings:
+  - file: src/features/curation/api/_transforms.ts
+    where: |-
+      toNodeSummary, toNodeAlias, toAttributeDetail, toNodeDetail, toLinkDetail, toLinkHistoryResponse, toAttributeHistoryResponse, toProvenanceRawInformation, toProvenanceChunk, toProvenanceFragment, toProvenanceResponse, toAcceptedFragmentSourceRef, toAcceptedFragmentItem, toAcceptedFragmentList, and OkEnvelope/unwrapOk (lines 46-53 and 153-312)
+    evidence: |-
+      export function unwrapOk<T>(env: OkEnvelope<T>): T {
+        return env.result;
+      }
+      ...
+      linkInverseName: wire.link_inverse_name,
+      ...
+      documentTitle: wire.document_title ?? null,
+    cost: |-
+      About half of this file reads the node, history, provenance and accepted-fragment answers, and none of the nodes bound to it holds those fields. They are held by contracts/curation-workspace/bff-curation-reads, which the candidate index does not bind to this file. When that node changes, `--check` does not reach this file. The next reader of this file looks for these shapes in bff-curation and finds nothing.
+    kind: contradicts
+    correction: |-
+      Bind contracts/curation-workspace/bff-curation-reads to this file. The code already implements it, and its shapes match what the code reads. This finding does not come from a disagreement in the values.
+    node: contracts/curation-workspace/bff-curation-reads
+  - file: src/features/curation/api/_transforms.ts
+    where: |-
+      toProvenanceRawInformation (metadata), toProvenanceChunk (locator) and toAttributeDetail (flags)
+    evidence: |-
+      metadata: wire.metadata ?? {},
+      locator: wire.locator ?? {},
+      flags: wire.flags ?? [],
+    cost: |-
+      The code decides that an absent metadata or locator is read as an empty object and that absent flags are read as an empty list. The node says only that these fields are optional. The empty-value default is a rule in code that no node states, so the next reader cannot learn it from the specification.
+    kind: unstated
+    correction: |-
+      State in the node what an absent optional metadata, locator or flags reads as.
+    node: contracts/curation-workspace/bff-curation-reads
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      toReviewQueueList, toReviewQueueItem, toEntityMatchQueueItem, toEntityMatchCandidate, toDisputeQueueItem, toDisputedItemSide and toCurationMetrics (lines 68-151)
+    evidence: |-
+      if (wire.kind === "entity_match") {
+        return toEntityMatchQueueItem(wire);
+      }
+      return toDisputeQueueItem(wire);
+      ...
+      scope: {
+        sourceNodeId: wire.scope.source_node_id,
+        targetNodeId: wire.scope.target_node_id,
+        linkType: wire.scope.link_type,
+        nodeId: wire.scope.node_id,
+        attributeKey: wire.scope.attribute_key,
+      },
+  - node: domain/knowledge-base/curation-metrics
+    held_at: |-
+      toCurationMetrics, lines 140-151
+    evidence: |-
+      acceptRate: wire.accept_rate,
+      rejectRateByCode: wire.reject_rate_by_code,
+      needsReviewCount: wire.needs_review_count,
+      uncertainCount: wire.uncertain_count,
+      disputedCount: wire.disputed_count,
+      entityMatchQueueCount: wire.entity_match_queue_count,
+      disputedQueueCount: wire.disputed_queue_count,
+      computedAt: parseIso(wire.computed_at),
+  - node: rules/curation-workspace/invalid-date-in-an-answer-fails-the-read
+    held_at: |-
+      parseIso and parseIsoOrNull, lines 55-66
+    evidence: |-
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        throw new Error(`Invalid ISO date string: ${value}`);
+      }
+      return d;
+looked_past: |-
+  unwrapOk is exported here but is called only from the test file, and it reads the { ok, result } envelope that bff-curation-reads governs, not the bff-curation request path where the body is never unwrapped, so I reported nothing on it beyond the first finding.
+candidates_opened:
+  - contracts/curation-workspace/bff-curation-reads

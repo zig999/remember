@@ -1,0 +1,92 @@
+findings:
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: |-
+      TRAVERSE_STALE_MS constant (line 18), used in the useQueries options at lines 114-115
+    evidence: |-
+      const TRAVERSE_STALE_MS = 5 * 60_000;
+      ...
+      staleTime: TRAVERSE_STALE_MS,
+      refetchOnWindowFocus: false,
+    cost: |-
+      How long a traversal counts as fresh, and that a regained window focus never rereads it, are decided only here. The node for the traversal request states depth, direction and parallelism but no freshness. A reader looking in the specification for how current the assembled graph is will not find it. Other ingest-workspace rules were found to state no freshness window.
+    kind: unstated
+    correction: |-
+      The analysis would have to give the traversal's freshness window (five minutes) and its no-reread-on-focus behaviour a node, most naturally the rule on the traversal request.
+    node: rules/ingest-workspace/assembly-traverses-each-affected-node
+  - file: src/features/ingest/api/useIngestGraphAssembly.ts
+    where: |-
+      the two GraphDelta literals, lines 135-139 (empty assembly) and 174-178 (full assembly)
+    evidence: |-
+      const delta: GraphDelta = {
+        sourceTool: "ingest_assembly",
+        nodes: [],
+        links: [],
+      };
+    cost: |-
+      The name an ingest assembly gives itself as the tool that showed the graph is a literal that appears only in code. The graph-delta node only requires a source_tool string, and no node in the specification names this value. The next reader will not find in the specification what source an ingest-assembled graph carries.
+    kind: unstated
+    correction: |-
+      The analysis would have to state the source tool of an ingest assembly's delta in a node of the ingest-workspace, for example on the session or on the assembly rules.
+read:
+  - node: contracts/ingest-workspace/bff-traversal
+    held_at: |-
+      the queryFn in useQueries (lines 107-111) and the wire interfaces (lines 20-43)
+    evidence: |-
+      `/api/v1/nodes/${encodeURIComponent(id)}/traverse?depth=1&direction=both`, { method: "GET", headers: authHeader() }; TraverseResultMinWire { starting_node_id, nodes, links }; TraverseLinkMinWire { id, source_node_id, target_node_id, link_type, link_type_label, is_temporal, is_in_effect, status, flags }
+  - node: domain/knowledge-base/assertion-flag
+    held_at: |-
+      the flags field of TraverseLinkMinWire (line 36)
+    evidence: |-
+      readonly flags?: ReadonlyArray<"uncertain" | "disputed" | "low_confidence">;
+  - node: domain/knowledge-base/node-status
+    held_at: |-
+      the status field of TraverseNodeMinWire (line 24)
+    evidence: |-
+      readonly status?: "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/ingest-workspace/assembled-link-carries-only-what-the-bff-states
+    held_at: |-
+      mapTraverseLink, lines 57-80
+    evidence: |-
+      isTemporal: wire.is_temporal === true, ... if (wire.is_in_effect !== undefined && state !== undefined) { return { ...base, inEffect: wire.is_in_effect, state }; } ... wire.status !== undefined ? deriveLinkState(wire.status, wire.flags) : undefined
+  - node: rules/ingest-workspace/assembled-link-is-kept-once-by-identity
+    held_at: |-
+      the links loop in the effect, lines 169-171
+    evidence: |-
+      for (const wl of wire.links ?? []) { linkMap.set(wl.id, mapTraverseLink(wl)); }
+  - node: rules/ingest-workspace/assembled-neighbour-state-comes-from-its-status
+    held_at: |-
+      mapTraverseNode, lines 45-55, and the affected-node entry at lines 152-158, which carries no state
+    evidence: |-
+      if (wire.status === undefined) return base; const state = deriveNodeState(wire.status); if (state === undefined) return base; return { ...base, state }; nodeMap.set(n.id, { id: n.id, type: mapNodeType(n.nodeType), label: n.canonicalName });
+  - node: rules/ingest-workspace/assembled-node-is-labelled-by-its-canonical-name
+    held_at: |-
+      mapTraverseNode (lines 46-50) and the affected-node seeding (lines 152-158)
+    evidence: |-
+      type: mapNodeType(wire.node_type), label: wire.canonical_name; type: mapNodeType(n.nodeType), label: n.canonicalName
+  - node: rules/ingest-workspace/assembled-node-keeps-the-entry-it-got-first
+    held_at: |-
+      affected nodes seeded first (lines 152-158) and the traversal nodes guarded at lines 164-168
+    evidence: |-
+      for (const wn of wire.nodes ?? []) { if (!nodeMap.has(wn.id)) { nodeMap.set(wn.id, mapTraverseNode(wn)); } }
+  - node: rules/ingest-workspace/assembly-of-no-nodes-is-an-empty-ready-graph
+    held_at: |-
+      the totalCount === 0 branch of the effect, lines 131-143
+    evidence: |-
+      sourceTool: "ingest_assembly", nodes: [], links: [] ... useGraphStore.getState().replaceNodes(delta); useGraphStore.getState().setStatus("ready");
+  - node: rules/ingest-workspace/assembly-replaces-the-graph-only-when-every-traversal-succeeds
+    held_at: |-
+      the success guard and the final replace, lines 144 and 179-180
+    evidence: |-
+      if (successCount !== totalCount) return; ... useGraphStore.getState().replaceNodes(delta); useGraphStore.getState().setStatus("revealing");
+  - node: rules/ingest-workspace/assembly-traverses-each-affected-node
+    held_at: |-
+      the useQueries call, lines 104-117
+    evidence: |-
+      queries: ids.map((id) => ({ queryKey: ingestKeys.traverse(id), queryFn: ... `/traverse?depth=1&direction=both` ..., enabled, ...
+  - node: rules/ingest-workspace/failed-traversal-leaves-the-graph-as-it-was
+    held_at: |-
+      the hasError result (line 124) and the guard that skips every graph write unless all traversals succeeded (line 144)
+    evidence: |-
+      const hasError = results.some((r) => r.status === "error"); ... if (successCount !== totalCount) return;
+candidates_opened:
+  - domain/chat/graph-delta

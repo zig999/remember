@@ -1,0 +1,35 @@
+findings:
+  - file: src/features/curation/components/UndoToast/UndoToast.tsx
+    where: |-
+      line 56, the aria-label of the Button that carries onUndo
+    evidence: |-
+      aria-label="Desfazer ação"
+    cost: |-
+      The button's accessible name is "Desfazer ação", while the specification says the toast "offers Desfazer". The announced wording is a string the specification does not hold. A screen-reader user hears text that a reader of the specification will not find. The visible label "Desfazer" is held; only this aria-label is not.
+    kind: unstated
+    correction: |-
+      Give the announced name of the undo button a home in the node that holds the undo-decision operation's text, or drop the aria-label so the visible "Desfazer" is the name.
+    node: contracts/curation-workspace/curation-screen
+
+read:
+  - node: rules/curation-workspace/undo-toast-counts-down-in-whole-seconds
+    held_at: |-
+      secondsRemaining() and its use in the UndoToast body, lines 16-18 and 33-49
+    evidence: |-
+      return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000)); ... <span>{label}</span> ... {remaining}s
+  - node: rules/curation-workspace/undo-toast-only-reports-the-undo
+    held_at: |-
+      the Button onClick, line 55
+    evidence: |-
+      onClick={onUndo}
+  - node: rules/curation-workspace/undo-window-is-five-seconds
+    held_at: |-
+      the UNDO_WINDOW_MS constant, line 13. The "decision sent only when it ends" half is not held in this file, which only receives deadlineMs and onUndo.
+    evidence: |-
+      export const UNDO_WINDOW_MS = 5_000;
+
+looked_past: |-
+  The 100 ms refresh interval (TICK_MS) and the component's structure and styling carry no domain fact, so they are not this judgment's.
+
+candidates_opened:
+  - contracts/curation-workspace/curation-screen

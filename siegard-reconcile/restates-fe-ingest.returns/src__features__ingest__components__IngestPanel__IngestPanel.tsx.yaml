@@ -1,0 +1,52 @@
+findings: []
+read:
+  - node: rules/ingest-workspace/fields-are-editable-outside-a-run
+    held_at: |-
+      isInputDisabled(), lines 36-48, which feeds the disabled prop of IngestDropzone, Textarea and Select.
+    evidence: |-
+      case "sending": case "extracting": case "polling": case "revealing": case "complete": case "noop": return true; default: return false;
+      Idle, ready and error fall to the default, so the fields are editable only there.
+  - node: rules/ingest-workspace/file-area-shows-only-in-idle-and-ready
+    held_at: |-
+      the showDropzone constant, line 96, and its conditional render, lines 126-131.
+    evidence: |-
+      const showDropzone = phase === "idle" || isReadyPhase;
+      {showDropzone ? ( <IngestDropzone onContent={onContentChange} disabled={disabled} /> ) : null}
+  - node: rules/ingest-workspace/form-is-ready-with-content-and-source-type
+    held_at: |-
+      the canSubmit constant, line 88. The form is ready when the content has at least one character, with no trimming, and a source type is selected.
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+  - node: rules/ingest-workspace/retry-is-offered-only-for-retryable-codes
+    held_at: |-
+      the RETRYABLE_ERROR_CODES set, lines 27-34, and isRetryable, line 90, which is passed to IngestErrorBand.
+    evidence: |-
+      new Set(["SYSTEM_LLM_PROVIDER_UNAVAILABLE", "SYSTEM_INTERNAL_ERROR", "SYSTEM_UPSTREAM", "SYSTEM_TIMEOUT", "SYSTEM_NETWORK", "RUN_FAILED"]);
+      const isRetryable = errorCode !== undefined && RETRYABLE_ERROR_CODES.has(errorCode);
+  - node: rules/ingest-workspace/review-count-points-to-curation
+    held_at: |-
+      the needsReview branch inside the ingest-complete block, lines 229-236.
+    evidence: |-
+      {summary.needsReview > 0 ? ( <p data-testid="ingest-needs-review-notice" ...>Alguns nós aguardam revisão. Acesse Curadoria para detalhes.</p> ) : null}
+  - node: rules/ingest-workspace/submit-control-shows-in-idle-ready-and-sending
+    held_at: |-
+      the showSubmit constant, line 89, and the Button, lines 175-186. The button is disabled while sending.
+    evidence: |-
+      const showSubmit = phase === "idle" || isReadyPhase || isSendingPhase;
+      disabled={!canSubmit || isSendingPhase}
+  - node: rules/ingest-workspace/submit-needs-the-ready-phase
+    held_at: |-
+      the canSubmit constant, line 88, and the form's onSubmit guard, lines 120-123.
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+      onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(); }}
+  - node: scenarios/ingest-workspace/whitespace-only-content-is-ready
+    held_at: |-
+      the canSubmit constant, line 88. The check is on length, not on trimmed content, so spaces count as content.
+    evidence: |-
+      const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+looked_past: |-
+  The panel's own labels, placeholders and aria-labels ("Ingerir documento", "Conteúdo do documento", "Tipo de fonte", "Selecione o tipo…", "Ingerir", "Enviando…", "Ingerindo…") appear in no node, which is a surface judgment and not a domain fact. The source type options, the progress copy, the "Extração concluída" notice and the needs-review text all match contracts/ingest-workspace/ingest-screen, a node outside this file's bound set.
+candidates_opened:
+  - contracts/ingest-workspace/ingest-screen
+  - domain/ingest-workspace/ingest-phase

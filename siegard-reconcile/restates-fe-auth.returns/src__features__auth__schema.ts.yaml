@@ -1,0 +1,46 @@
+read:
+  - node: contracts/owner-access/sign-in
+    held_at: |-
+      the two refusal messages in signInSchema, lines 4-5. The notice, the failure alerts and their messages are not in this file.
+    evidence: |-
+      login: z.email("Informe um e-mail válido."),
+      senha: z.string().min(1, "Informe a senha."),
+  - node: domain/owner-access/sign-in-attempt
+    held_at: |-
+      nowhere. The file declares the credentials shape and the failure kind, but no construct for the attempt as a whole with credentials, failure_kind and destination.
+    evidence: |-
+      export type SignInFormValues = z.infer<typeof signInSchema>;
+      export type SignInError =
+  - node: domain/owner-access/sign-in-credentials
+    held_at: |-
+      signInSchema, lines 3-6. This is the shape of the two values the owner types, with the fields named login and senha.
+    evidence: |-
+      export const signInSchema = z.object({
+        login: z.email("Informe um e-mail válido."),
+        senha: z.string().min(1, "Informe a senha."),
+      });
+  - node: domain/owner-access/sign-in-failure-kind
+    held_at: |-
+      the SignInError union, lines 10-14. Its four tags are exactly the four enumeration values.
+    evidence: |-
+      | { type: "credential" }
+        | { type: "network" }
+        | { type: "session" }
+        | { type: "unknown" };
+  - node: rules/owner-access/sign-in-requires-password
+    held_at: |-
+      the senha field of signInSchema, line 5. It refuses an empty password and does not trim, so a password of only spaces passes, as scenarios/owner-access/whitespace-only-password-is-sent requires.
+    evidence: |-
+      senha: z.string().min(1, "Informe a senha."),
+  - node: rules/owner-access/sign-in-requires-valid-email
+    held_at: |-
+      the login field of signInSchema, line 4.
+    evidence: |-
+      login: z.email("Informe um e-mail válido."),
+  - node: scenarios/owner-access/whitespace-only-password-is-sent
+    held_at: |-
+      the senha field of signInSchema, line 5. min(1) counts length with no trim, so a password of spaces is accepted and the attempt goes on to the identity provider.
+    evidence: |-
+      senha: z.string().min(1, "Informe a senha."),
+looked_past: |-
+  The schema's property names login and senha differ from the node attributes email and password, but they follow the on-screen labels "Login" and "Senha" that sign-in-credentials names. I took that as the naming of a form field, not a domain fact, and I report no finding on it.

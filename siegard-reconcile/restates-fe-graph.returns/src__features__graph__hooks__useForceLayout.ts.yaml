@@ -1,0 +1,67 @@
+findings: []
+read:
+  - node: rules/graph-explorer/a-counter-change-places-every-node-again
+    held_at: |-
+      useForceLayout(), the isReset / pinned lines in the effect
+    evidence: |-
+      const isReset = prevNonceRef.current !== layoutNonce;
+      const pinned = isReset
+        ? new Map<string, GraphPosition>()
+        : positionsRef.current;
+  - node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+    held_at: |-
+      runForceLayout(), where simNodes are built, plus the non-reset branch of pinned in useForceLayout()
+    evidence: |-
+      if (pinned !== undefined) {
+        return { id, x: pinned.x, y: pinned.y, fx: pinned.x, fy: pinned.y };
+      }
+      return { id };
+  - node: rules/graph-explorer/a-linkless-node-is-still-placed
+    held_at: |-
+      the output loop at the end of runForceLayout(), which iterates every simNode whether or not it has links
+    evidence: |-
+      for (const n of simNodes) {
+        out.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
+      }
+  - node: rules/graph-explorer/force-layout-keeps-nodes-270-apart
+    held_at: |-
+      the constants NODE_FOOTPRINT, COLLIDE_RADIUS, LINK_DISTANCE, CHARGE_STRENGTH, CENTER_X and CENTER_Y, and the forces built from them in runForceLayout()
+    evidence: |-
+      const NODE_FOOTPRINT = 270;
+      const COLLIDE_RADIUS = NODE_FOOTPRINT / 2;
+      const LINK_DISTANCE = NODE_FOOTPRINT;
+      const CHARGE_STRENGTH = -300;
+      const CENTER_X = 0;
+      const CENTER_Y = 0;
+      .force("center", forceCenter<SimNode>(CENTER_X, CENTER_Y))
+  - node: rules/graph-explorer/force-layout-runs-a-hundred-silent-ticks
+    held_at: |-
+      SIM_TICKS and the stop-then-tick sequence in runForceLayout()
+    evidence: |-
+      const SIM_TICKS = 100;
+      .stop();
+      simulation.tick(SIM_TICKS);
+  - node: rules/graph-explorer/layout-defaults-to-force
+    held_at: |-
+      the switch on layoutAlgorithm in useForceLayout()
+    evidence: |-
+      case "force":
+      default:
+        next = runForceLayout(nodeIds, linkPairs, pinned);
+        break;
+  - node: rules/graph-explorer/layout-reruns-on-graph-or-counter-change
+    held_at: |-
+      the dependency array of the useEffect in useForceLayout(). Positions are read through positionsRef and are not a dependency, so a hand move does not re-run the layout.
+    evidence: |-
+      const positionsRef = useRef(positions);
+      positionsRef.current = positions;
+      }, [nodes, links, layoutNonce]);
+  - node: rules/graph-explorer/links-with-a-missing-endpoint-are-left-out-of-layouts
+    held_at: |-
+      the simLinks filter in runForceLayout(). The tree and radial layouts live in lib/layout-tree.ts and lib/layout-radial.ts, which are outside this file set.
+    evidence: |-
+      .filter((l) => nodeIdSet.has(l.source) && nodeIdSet.has(l.target))
+looked_past: |-
+  The effect clears positions when the graph has no nodes (`if (useGraphStore.getState().positions.size === 0) return; useGraphStore.setState({ positions: new Map<string, GraphPosition>() });`). The node rules/graph-explorer/an-empty-graph-has-no-positions holds that fact and is not in this file's set or in the candidate index, so it is a missing bind and not a finding against the code.
+candidates_opened:
+  - rules/graph-explorer/an-empty-graph-has-no-positions

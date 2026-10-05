@@ -1,0 +1,34 @@
+findings: []
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      the queryFn of useCurationQueue(), lines 14-24. It builds the list-review-queue request and reads the answer through toReviewQueueList.
+    evidence: |-
+      if (kind !== undefined) qs.set("kind", kind);
+      qs.set("limit", String(QUEUE_LIMIT));
+      qs.set("offset", "0");
+      const wire = await httpCuration<ReviewQueueListWire>(
+        `/api/v1/curation/queue?${qs.toString()}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toReviewQueueList(wire);
+  - node: rules/curation-workspace/curation-request-carries-the-access-token
+    held_at: |-
+      the request options in the queryFn, line 21. The call goes through authHeader(), and that function's bearer-or-nothing behavior lives in another file.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+  - node: rules/curation-workspace/queue-keeps-the-answered-order
+    held_at: |-
+      the return of the queryFn, line 23. This file applies no sort, filter or reorder to the answer. toReviewQueueList in api/_transforms.ts maps items with `wire.items.map(toReviewQueueItem)`, which keeps the order.
+    evidence: |-
+      return toReviewQueueList(wire);
+  - node: rules/curation-workspace/queue-kind-is-sent-only-when-chosen
+    held_at: |-
+      the guard on the kind parameter in the queryFn, line 16.
+    evidence: |-
+      if (kind !== undefined) qs.set("kind", kind);
+looked_past: |-
+  The constants QUEUE_LIMIT = 20 and QUEUE_POLL_MS = 30_000, with staleTime 0, refetchIntervalInBackground false and refetchOnWindowFocus true, state facts that nodes outside this file's node set hold and the code agrees with them (rules/curation-workspace/queue-read-asks-the-first-page-of-twenty and rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus), so this is a missing bind and not a finding against the code.
+candidates_opened:
+  - rules/curation-workspace/queue-read-asks-the-first-page-of-twenty
+  - rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus

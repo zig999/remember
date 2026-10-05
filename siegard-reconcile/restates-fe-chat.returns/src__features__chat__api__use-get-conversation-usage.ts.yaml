@@ -1,0 +1,43 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the queryFn of useGetConversationUsage, lines 16-22. It holds the GET request and URL for read-conversation-usage. Reading the answer's fields (messages kept as the message count, tokens_in, tokens_out, tool_calls) is delegated to toUsageData, imported from ./_transforms, and is not in this file.
+    evidence: |-
+      const wire = await http<UsageWire>(
+        `/api/v1/conversations/${encodeURIComponent(
+          conversationId as string,
+        )}/usage`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toUsageData(wire);
+  - node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+    held_at: |-
+      the STALE_MS constant (line 8), passed as staleTime on line 25
+    evidence: |-
+      const STALE_MS = 30_000;
+      ...
+      staleTime: STALE_MS,
+  - node: rules/chat-workspace/messages-and-usage-are-not-read-again-on-focus
+    held_at: |-
+      the refetchOnWindowFocus option of the useQuery call, line 26
+    evidence: |-
+      refetchOnWindowFocus: false,
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the queryFn, lines 15-23. It has no catch or error mapping and no text of its own, so the error raised by http propagates as is.
+    evidence: |-
+      queryFn: async () => {
+        const wire = await http<UsageWire>(
+          ...
+          { method: "GET", headers: authHeader() },
+        );
+        return toUsageData(wire);
+      },
+  - node: rules/chat-workspace/reads-need-a-conversation-id
+    held_at: |-
+      the enabled option of the useQuery call, line 24
+    evidence: |-
+      enabled: typeof conversationId === "string" && conversationId.length > 0,
+looked_past: |-
+  The "__noop__" placeholder in the query key, used when no id is given, is an implementation detail of the disabled query and states no domain fact, so it was not reported.

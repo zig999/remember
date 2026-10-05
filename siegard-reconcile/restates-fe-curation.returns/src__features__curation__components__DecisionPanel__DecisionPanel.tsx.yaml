@@ -1,0 +1,211 @@
+findings:
+  - file: src/features/curation/components/DecisionPanel/DecisionPanel.tsx
+    where: >-
+      the GlassSurface branch and the plain-section branch at the end of the component (lines 262-281)
+    evidence: |-
+      aria-label="Painel de decisão"
+    cost: >-
+      The panel's accessible name is announced to screen-reader users, and it lives only in this file. No node holds "Painel de decisão": the contract's read-decision-panel operation lists the panel's labels, hints and messages and does not list it. A change to the name would be made here, and the next reader looks in the specification and finds nothing.
+    kind: unstated
+    correction: >-
+      Add the region's accessible name to the read-decision-panel operation of contracts/curation-workspace/curation-screen. That is the analysis route. The code is not asked to change.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: domain/knowledge-base/dispute-decision
+    held_at: >-
+      the dispute branch of dispatch() (lines 101-123) and the dispute buttons array (lines 143-157). The name union at line 82 also lists adjust_periods.
+    evidence: |-
+      decision: "prefer_one", ... decision: "keep_disputed", ... id: "prefer_one" ... id: "keep_disputed" ... name: "merge_into" | "keep_separate" | "prefer_one" | "adjust_periods" | "keep_disputed" | "confirm" | "reject"
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: >-
+      the entity_match branch of dispatch() (lines 83-100) and the entity-match buttons array (lines 128-142)
+    evidence: |-
+      decision: "merge_into", ... decision: "keep_separate"
+  - node: rules/curation-workspace/any-other-refusal-shows-in-the-panel-alert
+    held_at: >-
+      the Alert rendered when serverError.code is outside the five-code list (lines 197-208)
+    evidence: |-
+      {serverError &&
+        !["BUSINESS_REASON_REQUIRED", "BUSINESS_SELF_MERGE_FORBIDDEN", "BUSINESS_INVALID_TARGET_NODE", "BUSINESS_TEMPORAL_INCOHERENT", "BUSINESS_CORRECTION_NO_CHANGES"].includes(serverError.code) && (
+          <Alert variant="destructive" role="alert" className="mx-md">{serverError.message}</Alert>
+  - node: rules/curation-workspace/changing-the-item-clears-the-draft
+    held_at: >-
+      the useEffect keyed on the item's identity (lines 61-65)
+    evidence: |-
+      setSelectedCandidate(null);
+          setSelectedSide(null);
+          setReason("");
+        }, [item.kind === "entity_match" ? item.nodeId : item.sides.map((s) => s.itemId).join(":")]);
+  - node: rules/curation-workspace/changing-the-item-restarts-the-correction
+    held_at: >-
+      the key on CorrectionSection (line 245)
+    evidence: |-
+      <CorrectionSection
+          key={correctionItemId}
+  - node: rules/curation-workspace/correction-is-offered-only-for-a-dispute
+    held_at: >-
+      the canEdit gate: canCorrect (line 161) and its conditional render (line 243)
+    evidence: |-
+      const canCorrect = item.kind === "disputed";
+      ... {canCorrect && (
+  - node: rules/curation-workspace/correction-refusals-reach-the-form
+    held_at: >-
+      the exclusion list of the panel alert (lines 197-204) and the serverError prop passed to CorrectionSection (line 251)
+    evidence: |-
+      "BUSINESS_TEMPORAL_INCOHERENT",
+          "BUSINESS_CORRECTION_NO_CHANGES",
+        ].includes(serverError.code) ... serverError={serverError}
+  - node: rules/curation-workspace/correction-targets-the-first-side
+    held_at: >-
+      correctionItemId (lines 164-165)
+    evidence: |-
+      item.kind === "disputed" ? item.sides[0]?.itemId ?? "" : "";
+  - node: rules/curation-workspace/dispute-header-adds-the-relation
+    held_at: >-
+      headerRelation (lines 45-48) and the span rendered once subjectQ.data is present (lines 183-189)
+    evidence: |-
+      (item.itemKind === "link" ? item.scope.linkType : item.scope.attributeKey)
+      ... {item.kind === "disputed" && subjectQ.data != null && headerRelation && (
+  - node: rules/curation-workspace/dispute-header-names-its-subject-node
+    held_at: >-
+      subjectId (lines 38-43), the node-detail read (line 44) and headerSubject (lines 49-52)
+    evidence: |-
+      return item.itemKind === "link" ? item.scope.sourceNodeId : item.scope.nodeId;
+      const subjectQ = useCurationNodeDetail(subjectId);
+      ... (subjectQ.data?.node.canonicalName ?? describeScope(item))
+  - node: rules/curation-workspace/dispute-offers-prefer-one-and-keep-disputed
+    held_at: >-
+      the dispute buttons array (lines 143-157). It has two entries and none adjusts periods.
+    evidence: |-
+      id: "prefer_one", label: "Preferir este" ... id: "keep_disputed", label: "Manter em disputa"
+  - node: rules/curation-workspace/entity-match-header-names-the-proposed-node
+    held_at: >-
+      headerSubject (lines 49-51)
+    evidence: |-
+      item.kind === "entity_match" ? item.canonicalName
+  - node: rules/curation-workspace/entity-match-offers-merge-and-keep-separate
+    held_at: >-
+      the entity-match buttons array (lines 128-142)
+    evidence: |-
+      id: "merge_into", label: "Fundir neste" ... id: "keep_separate", label: "Manter separados"
+  - node: rules/curation-workspace/form-hands-the-request-to-its-caller
+    held_at: >-
+      the onCorrect handler and the serverError prop passed to CorrectionSection (lines 251-256)
+    evidence: |-
+      serverError={serverError}
+      ... onCorrect={(req) => { actions?.onCorrect?.(req); }}
+  - node: rules/curation-workspace/invalid-target-refusal-marks-the-candidate
+    held_at: >-
+      invalidCandidateId (lines 67-71), passed to ComparePane (line 222). The code is left out of the alert (line 201), so no message text shows.
+    evidence: |-
+      serverError?.code === "BUSINESS_INVALID_TARGET_NODE" ? selectedCandidate : null;
+  - node: rules/curation-workspace/item-age-is-measured-from-a-fixed-reference
+    held_at: >-
+      now (line 36), used at line 194
+    evidence: |-
+      const now = useMemo(() => new Date(), [item]);
+      ... {relative(now, item.createdAt)}
+  - node: rules/curation-workspace/keep-decisions-check-only-the-gate
+    held_at: >-
+      the keep_separate and keep_disputed branches of dispatch() (lines 94-100 and 114-122). Neither checks a selection or the reason. The gate is the evidenceViewed passed to DecisionBar (line 237).
+    evidence: |-
+      if (name === "keep_separate") {
+        actions?.onResolveEntityMatch?.({ decision: "keep_separate", reason: reason || null });
+        return;
+      }
+  - node: rules/curation-workspace/keep-disputed-sends-the-items-the-decision-and-the-reason
+    held_at: >-
+      the keep_disputed branch of dispatch() (lines 114-122)
+    evidence: |-
+      item_kind: item.itemKind,
+      item_ids: item.sides.map((s) => s.itemId),
+      decision: "keep_disputed",
+      reason: reason || null,
+  - node: rules/curation-workspace/keep-separate-sends-the-decision-and-the-reason
+    held_at: >-
+      the keep_separate branch of dispatch() (lines 94-100)
+    evidence: |-
+      decision: "keep_separate",
+      reason: reason || null,
+  - node: rules/curation-workspace/merge-checks-the-gate-then-a-candidate-then-the-reason
+    held_at: >-
+      the merge_into branch of dispatch() (lines 84-86). The candidate is checked, then the reason. The gate is the evidenceViewed passed to DecisionBar (line 237).
+    evidence: |-
+      if (!selectedCandidate) return;
+      if (!reasonRef.current?.validateOnSubmit()) return;
+  - node: rules/curation-workspace/merge-sends-the-decision-the-target-and-the-reason
+    held_at: >-
+      the merge_into branch of dispatch() (lines 87-91)
+    evidence: |-
+      decision: "merge_into",
+      target_node_id: selectedCandidate,
+      reason: reason || null,
+  - node: rules/curation-workspace/merge-stays-offered-without-a-candidate
+    held_at: >-
+      the merge button, always in the entity-match array (lines 129-135), and the early return in dispatch (line 85)
+    evidence: |-
+      onClick: () => dispatch("merge_into") ... if (!selectedCandidate) return;
+  - node: rules/curation-workspace/nothing-is-preselected
+    held_at: >-
+      the initial state of the two selections (lines 54-57)
+    evidence: |-
+      useState<string | null>(
+          null,
+        );
+        const [selectedSide, setSelectedSide] = useState<string | null>(null);
+  - node: rules/curation-workspace/prefer-checks-the-gate-then-a-side-then-the-reason
+    held_at: >-
+      the prefer_one branch of dispatch() (lines 102-104). The gate is the evidenceViewed passed to DecisionBar (line 237).
+    evidence: |-
+      if (!selectedSide) return;
+      if (!reasonRef.current?.validateOnSubmit()) return;
+  - node: rules/curation-workspace/preference-sends-the-items-the-decision-the-winner-and-the-reason
+    held_at: >-
+      the prefer_one branch of dispatch() (lines 105-111)
+    evidence: |-
+      item_kind: item.itemKind,
+      item_ids: item.sides.map((s) => s.itemId),
+      decision: "prefer_one",
+      winner_id: selectedSide,
+      reason: reason || null,
+  - node: rules/curation-workspace/reason-is-sent-as-typed-and-empty-as-null
+    held_at: >-
+      every decision payload built in dispatch()
+    evidence: |-
+      reason: reason || null,
+  - node: rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+    held_at: >-
+      the useEffect that forwards the message to ReasonField (lines 73-78). The code is left out of the panel alert (line 199). The focusing is ReasonField's own and is outside this file.
+    evidence: |-
+      if (serverError.code === "BUSINESS_REASON_REQUIRED") {
+          reasonRef.current?.setServerError(serverError.message);
+        }
+  - node: rules/curation-workspace/selecting-a-candidate-makes-it-the-merge-target
+    held_at: >-
+      the onSelectCandidate setter passed to ComparePane (line 220), read as the merge target in dispatch (line 89)
+    evidence: |-
+      onSelectCandidate={setSelectedCandidate} ... target_node_id: selectedCandidate,
+  - node: rules/curation-workspace/self-merge-refusal-shows-the-fixed-text
+    held_at: >-
+      the dedicated Alert (lines 210-214) and invalidCandidateId (lines 67-71). The code is left out of the generic alert (line 200).
+    evidence: |-
+      {serverError?.code === "BUSINESS_SELF_MERGE_FORBIDDEN" && (
+        <Alert variant="destructive" role="alert" className="mx-md">
+          Não é possível fundir um nó com ele mesmo.
+  - node: rules/curation-workspace/stale-item-blocks-no-decision
+    held_at: >-
+      DecisionBar receives only evidenceViewed and submitting (lines 236-241). stale is not passed to it.
+    evidence: |-
+      <DecisionBar
+          evidenceViewed={evidenceViewed}
+          submitting={submitting}
+          buttons={buttons}
+  - node: rules/curation-workspace/stale-item-shows-the-notice-with-a-reload
+    held_at: >-
+      the StaleBanner render (line 175). The Recarregar text is the banner's own, in another file.
+    evidence: |-
+      {stale && onRefetch && <StaleBanner onReload={onRefetch} className="m-md" />}
+looked_past: >-
+  The dispatch name union at line 82 also lists "confirm" and "reject", which no branch handles, and the file holds a hard-coded GlassSurface level and styling tokens. These are dead-code and surface concerns, and none states a domain fact.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen

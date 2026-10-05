@@ -1,0 +1,157 @@
+findings:
+  - file: src/features/curation/components/CurationPage.tsx
+    where: >-
+      The mount effect at lines 50-54, together with deriveInitialSelection in curation-page-helpers.ts.
+    evidence: |-
+      useEffect(() => {
+          if (isPending || data === undefined) return;
+          const initial = deriveInitialSelection(data, deepLink);
+          setSelectedItem(initial);
+        }, [isPending, data, deepLink, kindFilter, setSelectedItem]);
+      and, in curation-page-helpers.ts, deriveInitialSelection returns the address's item when it is in the queue, otherwise the first entry of the queue. It never returns the item already in the store.
+    cost: |-
+      The screen picks an item by itself: the address's item if it is in the queue, otherwise the first entry. It does this again whenever the loaded queue or the tab changes. No node states this selection rule. The next reader will look for it in the specification and will not find it there. It also decides when the idle panel can appear: with entries loaded, the idle state of the contract's "Nothing is selected or the selection is not in the loaded queue" never shows, because the first entry is selected instead.
+    kind: unstated
+    correction: |-
+      Give the initial-selection rule a home in a node. domain/curation-workspace/curation-session holds select-item and selected_item, and is where it would belong. The rule is: deep link if it is in the loaded queue, otherwise the first entry, re-derived when the queue or the tab changes.
+    node: domain/curation-workspace/curation-session
+  - file: src/features/curation/components/CurationPage.tsx
+    where: >-
+      The same mount effect, lines 50-54, read against the store's selectedItem.
+    evidence: |-
+      const selectedItem = useCurationStore((s) => s.selectedItem);
+      ...
+      const initial = deriveInitialSelection(data, deepLink);
+      setSelectedItem(initial);
+    cost: |-
+      The store keeps selectedItem while the owner is away. When the page mounts again with no item in the address, the effect replaces the kept selection with the first entry of the queue. The kept selection is discarded on re-entry even though nothing cleared it on leaving. A reader who trusts that leaving keeps the selected item will not find where it is lost. Whether this counts as clearing it is the person's to decide; the evidence is that the stored selection is not consulted on re-entry.
+    kind: contradicts
+    correction: |-
+      Either the node states that the selection is rederived on entry from the address, or the page consults the stored selectedItem before deriving one. That choice is the person's.
+    node: rules/curation-workspace/page-keeps-its-state-when-left
+  - file: src/features/curation/components/CurationPage.tsx
+    where: >-
+      The text the page emits at lines 128, 139 and 179: the region aria-label values and the heading.
+    evidence: |-
+      aria-label="Fila de curadoria"
+      <h2 className="text-lg font-semibold tracking-tight text-foreground">Curadoria</h2>
+      aria-label="Painel de decisão"
+    cost: |-
+      This is text the screen tells the owner and assistive technology: the two region names and the page heading. No node holds it. The screen contract holds only the idle line "Selecione um item da fila para começar.", the tab names and the drawer title "Curadoria". A later change to the wording will not be seen as a change to a specified fact.
+    kind: unstated
+    correction: |-
+      Add the queue region name, the decision region name and the page heading to the screen contract's accepted answers. The contract is the node that should hold them.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: rules/curation-workspace/active-tab-lives-only-on-the-page
+    held_at: >-
+      Line 35, the kindFilter state, which is passed to useCurationQueue(kindFilter) at line 42. handleSelect at lines 64-72 writes only item to the address.
+    evidence: |-
+      const [kindFilter, setKindFilter] = useState<QueueKindFilter>(undefined);
+      ...
+      search: next !== undefined ? { item: next } : {},
+  - node: rules/curation-workspace/baseline-ignores-tab-changes
+    held_at: >-
+      Lines 58-62. The baseline is set only when it is null, and the dependency list excludes kindFilter. The only other write is the pill acknowledgement at line 140.
+    evidence: |-
+      useEffect(() => {
+          if (lastSeenTotal === null && data !== undefined) {
+            updateLastSeen(total);
+          }
+        }, [lastSeenTotal, total, data, updateLastSeen]);
+  - node: rules/curation-workspace/check-toggles-the-item-in-the-checked-set
+    held_at: >-
+      The onToggleCheck handler, lines 107-116.
+    evidence: |-
+      const next = new Set(checkedIds);
+      if (next.has(selectedItem.id)) {
+        next.delete(selectedItem.id);
+      } else {
+        next.add(selectedItem.id);
+      }
+      setSelectedItems(next);
+  - node: rules/curation-workspace/keyboard-moves-follow-the-click-path
+    held_at: >-
+      The onNext, onPrev and onSelectIndex handlers, lines 95-106. Each calls handleSelect, the same function QueueList receives as onSelect at line 162.
+    evidence: |-
+      if (next !== null) handleSelect(next);
+      ...
+      onSelect={handleSelect}
+  - node: rules/curation-workspace/new-item-count-is-the-total-minus-the-baseline
+    held_at: >-
+      Lines 56-62 and 140. The count is clamped at zero, the baseline starts at the first total seen, and it moves only through onAck on the pill.
+    evidence: |-
+      const delta = lastSeenTotal === null ? 0 : Math.max(0, total - lastSeenTotal);
+      ...
+      <PollingPill delta={delta} onAck={() => updateLastSeen(total)} />
+  - node: rules/curation-workspace/page-counts-loaded-entries-as-the-metrics-fallback
+    held_at: >-
+      The metricsFallback memo, lines 82-90.
+    evidence: |-
+      if (it.kind === "entity_match") em += 1;
+      else dp += 1;
+      ...
+      return { entityMatchQueueCount: em, disputedQueueCount: dp };
+  - node: rules/curation-workspace/page-keeps-its-state-when-left
+    held_at: >-
+      nowhere. The file declares no unmount cleanup and calls no reset. The mount effect at lines 50-54 does replace the stored selection on re-entry; see the finding.
+    evidence: |-
+      const initial = deriveInitialSelection(data, deepLink);
+      setSelectedItem(initial);
+  - node: rules/curation-workspace/page-lists-only-one-queue-page
+    held_at: >-
+      Lines 42 and 74. There is a single useCurationQueue read, and the list is built from its items alone.
+    evidence: |-
+      const queueQuery = useCurationQueue(kindFilter);
+      ...
+      const items = data?.items ?? [];
+  - node: rules/curation-workspace/page-wires-four-shortcuts
+    held_at: >-
+      The useCurationKeyboard call, lines 94-117. It receives exactly four handlers.
+    evidence: |-
+      useCurationKeyboard({
+          onNext: () => {
+          onPrev: () => {
+          onSelectIndex: (n) => {
+          onToggleCheck: () => {
+  - node: rules/curation-workspace/queue-failure-is-checked-before-empty
+    held_at: >-
+      Line 75 (isEmpty excludes isError) and the branch order at lines 154-158.
+    evidence: |-
+      const isEmpty = !isPending && !isError && items.length === 0;
+      ...
+      {isError ? (
+        <QueueErrorBanner onRetry={() => void queueQuery.refetch()} />
+      ) : isEmpty ? (
+        <EmptyQueue />
+  - node: rules/curation-workspace/select-by-number-picks-the-nth-loaded-item
+    held_at: >-
+      The onSelectIndex handler, lines 103-106. Its null branch leaves the selection. The 1-to-9 range and the Nth-item pick sit in selectByIndex in curation-page-helpers.ts.
+    evidence: |-
+      const picked = selectByIndex(data, n);
+      if (picked !== null) handleSelect(picked);
+  - node: rules/curation-workspace/selected-item-is-carried-in-the-address
+    held_at: >-
+      Lines 29-33 read the address's item through parseItemSearchParam. Lines 66-70 write it through stringifyItemSearchParam. The item=kind:id format is declared in state/curation-store.ts, which this file only calls.
+    evidence: |-
+      const deepLink = useMemo(
+          () => parseItemSearchParam(search.item),
+          [search.item],
+        );
+      ...
+      const next = stringifyItemSearchParam(item);
+  - node: rules/curation-workspace/selecting-writes-the-item-to-the-address
+    held_at: >-
+      The handleSelect navigate call, lines 64-72.
+    evidence: |-
+      void navigate({
+          to: "/curation",
+          search: next !== undefined ? { item: next } : {},
+          replace: true,
+        });
+looked_past: >-
+  The layout classes, GlassSurface usage, test ids and component structure are code-review and surface matters, not domain facts of these nodes.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
+  - domain/curation-workspace/curation-session
+  - domain/curation-workspace/selected-item

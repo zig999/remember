@@ -1,0 +1,39 @@
+findings:
+  - file: src/components/ds/StateBadge/StateBadge.tsx
+    where: >-
+      decideTransition() (lines 75-86) and the animation selection in StateBadge (lines 122-146)
+    evidence: |-
+      if (dataTransitionAttr === "merge") return "merge";
+      if (prev === "uncertain" && next === "accepted") return "promote";
+      if (next === "superseded") return "supersede";
+      ...
+      } else if (state === "uncertain" && motionAllowed) {
+        variants = pulseUncertain(false);
+        animateProp = "visible";
+    cost: >-
+      The code decides which confidence-state changes the badge animates: uncertain to accepted is a promotion, any change into superseded is a supersession, a merge is signalled by a data attribute, and an uncertain badge pulses continuously. It also decides that reduced motion switches all of this off. No node in the specification holds any of it. Only the two badge nodes (five labelled states, always named) bind this file, and neither mentions motion or transitions. The next reader looks in the specification for which state changes the badge marks, finds nothing, and the code becomes the only place that decision lives.
+    kind: unstated
+    correction: >-
+      Give the state-badge's confidence-state transition and pulse behaviour a node under domain/application-shell, or a rule constraining domain/application-shell/state-badge. Then this file can be bound to it.
+read:
+  - node: rules/application-shell/a-state-badge-has-five-states-with-labels
+    held_at: >-
+      STATE_LABELS (lines 25-31), STATE_ICONS (lines 33-39), the `state` variants of stateBadgeVariants (lines 54-62), and `const resolvedLabel = label ?? STATE_LABELS[state];` (line 100)
+    evidence: |-
+      accepted: "Aceito",
+      uncertain: "Incerto",
+      "low-confidence": "Baixa confiança",
+      disputed: "Em disputa",
+      superseded: "Superado",
+      ...
+      const resolvedLabel = label ?? STATE_LABELS[state];
+  - node: rules/application-shell/a-state-badge-is-always-named
+    held_at: >-
+      the aria-label on the root motion span (line 152), the icon element (line 164), and the visible-label branch (line 165)
+    evidence: |-
+      aria-label={`Estado de confiança: ${resolvedLabel}`}
+      ...
+      <IconCmp size={iconSize} aria-hidden="true" />
+      {!iconOnly && <span>{resolvedLabel}</span>}
+looked_past: >-
+  The size variants (sm/md), icon pixel sizes, token class names, and the ref and data-attribute plumbing are presentational and code-quality matters, not domain facts, so I did not report them.

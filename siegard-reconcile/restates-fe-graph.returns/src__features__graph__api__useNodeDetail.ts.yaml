@@ -1,0 +1,41 @@
+findings: []
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the queryFn of useNodeDetail, lines 15-21 (the read-node operation only; the traverse and provenance operations are not in this file)
+    evidence: |-
+      const wire = await http<NodeDetailWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toNodeDetail(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: |-
+      the enabled option, line 22 (the node read; the relationships and provenance reads are not in this file)
+    evidence: |-
+      enabled: typeof id === "string" && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: |-
+      STALE_MS on line 8, applied on lines 23-24 (the node detail read; the relationships and provenance reads are not in this file)
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/node-detail-reads-share-a-key-by-node
+    held_at: |-
+      the queryKey of useNodeDetail, line 14 (the node detail key only; the separate relationships key is declared elsewhere)
+    evidence: |-
+      queryKey: graphNodeKeys.detail(id ?? "__noop__"),
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: |-
+      the queryFn, lines 15-21, which has no catch or error mapping around the http call (the node detail read only)
+    evidence: |-
+      const wire = await http<NodeDetailWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+  - node: rules/graph-explorer/the-first-node-id-key-is-a-placeholder
+    held_at: |-
+      the queryKey argument, line 14
+    evidence: |-
+      queryKey: graphNodeKeys.detail(id ?? "__noop__"),

@@ -1,0 +1,41 @@
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      The default fallback returned by render() in AppErrorBoundary, lines 38-57. It holds the show-page-state refusal for a render failure: the title, the message and the Recarregar action. The other operations of this contract (show-failure, show-shell, the other show-page-state refusals) are not in this file.
+    evidence: |-
+      <h1 className="text-lg font-semibold tracking-tight">Algo deu errado.</h1>
+      <p className="text-body text-body">
+        A página não pôde ser renderizada. Recarregue para tentar novamente.
+      </p>
+      <button
+        type="button"
+        onClick={this.handleReload}
+        ...
+      >
+        Recarregar
+      </button>
+  - node: rules/application-shell/a-render-failure-is-reported-and-announced
+    held_at: |-
+      componentDidCatch, lines 24-29, which reports the error with its source and component stack. The fallback container at lines 39-44 carries the assertive alert announcement.
+    evidence: |-
+      reportError(error, {
+        source: "AppErrorBoundary",
+        extra: { componentStack: info.componentStack ?? null },
+      });
+      ...
+      <div
+        role="alert"
+        aria-live="assertive"
+  - node: rules/application-shell/a-render-failure-replaces-the-screen
+    held_at: |-
+      getDerivedStateFromError (line 20) sets hasError. render() (lines 35-58) returns the full-screen fallback in place of the children. handleReload (lines 31-33) is wired to the Recarregar button.
+    evidence: |-
+      static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+        return { hasError: true, error };
+      }
+      ...
+      className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-foreground"
+      ...
+      if (typeof window !== "undefined") window.location.reload();
+looked_past: |-
+  The optional `fallback` prop, which lets a caller replace the default notice, the `data-testid`, and the styling classes are implementation choices that state no domain fact, so they belong to a code review rather than this pass.

@@ -1,0 +1,126 @@
+findings: []
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      buildCorrectItemRequest, lines 111-130, which builds the correct-item body.
+    evidence: |-
+      item_kind: itemKind,
+          item_id: itemId,
+          corrected: {
+            ...(itemKind === "attribute"
+              ? { value: values.value }
+              : { target_node_id: values.targetNodeId }),
+            valid_from: values.validFrom,
+            valid_to: values.validTo,
+            valid_from_source: values.validFromSource,
+            valid_from_fragment_id: values.validFromFragmentId,
+          },
+          reason: values.reason,
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: |-
+      validFromSourceSchema, line 24, which declares the enumeration.
+    evidence: |-
+      export const validFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: rules/curation-workspace/attribute-correction-needs-a-value
+    held_at: |-
+      the attribute branch of the correctionSchema superRefine, lines 42-49.
+    evidence: |-
+      if (data.itemKind === "attribute") {
+            if (data.value === null) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["value"],
+                message: "Informe o valor corrigido.",
+              });
+            }
+          }
+  - node: rules/curation-workspace/client-detects-no-unchanged-correction
+    held_at: |-
+      the correctionSchema superRefine, lines 41-80. It holds only the value or target, the start before the end, and the stated fragment. None of its branches compares a value with the starting values.
+    evidence: |-
+      if (data.validFrom !== null && data.validTo !== null) {
+            if (data.validFrom >= data.validTo) {
+  - node: rules/curation-workspace/correction-checks-run-in-order
+    held_at: |-
+      the order of the three checks in the correctionSchema superRefine, lines 41-79. The checks run in the order the node states, and each message carries its own path.
+    evidence: |-
+      path: ["value"], ... path: ["targetNodeId"], ... path: ["validTo"], ... path: ["validFromFragmentId"],
+  - node: rules/curation-workspace/correction-dates-have-the-iso-shape
+    held_at: |-
+      ISO_DATE_RE at line 4 and the dateString schema at lines 11-22. Only the shape is tested, with no calendar check.
+    evidence: |-
+      const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      ... if (v !== null && !ISO_DATE_RE.test(v)) {
+            ctx.addIssue({ code: "custom", message: "Data inválida. Use o formato AAAA-MM-DD.", });
+  - node: rules/curation-workspace/correction-fields-start-from-the-item
+    held_at: |-
+      buildDefaults, lines 95-109.
+    evidence: |-
+      validFromSource: d.validFromSource ?? "document",
+          validFromFragmentId: d.validFromFragmentId ?? "",
+          reason: "",
+  - node: rules/curation-workspace/correction-reason-is-required-and-trimmed
+    held_at: |-
+      the reason field of correctionSchema, lines 36-39. It trims, requires at least one character, and sets no maximum.
+    evidence: |-
+      reason: z
+            .string()
+            .trim()
+            .min(1, { message: "Informe um motivo para continuar." }),
+  - node: rules/curation-workspace/correction-sends-the-item-the-values-and-the-reason
+    held_at: |-
+      buildCorrectItemRequest, lines 111-130.
+    evidence: |-
+      item_kind: itemKind,
+          item_id: itemId,
+          corrected: {
+      ...
+          reason: values.reason,
+  - node: rules/curation-workspace/correction-start-precedes-the-end
+    held_at: |-
+      the date check in the correctionSchema superRefine, lines 60-68. The comparison is strict and the message lands on validTo.
+    evidence: |-
+      if (data.validFrom >= data.validTo) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["validTo"],
+                message: "O início deve ser anterior ao fim.",
+  - node: rules/curation-workspace/date-justification-offers-three-bases
+    held_at: |-
+      validFromSourceSchema, line 24, holds only the three bases in the order stated, document, received. The labels and hints are not in this file.
+    evidence: |-
+      export const validFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: rules/curation-workspace/empty-correction-field-is-sent-as-null
+    held_at: |-
+      the optionalString and dateString transforms, lines 6-14. They are applied to value, targetNodeId, validFrom, validTo and validFromFragmentId.
+    evidence: |-
+      .transform((v) => (v === undefined || v.length === 0 ? null : v));
+  - node: rules/curation-workspace/fragment-id-is-sent-whatever-the-basis
+    held_at: |-
+      the corrected object in buildCorrectItemRequest, line 126, which has no condition on the basis.
+    evidence: |-
+      valid_from_fragment_id: values.validFromFragmentId,
+  - node: rules/curation-workspace/link-correction-needs-a-target
+    held_at: |-
+      the link branch of the correctionSchema superRefine, lines 50-58. It checks emptiness only, with no format check.
+    evidence: |-
+      } else if (data.itemKind === "link") {
+            if (data.targetNodeId === null) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["targetNodeId"],
+                message: "Selecione o nó-alvo da fusão.",
+  - node: rules/curation-workspace/manual-fragment-id-is-not-checked
+    held_at: |-
+      validFromFragmentId, line 35, is an optionalString with no format test.
+    evidence: |-
+      validFromFragmentId: optionalString,
+  - node: rules/curation-workspace/stated-basis-needs-a-fragment
+    held_at: |-
+      the last check of the correctionSchema superRefine, lines 70-79. It requires the fragment only under stated.
+    evidence: |-
+      data.validFromSource === "stated" &&
+          data.validFromFragmentId === null
+      ... message: "Selecione o fragmento que justifica a data.",
+looked_past: |-
+  The six validation messages the file emits match, word for word and field for field, contracts/curation-workspace/curation-screen (a node outside this set, found by searching the specification root and not offered as a candidate), so they are no finding. Also seen and not reported because they are other judgments: `itemId: z.string().min(1)` and `itemKind: z.enum(["link", "attribute"])` are shape guards on values the form always supplies, and CorrectionRawDefaults repeats the basis literals as a type union beside validFromSourceSchema, which is a code-review point and no domain fact.

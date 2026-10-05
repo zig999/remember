@@ -1,0 +1,74 @@
+findings: []
+read:
+  - node: rules/graph-explorer/a-gap-change-applies-from-the-next-reveal
+    held_at: |-
+      useGraphReveal(), staggerRef and the effect that schedules each step, lines 47-48 and 65
+    evidence: |-
+      staggerRef.current = staggerMs;
+      ...
+      const delay = Math.max(0, staggerRef.current);
+      ...
+      }, [revealQueue]);
+  - node: rules/graph-explorer/a-gap-of-zero-or-less-is-zero
+    held_at: |-
+      the delay computation and setTimeout call in the effect, lines 65 and 80
+    evidence: |-
+      const delay = Math.max(0, staggerRef.current);
+      ...
+      timerRef.current = setTimeout(tick, delay);
+  - node: rules/graph-explorer/empty-reveal-queue-ends-revealing
+    held_at: |-
+      the empty-queue branch of the effect (lines 53-58), drainAll() (lines 14-31) and the end of tick() (lines 73-77)
+    evidence: |-
+      if (revealQueue.length === 0) {
+        if (useGraphStore.getState().status === "revealing") {
+          useGraphStore.getState().setStatus("ready");
+        }
+        return;
+      }
+  - node: rules/graph-explorer/reduced-motion-reveals-everything-at-once
+    held_at: |-
+      prefersReducedMotion() (lines 8-12), the branch in the effect (lines 60-63) and drainAll()
+    evidence: |-
+      if (typeof window === "undefined") return false;
+      if (typeof window.matchMedia !== "function") return false;
+      return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+      ...
+      if (prefersReducedMotion()) {
+        drainAll();
+        return;
+      }
+  - node: rules/graph-explorer/reveal-goes-one-node-at-a-time-in-queue-order
+    held_at: |-
+      DEFAULT_REVEAL_STAGGER_MS (line 4) and tick() (lines 67-78), which dequeues the head and reveals a single id per timer
+    evidence: |-
+      export const DEFAULT_REVEAL_STAGGER_MS = 90;
+      ...
+      const id = useGraphStore.getState().dequeueReveal();
+      if (id !== undefined) {
+        revealOne(id);
+      }
+  - node: rules/graph-explorer/reveal-marks-nodes-only
+    held_at: |-
+      revealOne() (lines 33-39), which writes only revealedIds
+    evidence: |-
+      const next = new Set(revealedIds);
+      next.add(id);
+      useGraphStore.setState({ revealedIds: next });
+  - node: rules/graph-explorer/revealing-a-revealed-node-changes-nothing
+    held_at: |-
+      the early return in revealOne(), line 35
+    evidence: |-
+      if (revealedIds.has(id)) return;
+  - node: rules/graph-explorer/stopping-the-reveal-keeps-what-it-reached
+    held_at: |-
+      the effect's cleanup function, lines 82-87, which clears the pending timer and does not touch revealQueue or revealedIds
+    evidence: |-
+      return (): void => {
+        if (timerRef.current !== null) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+looked_past: |-
+  The eslint-disable-next-line react-hooks/exhaustive-deps directive is a tool directive and the hook's structure is not a domain fact, so I left both unjudged.

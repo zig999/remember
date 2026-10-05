@@ -1,0 +1,33 @@
+read:
+  - node: domain/curation-workspace/display-mode
+    held_at: |-
+      Line 3, the `DisplayMode` type declaration.
+    evidence: |-
+      export type DisplayMode = "summary" | "full-diff";
+  - node: rules/curation-workspace/display-mode-is-decided-from-the-entry-alone
+    held_at: |-
+      The signature of `resolveDisplayMode`, line 7. It takes only the queue item and reads nothing else.
+    evidence: |-
+      export function resolveDisplayMode(item: ReviewQueueItem): DisplayMode {
+  - node: rules/curation-workspace/dispute-shows-summary-for-two-sides-with-an-end
+    held_at: |-
+      Lines 17-21, the dispute branch of `resolveDisplayMode`.
+    evidence: |-
+      if (item.sides.length === 2) {
+          const noOverlap = item.sides.some((s) => s.validTo !== null);
+          if (noOverlap) return "summary";
+        }
+        return "full-diff";
+  - node: rules/curation-workspace/entity-match-shows-summary-for-one-high-similarity-candidate
+    held_at: |-
+      Lines 5 and 8-15, the `entity_match` branch and the `HIGH_SIMILARITY_THRESHOLD` constant.
+    evidence: |-
+      export const HIGH_SIMILARITY_THRESHOLD = 0.9;
+      ...
+        if (item.kind === "entity_match") {
+          if (item.candidates.length === 1) {
+            const top = item.candidates[0];
+            if (top !== undefined && top.similarity >= HIGH_SIMILARITY_THRESHOLD) {
+              return "summary";
+looked_past: |-
+  The `top !== undefined` guard and the `noOverlap` variable name are implementation detail, not a domain fact, so I did not report them.

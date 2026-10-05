@@ -1,0 +1,44 @@
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the queryFn of useNodeRelationships, lines 19-23. This is the traverse operation only. The file does not issue the read-node or provenance reads.
+    evidence: |-
+      const wire = await http<TraversalResultWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}/traverse?depth=1&direction=both`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toTraversalResult(wire);
+  - node: rules/graph-explorer/a-read-needs-a-non-empty-identity
+    held_at: |-
+      the enabled option, line 25. The provenance half of the rule has no counterpart in this file.
+    evidence: |-
+      enabled: typeof id === "string" && id.length > 0,
+  - node: rules/graph-explorer/a-read-stays-fresh-five-minutes
+    held_at: |-
+      the STALE_MS constant (line 11) and the staleTime and refetchOnWindowFocus options (lines 26-27).
+    evidence: |-
+      const STALE_MS = 5 * 60_000;
+      ...
+      staleTime: STALE_MS,
+      refetchOnWindowFocus: false,
+  - node: rules/graph-explorer/node-detail-reads-share-a-key-by-node
+    held_at: |-
+      the queryKey option, line 17. This is the relationships key by node id, with a placeholder id when none is given. The key factory's own shape is declared in ./keys, which is outside this file.
+    evidence: |-
+      queryKey: graphNodeKeys.relationships(id ?? "__noop__"),
+  - node: rules/graph-explorer/read-failures-pass-through-unchanged
+    held_at: |-
+      the queryFn, lines 19-23. The http helper's failure propagates with no catch or rewrapping.
+    evidence: |-
+      const wire = await http<TraversalResultWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}/traverse?depth=1&direction=both`,
+        { method: "GET", headers: authHeader() },
+      );
+  - node: rules/graph-explorer/relationships-are-read-at-depth-one-both-ways
+    held_at: |-
+      the request path in the queryFn, line 20.
+    evidence: |-
+      /traverse?depth=1&direction=both
+
+looked_past: |-
+  The literal "__noop__" is a placeholder-key spelling that no node fixes. I read it as an implementation detail of the placeholder-id rule and not as a domain fact.

@@ -1,0 +1,62 @@
+findings: []
+read:
+  - node: rules/application-shell/a-failed-menu-action-does-not-navigate
+    held_at: |-
+      The onCreate, onArchive and onDelete handlers (lines 46-85). Each navigates only inside an onSuccess callback, and the file declares no onError.
+    evidence: |-
+      createMutation.mutate(undefined, {
+                onSuccess: (created) => {
+                  void navigate({
+      ...
+      deleteMutation.mutate(
+                { id },
+                {
+                  onSuccess: () => {
+  - node: rules/application-shell/archiving-stamps-the-browser-clock
+    held_at: |-
+      The onArchive handler (lines 59-70).
+    evidence: |-
+      updateMutation.mutate(
+                { id, archivedAt: new Date().toISOString() },
+                {
+                  onSuccess: () => {
+                    if (id === activeConversationId) {
+                      void navigate({ to: "/chat", search: {} });
+  - node: rules/application-shell/choosing-or-creating-a-conversation-opens-it
+    held_at: |-
+      The onSelect handler (lines 43-45) and the onCreate handler (lines 46-55).
+    evidence: |-
+      void navigate({ to: "/chat", search: { conversation: id } });
+      ...
+      createMutation.mutate(undefined, {
+                onSuccess: (created) => {
+                  void navigate({
+                    to: "/chat",
+                    search: { conversation: created.id },
+  - node: rules/application-shell/deleting-the-active-conversation-leaves-it
+    held_at: |-
+      The onDelete handler (lines 74-85).
+    evidence: |-
+      deleteMutation.mutate(
+                { id },
+                {
+                  onSuccess: () => {
+                    if (id === activeConversationId) {
+                      void navigate({ to: "/chat", search: {} });
+  - node: rules/application-shell/renaming-and-reactivating-stay-where-they-are
+    held_at: |-
+      The onRename handler (lines 56-58) and the onUnarchive handler (lines 71-73). Neither calls navigate.
+    evidence: |-
+      updateMutation.mutate({ id, title: newTitle });
+      ...
+      updateMutation.mutate({ id, archivedAt: null });
+  - node: rules/application-shell/the-header-menu-lists-without-archived-by-default
+    held_at: |-
+      The includeArchived state (line 21), the list query (line 23) and the activeTitle derivation (lines 29-31).
+    evidence: |-
+      const [includeArchived, setIncludeArchived] = useState(false);
+
+        const listQuery = useListConversations({ includeArchived });
+      ...
+      const activeTitle =
+          conversations.find((c) => c.id === activeConversationId)?.title ?? null;

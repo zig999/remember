@@ -1,0 +1,83 @@
+read:
+  - node: domain/curation-workspace/curation-shortcut
+    held_at: |-
+      the CurationShortcut union type (lines 34-45), produced by mapKey (lines 47-64)
+    evidence: |-
+      export type CurationShortcut =
+        | "next"
+        | "prev"
+        | "toggleCheck"
+        | "evidence"
+        | "merge"
+        | "keepSeparate"
+        | "confirm"
+        | "reject"
+        | "undo"
+        | "toggleHelp"
+        | { readonly kind: "selectIndex"; readonly n: number };
+  - node: rules/curation-workspace/keyboard-shortcuts-act-only-while-enabled
+    held_at: |-
+      useCurationKeyboard, the options destructuring and the guard at the top of the effect (lines 70 and 80)
+    evidence: |-
+      const { enabled = true, target } = options;
+      ...
+      if (!enabled) return undefined;
+  - node: rules/curation-workspace/keys-typed-into-a-field-are-no-shortcut
+    held_at: |-
+      isEditableTarget (lines 22-32), called from onKeyDown (line 85)
+    evidence: |-
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (target.isContentEditable) return true;
+      if (role === "combobox" || role === "listbox" || role === "textbox") {
+      ...
+      if (isEditableTarget(event.target)) return;
+  - node: rules/curation-workspace/modified-keys-are-no-shortcut
+    held_at: |-
+      the first line of mapKey (line 48)
+    evidence: |-
+      if (event.ctrlKey || event.altKey || event.metaKey) return null;
+  - node: rules/curation-workspace/shortcut-keys-have-fixed-meanings
+    held_at: |-
+      the key comparisons in mapKey (lines 50-62)
+    evidence: |-
+      if (key === "j") return "next";
+      if (key === "k") return "prev";
+      if (key === "x") return "toggleCheck";
+      if (key === "e") return "evidence";
+      if (key === "m") return "merge";
+      if (key === "s") return "keepSeparate";
+      if (key === "c") return "confirm";
+      if (key === "r") return "reject";
+      if (key === "u") return "undo";
+      if (key === "?") return "toggleHelp";
+      if (key.length === 1 && key >= "1" && key <= "9") {
+        return { kind: "selectIndex", n: Number(key) };
+  - node: rules/curation-workspace/shortcut-letters-act-in-lower-case-only
+    held_at: |-
+      the strict-equality comparisons against lower-case letters in mapKey (lines 50-58)
+    evidence: |-
+      if (key === "j") return "next";
+      if (key === "c") return "confirm";
+  - node: rules/curation-workspace/shortcuts-listen-on-the-whole-window
+    held_at: |-
+      the listener target selection in the effect (line 81)
+    evidence: |-
+      const el: EventTarget = targetRef?.current ?? window;
+  - node: rules/curation-workspace/unwired-shortcut-does-nothing
+    held_at: |-
+      the undefined-callback guards in onKeyDown (lines 91-95 and the switch cases), where preventDefault sits inside the guard
+    evidence: |-
+      if (cb.onNext !== undefined) {
+        event.preventDefault();
+        cb.onNext();
+      }
+      return;
+  - node: rules/curation-workspace/wired-shortcuts-stop-the-default-except-help
+    held_at: |-
+      the switch cases in onKeyDown (lines 98-158); every wired case calls preventDefault and the toggleHelp case does not
+    evidence: |-
+      case "toggleHelp":
+        if (cb.onToggleHelp !== undefined) {
+          cb.onToggleHelp();
+        }
+        return;

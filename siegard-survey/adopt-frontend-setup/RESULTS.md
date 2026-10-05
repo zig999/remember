@@ -75,3 +75,13 @@ Políticas pendentes de aprovação: P1 (texto de interface); duplicação das r
 - Teto de 20 delegações simultâneas: lançar juízes em lotes de 20.
 - `--outside` aceita uma flag por arquivo; só vale para arquivos que o staging julga em outro conjunto (um arquivo julgado é obrigatório).
 - Um juiz que devolve chave fora do contrato é recusado pelo fold e rodado de novo.
+
+## Restates pass (2026-10-05)
+
+- Route: comment route. All prose comments (tool directives kept) removed from 142 frontend files by a deterministic stripper (commits bff7400, 69dfafe); typecheck clean, lint 346 pre-existing errors unchanged, vitest 97 files / 1123 tests passed.
+- Reconcile: 136 judges (one per file holding nodes), records `siegard-reconcile/restates-fe-{auth,ingest,curation,chat,graph,shared}.md`, all folded and bound.
+- Findings in the new returns: 0 restates, 21 contradicts, 29 unstated (carried to the corrections phase; nothing decided here).
+- `trace.py --check`: `code` drift suppressed under the freely-edited target fell from 862 to 26 (22 files); `proof` 1 (backend test, unrelated).
+- `--untraced frontend`: 1 unsurveyed (`frontend/vendor`), 81 holds-nothing, 28 outside, 118 uncertified.
+- Telemetry: siegard-telemetry/20261005T121440Z.json (136 agents, 386739 output tokens).
+- Lesson: removing only the flagged comments does not converge (re-judging flags new ones); removing all prose then reconciling does.

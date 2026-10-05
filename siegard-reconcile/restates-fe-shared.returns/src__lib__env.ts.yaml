@@ -1,0 +1,38 @@
+findings: []
+read:
+  - node: rules/application-shell/client-needs-two-urls
+    held_at: |-
+      EnvSchema (lines 3-6) and the object built in getEnv() (lines 28-31)
+    evidence: |-
+      const EnvSchema = z.object({
+        VITE_BFF_URL: z.url("VITE_BFF_URL must be a valid URL"),
+        VITE_NEON_AUTH_URL: z.url("VITE_NEON_AUTH_URL must be a valid URL"),
+      });
+      ...
+      const parsed = EnvSchema.safeParse({
+        VITE_BFF_URL: source.VITE_BFF_URL,
+        VITE_NEON_AUTH_URL: source.VITE_NEON_AUTH_URL,
+      });
+  - node: rules/application-shell/invalid-configuration-stops-the-client
+    held_at: |-
+      the failure branch of getEnv(), lines 33-37, and the EnvInvalidError constructor, lines 14-20
+    evidence: |-
+      if (!parsed.success) {
+        console.error("[env] Frontend env validation failed:", parsed.error.issues);
+        throw new EnvInvalidError(parsed.error.issues);
+      }
+      ...
+      "Frontend env invalid — fix VITE_BFF_URL / VITE_NEON_AUTH_URL: " +
+        issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; "),
+  - node: rules/application-shell/the-first-valid-configuration-is-kept
+    held_at: |-
+      the module-level cache and the guard and assignment in getEnv(), lines 23-26 and 39-40
+    evidence: |-
+      let cached: Env | null = null;
+      ...
+      if (cached !== null) return cached;
+      ...
+      cached = Object.freeze(parsed.data);
+      return cached;
+looked_past: |-
+  The literal key names VITE_BFF_URL and VITE_NEON_AUTH_URL appear in no node, since the nodes say only "the back end address and the identity provider address". I treated them as the environment binding of those two values, not as a domain fact. The test-only export __resetEnvCacheForTests is not a domain fact either.

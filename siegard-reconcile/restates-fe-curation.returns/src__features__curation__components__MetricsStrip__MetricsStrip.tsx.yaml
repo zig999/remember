@@ -1,0 +1,54 @@
+read:
+  - node: rules/curation-workspace/acceptance-rate-shows-as-a-whole-percentage
+    held_at: |-
+      formatPercent(), lines 23-25, used by the first cell in buildCells()
+    evidence: |-
+      return `${Math.round(rate * 100)}%`;
+      { label: "Aceitação", value: formatPercent(metrics.acceptRate) },
+  - node: rules/curation-workspace/failed-metrics-fall-back-to-the-queue-totals
+    held_at: |-
+      the `hasError && fallback` branch of buildCells(), lines 38-52
+    evidence: |-
+      if (hasError && fallback) {
+        return [
+          { label: "Aceitação", value: "—" },
+          { label: "Em revisão", value: "—" },
+          { label: "Incertos", value: "—" },
+          { label: "Disputados", value: String(fallback.disputedQueueCount) },
+          { label: "Fila entidades", value: String(fallback.entityMatchQueueCount) },
+        ];
+      }
+  - node: rules/curation-workspace/failed-metrics-never-fail-the-strip
+    held_at: |-
+      the final `return [];` of buildCells(), line 53, together with `const skeleton = !settled || cells.length === 0;` on line 59
+    evidence: |-
+      return [];
+      const skeleton = !settled || cells.length === 0;
+      The component takes `hasError` as a prop and never throws. With an error and no fallback, buildCells() returns no cells and the placeholder branch renders.
+  - node: rules/curation-workspace/metrics-strip-hides-the-reject-rate-and-the-time
+    held_at: |-
+      the cell lists in buildCells(), lines 29-52, which carry only the five metrics
+    evidence: |-
+      { label: "Aceitação", ... }, { label: "Em revisão", ... }, { label: "Incertos", ... }, { label: "Disputados", ... }, { label: "Fila entidades", ... }
+      No cell, label or element in the file shows a reject rate or a computed-at time.
+  - node: rules/curation-workspace/metrics-strip-shows-five-metrics-in-order
+    held_at: |-
+      the metrics branch of buildCells(), lines 29-37, and the lead/counts rendering, lines 60 and 85-100
+    evidence: |-
+      { label: "Aceitação", value: formatPercent(metrics.acceptRate) },
+      { label: "Em revisão", value: String(metrics.needsReviewCount) },
+      { label: "Incertos", value: String(metrics.uncertainCount) },
+      { label: "Disputados", value: String(metrics.disputedCount) },
+      { label: "Fila entidades", value: String(metrics.entityMatchQueueCount) },
+      const [lead, ...counts] = cells;
+      <span className="text-lg font-semibold tracking-tight tabular-nums text-foreground">
+  - node: rules/curation-workspace/metrics-strip-shows-placeholders-until-settled
+    held_at: |-
+      the `skeleton` flag, line 59, the `aria-busy` attribute on the root, line 66, and the placeholder branch, lines 69-82
+    evidence: |-
+      const skeleton = !settled || cells.length === 0;
+      aria-busy={skeleton || undefined}
+      role="status"
+      aria-label="Carregando métrica"
+looked_past: |-
+  The Portuguese metric labels ("Aceitação", "Em revisão", "Incertos", "Disputados", "Fila entidades"), the region's aria-label and the Tailwind styling are surface wording; none states a domain fact beyond what the six nodes hold.

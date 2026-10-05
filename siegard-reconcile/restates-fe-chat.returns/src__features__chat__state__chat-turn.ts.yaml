@@ -1,0 +1,87 @@
+findings:
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the `ChatStatus` type, lines 4-9
+    evidence: |-
+      export type ChatStatus =
+        | "idle"
+        | "thinking"
+        | "streaming"
+        | "tool_running"
+        | "error";
+    cost: |-
+      The chat-status enumeration is declared here as its own authority, in a file that node is not bound to. The node spells the fourth value `tool-running` and this file spells it `tool_running`. When the node's values move, `--check` does not reach this file. Nobody can then tell which spelling was decided. The same literal `tool_running` is also compared in `ChatStatusIndicator.tsx`, so the divergence spreads from this declaration.
+    kind: contradicts
+    correction: |-
+      The enumeration is the node's fact, and its shape is declared in this file. Code does not read the specification, so the correction is to bind `domain/chat-workspace/chat-status` to this file. The value `tool_running` against the node's `tool-running` then needs a decision on which spelling is the business's.
+    node: domain/chat-workspace/chat-status
+
+read:
+  - node: rules/chat-workspace/an-outcome-settles-the-most-recent-chip
+    held_at: |-
+      `updateLastToolChip`, lines 55-64
+    evidence: |-
+      if (state.toolChips.length === 0) return state;
+      const next = state.toolChips.slice();
+      const lastIdx = next.length - 1;
+      ...
+      next[lastIdx] = { ...last, ok };
+  - node: rules/chat-workspace/any-status-may-follow-any-status
+    held_at: |-
+      `setChatStatus`, line 66
+    evidence: |-
+      setChatStatus: (chatStatus) => set({ chatStatus }),
+  - node: rules/chat-workspace/reset-restores-every-field-at-once
+    held_at: |-
+      `reset`, line 41, over `initialState`, lines 29-36
+    evidence: |-
+      reset: () => set({ ...initialState }),
+  - node: rules/chat-workspace/started-tool-calls-accumulate-at-the-end
+    held_at: |-
+      `addToolChip`, lines 52-53
+    evidence: |-
+      addToolChip: (chip) =>
+        set((state) => ({ toolChips: [...state.toolChips, chip] })),
+  - node: rules/chat-workspace/streamed-text-accumulates-at-the-end
+    held_at: |-
+      `appendText`, lines 45-46
+    evidence: |-
+      appendText: (delta) =>
+        set((state) => ({ streamingText: state.streamingText + delta })),
+  - node: rules/chat-workspace/streaming-flag-is-separate-from-the-status
+    held_at: |-
+      `setStreaming`, line 50, and `setChatStatus`, line 66, which are independent setters
+    evidence: |-
+      setStreaming: (isStreaming) => set({ isStreaming }),
+      setChatStatus: (chatStatus) => set({ chatStatus }),
+  - node: rules/chat-workspace/turn-holds-one-abort-handle
+    held_at: |-
+      the `abortController` field, line 14, and `setAbortController`, line 43
+    evidence: |-
+      abortController: AbortController | null;
+      setAbortController: (abortController) => set({ abortController }),
+  - node: rules/chat-workspace/turn-holds-the-idempotency-key
+    held_at: |-
+      the `idempotencyKey` field, line 15, and `setIdempotencyKey`, line 48
+    evidence: |-
+      idempotencyKey: string | null;
+      setIdempotencyKey: (idempotencyKey) => set({ idempotencyKey }),
+  - node: rules/chat-workspace/turn-starts-empty-and-idle
+    held_at: |-
+      `initialState`, lines 29-36
+    evidence: |-
+      streamingText: "",
+      toolChips: [] as ReadonlyArray<ToolCallData>,
+      abortController: null as AbortController | null,
+      idempotencyKey: null as string | null,
+      isStreaming: false,
+      chatStatus: "idle" as ChatStatus,
+  - node: rules/chat-workspace/turn-state-lives-in-memory-only
+    held_at: |-
+      `useChatTurnStore = create<ChatTurnState>(...)`, line 38. It is a plain zustand store with no `persist` middleware or storage call.
+    evidence: |-
+      export const useChatTurnStore = create<ChatTurnState>((set) => ({
+        ...initialState,
+
+candidates_opened:
+  - domain/chat-workspace/chat-status

@@ -1,0 +1,79 @@
+findings:
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      SourceTypeWire, lines 1-8 (IngestSourceType, line 10, re-exports it)
+    evidence: |-
+      export type SourceTypeWire =
+        | "pdf"
+        | "email"
+        | "ata"
+        | "chat"
+        | "artigo"
+        | "transcricao"
+        | "outro";
+    cost: |-
+      The closed set of source types is declared here as its own vocabulary. Its node, domain/knowledge-base/source-type, is not bound to this file, so a change to the node never reaches this declaration. The node lists pdf, email, meeting-minutes, chat, article, transcript and other, and gives ata, artigo, transcricao and outro as the material's own words for four of them. If the node moves, nobody can tell which spelling the business decided.
+    kind: contradicts
+    correction: |-
+      The vocabulary is held in this file's own declaration, and the code cannot read the specification. What closes it is a bind of domain/knowledge-base/source-type to this file, so that a change to the node reaches the declaration.
+    node: domain/knowledge-base/source-type
+  - file: src/features/ingest/api/_transforms.ts
+    where: |-
+      IngestRawInformationRequestWire, line 24
+    evidence: |-
+      export interface IngestRawInformationRequestWire {
+        readonly source_type: SourceTypeWire;
+        readonly content: string;
+        readonly storage_ref?: string | null;
+        readonly metadata?: Record<string, unknown>;
+        readonly model: string;
+        readonly prompt_version: string;
+      }
+    cost: |-
+      The node lists the body of ingest-raw-information as "the JSON body of source_type, content, model, prompt_version and an optional metadata". This shape adds an optional storage_ref the intake request does not name. A reader looking for what the screen may send would trust the node and miss the field. The sibling ingest-document operation records no storage reference, and only the raw-information domain node holds storage_ref, as an attribute of the stored record.
+    kind: contradicts
+    correction: |-
+      Either the node gains storage_ref in the intake request body through the analysis route, or the field leaves this declaration.
+    node: contracts/ingest-workspace/bff-ingestion
+
+read:
+  - node: contracts/ingest-workspace/bff-ingestion
+    held_at: |-
+      IngestRawInformationRequestWire and IngestRawInformationResponseWire (lines 21-49), AffectedNodeWire, LlmRunWire (lines 63-75), RetryLlmRunRequestWire and RunLlmExtractionRequestWire (lines 77-81), toAffectedNode, toIngestRawInformationResult and toLlmRun, and parseIso (lines 126-137)
+    evidence: |-
+      throw new Error(`Invalid ISO date string: ${value}`);
+      startedAt: parseIso(wire.started_at),
+      finishedAt: parseIsoOrNull(wire.finished_at),
+      status: wire.status,
+      export type RunLlmExtractionRequestWire = Record<string, never>;
+  - node: contracts/knowledge-base/ingestion
+    held_at: |-
+      IngestRawInformationResponseWire (lines 40-49), ChunkRefWire (lines 14-19), LlmRunWire (lines 63-75) and AffectedNodeWire (lines 34-38). This file only reads the published answers, and refusals are handled elsewhere.
+    evidence: |-
+      readonly outcome: "created" | "noop_existing";
+      readonly chunks: ReadonlyArray<ChunkRefWire>;
+      readonly llm_run_id: string;
+      readonly idempotency_key: string;
+      readonly input_raw_information_id: string;
+  - node: domain/knowledge-base/run-status
+    held_at: |-
+      LlmRunStatusWire, line 12
+    evidence: |-
+      export type LlmRunStatusWire = "running" | "completed" | "failed";
+  - node: domain/knowledge-base/run-summary
+    held_at: |-
+      LlmRunSummaryWire (lines 51-61), LlmRunSummary (lines 100-110) and toLlmRunSummary (lines 165-177)
+    evidence: |-
+      readonly superseded_previous: number;
+      readonly needs_review: number;
+      readonly orphaned_fragments: number;
+      orphanedFragments: wire.orphaned_fragments,
+
+looked_past: |-
+  The camelCase mirror interfaces and the toX mapping functions are consumer-side shaping with no domain fact of their own, so I did not report them.
+
+candidates_opened:
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/raw-information
+  - domain/knowledge-base/llm-run
+  - domain/knowledge-base/raw-chunk

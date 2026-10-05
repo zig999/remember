@@ -1,0 +1,79 @@
+read:
+  - node: rules/graph-explorer/a-failed-node-read-is-an-alert
+    held_at: |-
+      The `query.isError` branch (lines 69-80). It classifies the error and passes a retry that reads the node again. The alert markup and the rule that offers retry only for the generic failure are not in this file. They sit in `./NodeDetailPanel.shell` (`ErrorView`, `classifyError`), which is outside this judgment.
+    evidence: |-
+      const variant = classifyError(query.error);
+      body = (
+        <ErrorView
+          variant={variant}
+          closeRef={closeRef}
+          onClose={onClose}
+          onRetry={() => {
+            void query.refetch();
+          }}
+        />
+  - node: rules/graph-explorer/closing-the-drawer-returns-focus-to-curar
+    held_at: |-
+      `handleDrawerOpenChange`, lines 38-45. It is wired to `CurationDrawer` through `onOpenChange`.
+    evidence: |-
+      if (!next) {
+        requestAnimationFrame(() => {
+          curateButtonRef.current?.focus();
+        });
+      }
+  - node: rules/graph-explorer/curar-opens-the-drawer-for-the-target
+    held_at: |-
+      The `onCurate` prop given to `SuccessView` and the `CurationDrawer` element, lines 89 and 128-138. It opens the drawer with the target's kind and item id and the node's canonical name as the label. No navigation is performed. `deriveCurationTarget` is in `./NodeDetailPanel.curation`.
+    evidence: |-
+      onCurate={() => setDrawerOpen(true)}
+      ...
+      kind={curationTarget.kind}
+      itemId={curationTarget.itemId}
+      {...(query.data?.canonicalName !== undefined
+        ? { itemLabel: query.data.canonicalName }
+        : {})}
+  - node: rules/graph-explorer/escape-closes-the-panel
+    held_at: |-
+      `onKeyDown` on the panel root (lines 50-55 and 109).
+    evidence: |-
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+  - node: rules/graph-explorer/the-close-button-takes-focus
+    held_at: |-
+      The `useEffect` keyed on `nodeId`, lines 34-36. It focuses the button held by `closeRef`, and the ref is passed to every view. The accessible name "Fechar detalhes do nó" is not stated in this file. It belongs to the button in the shell and success views.
+    evidence: |-
+      useEffect(() => {
+        closeRef.current?.focus();
+      }, [nodeId]);
+  - node: rules/graph-explorer/the-panel-checks-pending-then-failure-then-data
+    held_at: |-
+      The `if / else if` chain on lines 61-100.
+    evidence: |-
+      if (query.isPending) {
+      ...
+      } else if (query.isError) {
+      ...
+      } else if (query.data !== undefined) {
+      ...
+      } else {
+        body = (
+          <LoadingView
+  - node: rules/graph-explorer/the-panel-is-a-region-named-after-the-node
+    held_at: |-
+      `resolvedLabel` and the `role` / `aria-label` props on the panel root, lines 57-58 and 106-107.
+    evidence: |-
+      const resolvedLabel =
+        query.data?.canonicalName ?? nodeLabel ?? "carregando";
+      ...
+      role="complementary"
+      aria-label={`Detalhes do nó: ${resolvedLabel}`}
+  - node: rules/graph-explorer/the-panel-reads-the-node-by-id
+    held_at: |-
+      Line 28.
+    evidence: |-
+      const query = useNodeDetail(nodeId);
+looked_past: |-
+  The `data-testid` and `data-status` attributes, the `GlassSurface level="panel"` wrapper and the `z-panel` class are test hooks and presentation, not domain facts, so I left them to other judgments.

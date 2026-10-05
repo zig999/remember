@@ -1,0 +1,57 @@
+read:
+  - node: rules/graph-explorer/a-delta-carries-its-source-tool-unchanged
+    held_at: |-
+      the return statement of mapWireToGraphDelta(), lines 67-71
+    evidence: |-
+      return {
+          sourceTool: input.sourceTool,
+          nodes: mappedNodes,
+          links: mappedLinks,
+        };
+  - node: rules/graph-explorer/a-delta-without-state-for-a-node-leaves-it-off
+    held_at: |-
+      the node loop, lines 27-40
+    evidence: |-
+      const state = deriveNodeState(wireNode.status);
+          if (state === undefined) {
+            continue;
+          }
+          const node: GraphNodeData = {
+            id: wireNode.id,
+            type: mapNodeType(wireNode.node_type),
+            label: wireNode.canonical_name,
+            state,
+          };
+  - node: rules/graph-explorer/a-kept-link-carries-its-slug-label-and-state
+    held_at: |-
+      the link object built at lines 52-63
+    evidence: |-
+      label: wireLink.link_type,
+            linkTypeLabel: mapLinkTypeLabel(wireLink.link_type, wireLink.link_type_label),
+            isTemporal: wireLink.is_temporal,
+            state: deriveLinkState(wireLink.status, wireLink.flags),
+            ...(wireLink.is_in_effect === undefined
+              ? {}
+              : { inEffect: wireLink.is_in_effect }),
+  - node: rules/graph-explorer/a-link-is-kept-only-with-visible-ends
+    held_at: |-
+      the visibility check in the link loop, lines 44-50
+    evidence: |-
+      const sourceVisible =
+            visibleIds.has(wireLink.source_node_id) ||
+            useGraphStore.getState().nodes.has(wireLink.source_node_id);
+      ...
+          if (!sourceVisible || !targetVisible) continue;
+  - node: rules/graph-explorer/lists-keep-the-answered-order
+    held_at: |-
+      the two in-order loops that push to mappedNodes and mappedLinks, lines 27-40 and 43-65
+    evidence: |-
+      for (const wireNode of input.nodes) {
+      ...
+          mappedNodes.push(node);
+      ...
+        for (const wireLink of input.links) {
+      ...
+          mappedLinks.push(link);
+looked_past: |-
+  The state derivation (deriveNodeState, deriveLinkState), the node-type mapping and the link-type label fallback sit in ../lib/map, a file outside this set, so I did not judge them here.

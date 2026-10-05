@@ -1,0 +1,36 @@
+findings: []
+
+read:
+  - node: rules/application-shell/clearing-the-token-forgets-it
+    held_at: |-
+      the `clear` action of the `useAuthStore` creator (lines 74-77), calling `writeToken(null)` (lines 56-63)
+    evidence: |-
+      clear: () => {
+            writeToken(null);
+            set({ accessToken: null, claims: null });
+          },
+      ... if (token === null) sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  - node: rules/application-shell/setting-a-token-decodes-its-claims
+    held_at: |-
+      `decodeJwtClaims` (lines 23-45) and the `setToken` action (lines 70-73)
+    evidence: |-
+      const parts = token.split(".");
+          if (parts.length !== 3) return null;
+      ... if (typeof parsed["sub"] === "string") (claims as { sub?: string }).sub = parsed["sub"] as string;
+      if (typeof parsed["exp"] === "number") ...
+      if (typeof parsed["name"] === "string") ...
+      if (typeof parsed["email"] === "string") ...
+      ... setToken: (token) => { writeToken(token); set({ accessToken: token, claims: token !== null ? decodeJwtClaims(token) : null }); }
+  - node: rules/application-shell/the-token-is-mirrored-to-session-storage
+    held_at: |-
+      `AUTH_TOKEN_STORAGE_KEY` (line 19), `readInitialToken` (lines 47-54), `writeToken` (lines 56-63), and the initial state read once in the `useAuthStore` creator (lines 65-69)
+    evidence: |-
+      export const AUTH_TOKEN_STORAGE_KEY = "remember.auth.token";
+      ... const initialToken = readInitialToken();
+      ... try { if (token === null) sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY); else sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token); } catch { }
+
+looked_past: |-
+  The file also holds `EXPIRY_MARGIN_SECONDS = 30` and `isFresh`, which agree with rules/application-shell/a-token-is-fresh-with-thirty-seconds-to-spare (held there, not in this file's node set and absent from the candidate index); that node is not bound to this file, so a bind is the open matter there, not a finding.
+
+candidates_opened:
+  - rules/application-shell/a-token-is-fresh-with-thirty-seconds-to-spare

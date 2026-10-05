@@ -1,0 +1,227 @@
+findings:
+  - file: src/features/curation/types.ts
+    where: >-
+      the EffectiveStatus type, lines 13-18
+    evidence: |-
+      export type EffectiveStatus =
+        | "active"
+        | "uncertain"
+        | "disputed"
+        | "superseded"
+        | "deleted";
+    cost: >-
+      The node holds six values, among them `inactive`, which is how an ended assertion reads
+      without ever being stored. This file declares five. Typing `effective_status` in
+      AttributeDetailWire and LinkDetailWire as this union says an ended assertion can never
+      arrive as `inactive`. The next reader will take that vocabulary as the decided one, and no
+      bind reaches the file when the node moves.
+    kind: contradicts
+    correction: >-
+      The vocabulary has to match the node's six values. The file also has to be bound to the
+      node, because code never reads the specification and only a bind keeps the two together.
+    node: domain/knowledge-base/effective-status
+  - file: src/features/curation/types.ts
+    where: >-
+      the ReviewQueueKind type, line 1
+    evidence: |-
+      export type ReviewQueueKind = "entity_match" | "disputed";
+    cost: >-
+      The two review queues are an enumeration a node holds. Here it is declared a second time in
+      a file the node is not bound to, so a change to the node does not reach this file and the
+      two can drift without anyone knowing which was decided.
+    kind: contradicts
+    correction: >-
+      Bind this file to the node. The wire spelling `entity_match` comes from the published
+      curation contract (`{ kind: "entity_match", ... }`), so the values agree.
+    node: domain/knowledge-base/review-queue-kind
+  - file: src/features/curation/types.ts
+    where: >-
+      the ItemKind type, line 2
+    evidence: |-
+      export type ItemKind = "link" | "attribute";
+    cost: >-
+      The two assertion kinds a curation request names are held by a node. They are declared here
+      again in a file the node is not bound to, so a change to the node does not reach this file.
+    kind: contradicts
+    correction: >-
+      Bind this file to the node. The values agree.
+    node: domain/knowledge-base/assertion-kind
+  - file: src/features/curation/types.ts
+    where: >-
+      the CorrectedValues interface, lines 231-238
+    evidence: |-
+      export interface CorrectedValues {
+        readonly value?: string | null;
+        readonly target_node_id?: string | null;
+        readonly valid_from?: string | null;
+        readonly valid_to?: string | null;
+        readonly valid_from_source?: ValidFromSource;
+        readonly valid_from_fragment_id?: string | null;
+      }
+    cost: >-
+      The shape of the values a correction puts in place of an assertion's is declared here, and
+      the node that holds it is not bound to this file. If the node gains or loses a value,
+      nothing reaches this file.
+    kind: contradicts
+    correction: >-
+      Bind this file to the node. The attributes agree with the node's value, valid_from,
+      valid_to and valid_from_source, its target reference and its fragment reference.
+    node: domain/knowledge-base/corrected-values
+  - file: src/features/curation/types.ts
+    where: >-
+      the ResolveEntityMatchAffected interface, lines 154-159, and its reuse in
+      MergeNodesResponse as Required<ResolveEntityMatchAffected>
+    evidence: |-
+      export interface ResolveEntityMatchAffected {
+        readonly links_repointed?: number;
+        readonly attributes_repointed?: number;
+        readonly aliases_copied?: number;
+        readonly path_compressed_nodes?: number;
+      }
+    cost: >-
+      The four counts of a merge's reach are held by a node and declared here again, in a file the
+      node is not bound to. The node's four counts are required, and this file makes them
+      optional in the entity-match answer. A change to the node does not reach this file.
+    kind: contradicts
+    correction: >-
+      Bind this file to the node. In the entity-match answer the published contract has `affected`
+      null for keep_separate and the four counts for merge_into, so the optionality here follows
+      the answer and not the node.
+    node: domain/knowledge-base/merge-counts
+  - file: src/features/curation/types.ts
+    where: >-
+      the evidence and history read shapes, lines 254-495: Provenance*Wire, AcceptedFragment*Wire,
+      NodeSummaryWire, NodeAliasWire, AttributeDetailWire, NodeDetailWire, LinkDetailWire and the
+      history responses
+    evidence: |-
+      export interface AcceptedFragmentItemWire {
+        readonly fragment_id: string;
+        readonly text: string;
+        readonly confidence: number;
+        readonly llm_run_id: string;
+        readonly created_at: string;
+        readonly source: AcceptedFragmentSourceRefWire;
+      }
+    cost: >-
+      What each read of the knowledge base answers is held by a consumed contract that the trace
+      does not bind to this file. These fields are declared here as their own authority, so when
+      the contract moves, `--check` does not reach this file.
+    kind: contradicts
+    correction: >-
+      Bind this file to the contract. The fields I compared match it: read-node, the link and
+      attribute history, the three provenance reads and list-accepted-fragments.
+    node: contracts/curation-workspace/bff-curation-reads
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: >-
+      the Wire and request/response interfaces, lines 22-84 and 148-252
+    evidence: |-
+      export interface ReviewQueueListWire {
+        readonly total: number;
+        readonly limit: number;
+        readonly offset: number;
+        readonly items: ReadonlyArray<ReviewQueueItemWire>;
+      }
+      export interface MergeNodesRequest {
+        readonly survivor_id: string;
+        readonly absorbed_id: string;
+        readonly reason: string;
+      }
+      export interface CorrectItemRequest {
+        readonly item_kind: ItemKind;
+        readonly item_id: string;
+        readonly corrected: CorrectedValues;
+        readonly reason: string;
+      }
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      the inline union on `kind` in NodeAliasWire (line 371) and NodeAlias (line 413)
+    evidence: |-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      the AssertionFlag type, line 19
+    evidence: |-
+      export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      the AssertionStatus type, lines 6-11
+    evidence: |-
+      export type AssertionStatus =
+        | "active"
+        | "uncertain"
+        | "disputed"
+        | "superseded"
+        | "deleted";
+  - node: domain/knowledge-base/curation-metrics
+    held_at: >-
+      CurationMetricsWire, lines 75-84, and CurationMetrics, lines 137-146
+    evidence: |-
+      export interface CurationMetricsWire {
+        readonly accept_rate: number;
+        readonly reject_rate_by_code: Readonly<Record<string, number>>;
+        readonly needs_review_count: number;
+        readonly uncertain_count: number;
+        readonly disputed_count: number;
+        readonly entity_match_queue_count: number;
+        readonly disputed_queue_count: number;
+        readonly computed_at: string;
+      }
+  - node: domain/knowledge-base/dispute-decision
+    held_at: >-
+      the DisputeDecision type, line 4
+    evidence: |-
+      export type DisputeDecision = "prefer_one" | "adjust_periods" | "keep_disputed";
+  - node: domain/knowledge-base/dispute-scope
+    held_at: >-
+      DisputeScopeWire, lines 48-54, and DisputeScope, lines 112-118, with the kind of assertion in
+      `item_kind` of DisputeQueueItemWire
+    evidence: |-
+      export interface DisputeScopeWire {
+        readonly source_node_id: string | null;
+        readonly target_node_id: string | null;
+        readonly link_type: string | null;
+        readonly node_id: string | null;
+        readonly attribute_key: string | null;
+      }
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: >-
+      the EntityMatchDecision type, line 3
+    evidence: |-
+      export type EntityMatchDecision = "merge_into" | "keep_separate";
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      EntityMatchQueueItemWire, lines 28-35, and EntityMatchCandidateWire, lines 22-26
+    evidence: |-
+      export interface EntityMatchCandidateWire {
+        readonly candidate_node_id: string;
+        readonly canonical_name: string;
+        readonly similarity: number;
+      }
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      the NodeStatus type, line 5
+    evidence: |-
+      export type NodeStatus = "active" | "needs_review" | "merged" | "deleted";
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the ValidFromSource type, line 12
+    evidence: |-
+      export type ValidFromSource = "stated" | "document" | "received";
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the AttributeValueType type, line 20
+    evidence: |-
+      export type AttributeValueType = "text" | "date" | "number" | "bool";
+looked_past: >-
+  The value spellings with underscores (needs_review, low_confidence, merge_into) follow the wire
+  of the published curation contract and the domain nodes spell them with hyphens, so I treated
+  that as a transport spelling and not as a fact the code states differently.
+candidates_opened:
+  - domain/knowledge-base/assertion-kind
+  - domain/knowledge-base/effective-status
+  - domain/knowledge-base/review-queue-kind
+  - domain/knowledge-base/corrected-values
+  - domain/knowledge-base/merge-counts
+  - domain/knowledge-base/node-alias
+  - contracts/curation-workspace/bff-curation-reads

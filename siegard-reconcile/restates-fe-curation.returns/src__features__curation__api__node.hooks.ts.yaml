@@ -1,0 +1,25 @@
+read:
+  - node: rules/curation-workspace/node-detail-sends-its-options-only-when-asked
+    held_at: |-
+      buildNodeQs(), lines 28-36, called from the queryFn of useCurationNodeDetail().
+    evidence: |-
+      if (params.asOf !== undefined) search.set("as_of", params.asOf);
+      if (params.inEffectOnly === true) search.set("in_effect_only", "true");
+      if (params.includeUncertain === false)
+        search.set("include_uncertain", "false");
+  - node: rules/curation-workspace/read-without-an-identifier-is-not-requested
+    held_at: |-
+      The `enabled` guard in useCurationNodeDetail() (line 42), useLinkHistory() (line 61) and useAttributeHistory() (line 80), each passed to useQuery. The accepted-fragments half of the node is not in this file and is nowhere here.
+    evidence: |-
+      const enabled = typeof nodeId === "string" && nodeId.length > 0;
+      const enabled = typeof linkId === "string" && linkId.length > 0;
+      const enabled = typeof attributeId === "string" && attributeId.length > 0;
+  - node: rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+    held_at: |-
+      STABLE_STALE_MS (line 20), applied as staleTime with refetchOnWindowFocus false in useCurationNodeDetail(), useLinkHistory() and useAttributeHistory(). Provenance and accepted fragments are not read in this file.
+    evidence: |-
+      const STABLE_STALE_MS = 5 * 60_000;
+      staleTime: STABLE_STALE_MS,
+      refetchOnWindowFocus: false,
+looked_past: |-
+  The node detail queryKey omits asOf, inEffectOnly and includeUncertain, which is a caching and code-quality concern outside this conformance judgment.

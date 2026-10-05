@@ -1,0 +1,173 @@
+findings: []
+read:
+  - node: domain/chat/graph-layout
+    held_at: |-
+      the GraphLayoutAlgorithm type declaration, line 14
+    evidence: |-
+      export type GraphLayoutAlgorithm = "force" | "tree" | "radial";
+  - node: domain/graph-explorer/graph-snapshot-version
+    held_at: |-
+      the GraphSnapshotV1 and GraphSnapshotV2 interfaces, lines 45-60
+    evidence: |-
+      export interface GraphSnapshotV1 {
+        version: 1;
+      export interface GraphSnapshotV2 {
+        version: 2;
+  - node: domain/graph-explorer/turn-end
+    held_at: |-
+      the settleTurn signature in GraphState, line 38, and its two branches at lines 243 and 252
+    evidence: |-
+      settleTurn: (frame: "done" | "error") => void;
+  - node: rules/graph-explorer/a-snapshot-carries-its-version-and-fields
+    held_at: |-
+      GraphSnapshotV1 and GraphSnapshotV2 (lines 45-60) and getSnapshot (lines 259-273)
+    evidence: |-
+      version: 2 as const,
+      nodes: Array.from(nodes.values()),
+      links: Array.from(links.values()),
+      positions: posObj,
+      user_pinned: Array.from(userPinned),
+      layout_algorithm: layoutAlgorithm,
+  - node: rules/graph-explorer/add-keeps-links-whose-nodes-are-missing
+    held_at: |-
+      the link loop in addNodes, lines 111-113
+    evidence: |-
+      for (const link of delta.links) {
+        nextLinks.set(link.id, link);
+      }
+  - node: rules/graph-explorer/add-marks-a-delta-received
+    held_at: |-
+      the object returned by addNodes, line 119
+    evidence: |-
+      receivedDeltaThisTurn: true,
+  - node: rules/graph-explorer/add-merges-by-identity
+    held_at: |-
+      addNodes, lines 100-113
+    evidence: |-
+      nextNodes.set(node.id, node);
+      nextLinks.set(link.id, link);
+  - node: rules/graph-explorer/add-queues-only-unseen-nodes
+    held_at: |-
+      the node loop in addNodes, lines 104-109
+    evidence: |-
+      if (!state.revealedIds.has(node.id) && !nextNodes.has(node.id)) {
+        nextRevealQueue.push(node.id);
+      }
+  - node: rules/graph-explorer/choosing-a-layout-releases-the-pins
+    held_at: |-
+      setLayoutAlgorithm, lines 209-218
+    evidence: |-
+      if (state.layoutAlgorithm === algo) return {};
+      return {
+        layoutAlgorithm: algo,
+        userPinned: new Set<string>(),
+        layoutNonce: state.layoutNonce + 1,
+      };
+  - node: rules/graph-explorer/ending-a-turn-resets-the-delta-mark
+    held_at: |-
+      every branch of settleTurn, lines 240-257
+    evidence: |-
+      set({ status: "ready", errorMessage: undefined, receivedDeltaThisTurn: false });
+      set({ receivedDeltaThisTurn: false });
+      set({ status: "error", receivedDeltaThisTurn: false });
+  - node: rules/graph-explorer/layout-defaults-to-force
+    held_at: |-
+      makeInitialState (line 91) and the hydrate fallback (lines 292-295). The fallback for an unrecognized algorithm sits in the switch default of src/features/graph/hooks/useForceLayout.ts, not in this file.
+    evidence: |-
+      layoutAlgorithm: "force",
+      snapshot.version === 2 && "layout_algorithm" in snapshot
+        ? snapshot.layout_algorithm
+        : "force";
+  - node: rules/graph-explorer/moving-a-node-pins-it
+    held_at: |-
+      setNodePosition, lines 191-200
+    evidence: |-
+      if (!state.nodes.has(id)) return {};
+      nextPositions.set(id, position);
+      nextUserPinned.add(id);
+  - node: rules/graph-explorer/only-a-version-2-view-restores-its-layout
+    held_at: |-
+      hydrate, lines 292-295
+    evidence: |-
+      snapshot.version === 2 && "layout_algorithm" in snapshot
+        ? snapshot.layout_algorithm
+        : "force";
+  - node: rules/graph-explorer/pane-starts-and-clears-empty
+    held_at: |-
+      makeInitialState (lines 66-93), used for the initial state at line 96 and by clear at line 221
+    evidence: |-
+      status: "empty",
+      errorMessage: undefined,
+      receivedDeltaThisTurn: false,
+      layoutNonce: 0,
+      layoutAlgorithm: "force",
+  - node: rules/graph-explorer/removing-nodes-removes-everything-about-them
+    held_at: |-
+      removeNodes, lines 152-189
+    evidence: |-
+      if (ids.length === 0) return;
+      if (idSet.has(link.source) || idSet.has(link.target)) {
+        nextLinks.delete(linkId);
+      }
+      const nextRevealQueue = state.revealQueue.filter((id) => !idSet.has(id));
+  - node: rules/graph-explorer/reorganizing-releases-the-pins
+    held_at: |-
+      resetLayout, lines 202-207
+    evidence: |-
+      userPinned: new Set<string>(),
+      layoutNonce: state.layoutNonce + 1,
+  - node: rules/graph-explorer/replace-keeps-only-the-delta
+    held_at: |-
+      replaceNodes, lines 124-150
+    evidence: |-
+      if (nextNodes.has(link.source) && nextNodes.has(link.target)) {
+        nextLinks.set(link.id, link);
+      }
+      positions: new Map<string, GraphPosition>(),
+      userPinned: new Set<string>(),
+      revealedIds: new Set<string>(),
+      revealQueue,
+      receivedDeltaThisTurn: true,
+  - node: rules/graph-explorer/restoring-keeps-orphan-positions
+    held_at: |-
+      the positions loop in hydrate, lines 288-290
+    evidence: |-
+      for (const [id, pos] of Object.entries(snapshot.positions)) {
+        nextPositions.set(id, { x: pos.x, y: pos.y });
+      }
+  - node: rules/graph-explorer/restoring-shows-every-node-at-once
+    held_at: |-
+      the set call in hydrate, lines 297-308
+    evidence: |-
+      revealedIds: new Set<string>(allNodeIds),
+      revealQueue: [],
+      status: "ready",
+      receivedDeltaThisTurn: false,
+      errorMessage: undefined,
+  - node: rules/graph-explorer/setting-a-status-keeps-the-error-message-only-for-error
+    held_at: |-
+      setStatus, lines 224-229
+    evidence: |-
+      errorMessage: status === "error" ? errorMessage : undefined,
+  - node: rules/graph-explorer/turn-done-after-a-delta-makes-the-pane-ready
+    held_at: |-
+      the done branch of settleTurn, lines 243-246
+    evidence: |-
+      if (receivedDeltaThisTurn) {
+        set({ status: "ready", errorMessage: undefined, receivedDeltaThisTurn: false });
+  - node: rules/graph-explorer/turn-done-without-a-delta-leaves-the-status
+    held_at: |-
+      the done branch of settleTurn, lines 246-248
+    evidence: |-
+      } else {
+        set({ receivedDeltaThisTurn: false });
+      }
+  - node: rules/graph-explorer/turn-error-ends-a-busy-pane-in-error
+    held_at: |-
+      the error path of settleTurn and graphToolInFlight, lines 62-64 and 252-256
+    evidence: |-
+      return status === "loading" || status === "revealing";
+      if (graphToolInFlight(status)) {
+        set({ status: "error", receivedDeltaThisTurn: false });
+looked_past: |-
+  dequeueReveal (head-first consumption of revealQueue) and the dead statement `void nextLinks;` in removeNodes were seen and not reported, the first because no node's wording speaks of it as a domain fact and the second because it is a code-quality matter.

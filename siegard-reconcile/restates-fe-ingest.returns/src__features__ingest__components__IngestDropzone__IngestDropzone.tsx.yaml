@@ -1,0 +1,42 @@
+read:
+  - node: rules/ingest-workspace/disabled-file-area-ignores-input
+    held_at: |-
+      openPicker (line 38), onZoneKeyDown (line 74) and onDrop (line 105), each opening with a disabled guard
+    evidence: |-
+      const openPicker = useCallback(() => {
+          if (disabled) return;
+          inputRef.current?.click();
+      and onZoneKeyDown: "if (disabled) return;" and onDrop: "if (disabled) return;" before "handleFiles(e.dataTransfer.files);"
+  - node: rules/ingest-workspace/file-read-replaces-the-content
+    held_at: |-
+      the reader.onload handler inside handleFiles, lines 52-58
+    evidence: |-
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") return;
+        setError(null);
+        onContent(result);
+  - node: rules/ingest-workspace/only-text-files-are-accepted
+    held_at: |-
+      isTxtFile (lines 18-22), called as the gate in handleFiles (line 47)
+    evidence: |-
+      if (file.type === "text/plain") return true;
+      if (file.type.startsWith("text/")) return true;
+      return file.name.toLowerCase().endsWith(".txt");
+  - node: rules/ingest-workspace/only-the-first-file-is-used
+    held_at: |-
+      handleFiles, lines 44-46
+    evidence: |-
+      const file = files[0];
+      if (!file) return;
+  - node: rules/ingest-workspace/rejection-stays-until-a-file-is-read
+    held_at: |-
+      the error state (line 35), set in handleFiles on rejection (line 48) and cleared only inside reader.onload (line 55)
+    evidence: |-
+      if (!isTxtFile(file)) {
+        setError(REJECT_MESSAGE);
+        return;
+      }
+      ... reader.onload = () => { ... setError(null);
+looked_past: |-
+  The visible zone text, the aria-label and the helper text (ZONE_LABEL, HELPER_TEXT, "Arraste um arquivo .txt ou clique para selecionar") are UI wording that no node states and that asserts only the .txt acceptance a node holds, and REJECT_MESSAGE matches the wording that contracts/ingest-workspace/ingest-screen (outside this set) states for the refusal, so none of these is reported.

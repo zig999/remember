@@ -1,0 +1,127 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      streamChat (lines 171-259) for the send-message operation: the request headers and fetch, the SYSTEM_NETWORK, SYSTEM_INVALID_RESPONSE, SYSTEM_UPSTREAM and SYSTEM_UNKNOWN refusals, extractPreStreamError (lines 141-169), and the frame reading in parseSSEFrame (lines 55-134). The other operations (cancel-turn, conversations CRUD, list-messages, usage) are not in this file.
+    evidence: |-
+      "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          ...(options.headers ?? {}),
+      code: "SYSTEM_NETWORK", message: "Falha de rede ao contactar o servidor."
+      code: "SYSTEM_INVALID_RESPONSE", message: "Resposta do servidor sem corpo."
+      response.status >= 500 ? { code: "SYSTEM_UPSTREAM", message: "Algo deu errado. Tente novamente." } : { code: "SYSTEM_UNKNOWN", message: "Erro desconhecido do servidor." }
+      code: typeof e.code === "string" ? e.code : fallback.code,
+      message: typeof e.message === "string" ? e.message : fallback.message,
+      message: "Falha de rede durante o streaming."
+  - node: domain/chat/turn-event-kind
+    held_at: |-
+      the ChatSSEFrame union (lines 41-48) with its seven frame interfaces (lines 3-39), and the switch on the event name in parseSSEFrame (lines 85-133). This is where the seven kinds are declared.
+    evidence: |-
+      export type ChatSSEFrame =
+        | ChatSSEFrameLLMStart
+        | ChatSSEFrameTextDelta
+        | ChatSSEFrameToolStart
+        | ChatSSEFrameToolResult
+        | ChatSSEFrameDone
+        | ChatSSEFrameError
+        | ChatSSEFrameGraphDelta;
+  - node: rules/chat-workspace/a-turn-is-never-resent-by-the-screen
+    held_at: |-
+      streamChat, lines 182-200: a single fetch call, with no retry or loop around it.
+    evidence: |-
+      let response: Response;
+        try {
+          ...
+          response = await fetch(url, init);
+        } catch (err) {
+          ...
+          return;
+        }
+  - node: rules/chat-workspace/aborting-ends-the-reading-quietly
+    held_at: |-
+      the AbortError branch of the fetch catch (lines 191-193) and of the reader.read catch (lines 226-228). Each returns without yielding an error frame.
+    evidence: |-
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+          if (isAbort) return;
+  - node: rules/chat-workspace/comment-and-colonless-lines-are-ignored
+    held_at: |-
+      parseSSEFrame, lines 62-64.
+    evidence: |-
+      if (line.startsWith(":")) continue;
+          const colon = line.indexOf(":");
+          if (colon === -1) continue;
+  - node: rules/chat-workspace/each-frame-kind-requires-its-fields
+    held_at: |-
+      the per-event cases of parseSSEFrame, lines 85-133.
+    evidence: |-
+      if (typeof tool !== "string" || typeof argsSummary !== "string") {
+              return null;
+            }
+      if (typeof ok !== "boolean") return null;
+      if (typeof stopReason !== "string") return null;
+      if (typeof code !== "string" || typeof message !== "string") return null;
+      if (typeof sourceTool !== "string") return null;
+      if (!Array.isArray(nodes)) return null;
+      if (!Array.isArray(links)) return null;
+  - node: rules/chat-workspace/event-names-the-frame-and-data-carries-it
+    held_at: |-
+      parseSSEFrame, lines 67-72. The last event line overwrites eventName, and data lines are joined with a newline.
+    evidence: |-
+      if (field === "event") {
+            eventName = value;
+          } else if (field === "data") {
+            dataLine = dataLine === null ? value : `${dataLine}\n${value}`;
+          }
+  - node: rules/chat-workspace/frame-lines-are-field-value-pairs
+    held_at: |-
+      parseSSEFrame, lines 60 and 65-66.
+    evidence: |-
+      const line = rawLine.replace(/\r$/, "");
+      const field = line.slice(0, colon);
+          const value = line.slice(colon + 1).replace(/^ /, "");
+  - node: rules/chat-workspace/send-never-refreshes-the-token
+    held_at: |-
+      streamChat, lines 202-214. A non-ok answer, 401 included, goes to extractPreStreamError and yields an error frame. The file has no refresh call and no redirect.
+    evidence: |-
+      const err = await extractPreStreamError(response);
+          yield { type: "error", code: err.code, message: err.message };
+          return;
+  - node: rules/chat-workspace/send-stream-has-no-client-cutoff
+    held_at: |-
+      streamChat, lines 176-259. The only signal is the caller's optional options.signal. The read loop has no timer and ends on done, error, abort or a failed read.
+    evidence: |-
+      if (options.signal !== undefined) init.signal = options.signal;
+      while (true) {
+            ...
+            if (chunk.done) break;
+  - node: rules/chat-workspace/stream-is-read-as-utf-8
+    held_at: |-
+      streamChat, lines 216-217 and 237.
+    evidence: |-
+      const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+      buffer += decoder.decode(chunk.value, { stream: true });
+  - node: rules/chat-workspace/unterminated-last-frame-is-read
+    held_at: |-
+      streamChat, lines 248-252. The buffer left after the stream ends is parsed as one more frame.
+    evidence: |-
+      const tail = buffer.trim();
+          if (tail.length > 0) {
+            const frame = parseSSEFrame(tail);
+            if (frame !== null) yield frame;
+          }
+  - node: scenarios/chat-workspace/malformed-frame-is-skipped
+    held_at: |-
+      parseSSEFrame, lines 76-81 together with the yield guard at lines 243-244. A frame whose data is not JSON returns null, the loop does not yield it, and the next frames are still read.
+    evidence: |-
+      try {
+          payload = JSON.parse(dataLine);
+        } catch {
+          return null;
+        }
+      const frame = parseSSEFrame(block);
+              if (frame !== null) yield frame;
+looked_past: |-
+  The check `payload === null || typeof payload !== "object"` at line 82 lets a JSON array through, so an llm_start frame whose data is `[]` is yielded, while the candidate rule rules/chat-workspace/malformed-frames-are-skipped-silently says a frame whose data is not a JSON object is skipped; that rule is outside this set and was not reviewed, so I name it here and do not file it.
+candidates_opened:
+  - rules/chat-workspace/malformed-frames-are-skipped-silently

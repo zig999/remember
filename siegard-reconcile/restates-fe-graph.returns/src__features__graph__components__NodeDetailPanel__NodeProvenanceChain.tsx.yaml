@@ -1,0 +1,72 @@
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: |-
+      The origin portion (show-origin) sits in NodeProvenanceChain: the pending, error, empty and body branches. The show-origin wording itself is read from NODE_DETAIL_COPY in NodeDetailPanel.copy.ts, which is not in this file set. The other operations of the contract (graph, node detail, relationships) belong to other files.
+    evidence: |-
+      if (isPending) { ... {NODE_DETAIL_COPY.originLoading} ... } if (isError) { ... role="alert" ... {showRetry && ( <button ... onClick={onRetry} ... {NODE_DETAIL_COPY.originRetry}" } if (data === undefined || data.fragments.length === 0) { ... {NODE_DETAIL_COPY.originNotFound}
+  - node: domain/graph-explorer/origin-failure
+    held_at: |-
+      The ProvenanceErrorVariant union type declaration, lines 7-11.
+    evidence: |-
+      export type ProvenanceErrorVariant =
+        | "not-found"
+        | "deleted"
+        | "generic"
+        | "unknown";
+  - node: rules/graph-explorer/a-chunk-shows-its-index-offsets-and-excerpt
+    held_at: |-
+      The ChunkDetails component, in the chunk-index span, the offset span and the excerpt blockquote.
+    evidence: |-
+      <span data-testid="node-provenance-chunk-index">chunk #{chunkIndex}</span> ... <span data-testid="node-provenance-offset">{offsetRangeLabel}</span> ... <blockquote ...>{excerpt}</blockquote>
+  - node: rules/graph-explorer/a-chunk-shows-its-source
+    held_at: |-
+      The dl block of ChunkDetails, with title and documentDateLabel conditional on being non-null.
+    evidence: |-
+      <dt className="font-medium">Tipo:</dt> ... <dt className="font-medium">Recebido em:</dt> ... {title !== null && ( ... <dt className="font-medium">Título:</dt> ...)} {documentDateLabel !== null && ( ... <dt className="font-medium">Data do documento:</dt> ...)}
+  - node: rules/graph-explorer/a-fragment-shows-confidence-status-text-and-chunks
+    held_at: |-
+      The data.fragments.map article in the body branch of NodeProvenanceChain.
+    evidence: |-
+      <span data-testid="node-provenance-fragment-confidence">{frag.confidenceLabel}</span> ... <span>{frag.status}</span> ... <p ... data-testid="node-provenance-fragment-text">{frag.text}</p> {frag.chunks.map((chunk) => ( <ChunkDetails
+  - node: rules/graph-explorer/a-redacted-original-input-is-never-shown
+    held_at: |-
+      The REDACTED_SENTINEL constant and the two originalInput branches of ChunkDetails. The sentinel is excluded from the verbatim branch and rendered only as the redacted notice. The notice text and its aria-label are read from NODE_DETAIL_COPY.
+    evidence: |-
+      const REDACTED_SENTINEL = "[REDACTED]"; ... originalInput !== REDACTED_SENTINEL && ( ... {originalInput === REDACTED_SENTINEL && ( <p ... aria-label={NODE_DETAIL_COPY.originalInputRedactedAria} ...>{NODE_DETAIL_COPY.originalInputRedacted}</p>
+  - node: rules/graph-explorer/an-absent-original-input-shows-nothing
+    held_at: |-
+      The typeof originalInput === "string" guard and the === REDACTED_SENTINEL guard of ChunkDetails. Null or undefined satisfies neither, so nothing renders.
+    evidence: |-
+      {typeof originalInput === "string" && originalInput !== REDACTED_SENTINEL && ( <details
+  - node: rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
+    held_at: |-
+      The isError branch of NodeProvenanceChain.
+    evidence: |-
+      const showRetry = variant !== "deleted"; ... role="alert" ... {showRetry && ( <button type="button" onClick={onRetry}
+  - node: rules/graph-explorer/an-origin-failure-is-classified-by-its-code
+    held_at: |-
+      classifyProvenanceError, lines 13-20.
+    evidence: |-
+      if (err === null || typeof err !== "object") return "unknown"; ... if (code === "RESOURCE_NOT_FOUND") return "not-found"; if (code === "BUSINESS_RAW_INFORMATION_DELETED") return "deleted"; if (typeof code === "string" && code.startsWith("SYSTEM_")) return "generic"; return "unknown";
+  - node: rules/graph-explorer/an-origin-failure-reads-its-wording
+    held_at: |-
+      The message selection in the isError branch. Each variant picks its copy key, and the strings themselves are in NodeDetailPanel.copy.ts: originNotFound "Origem não encontrada.", originDeleted "Documento original removido por conformidade.", originError "Não foi possível carregar a origem.".
+    evidence: |-
+      variant === "deleted" ? NODE_DETAIL_COPY.originDeleted : variant === "not-found" ? NODE_DETAIL_COPY.originNotFound : NODE_DETAIL_COPY.originError
+  - node: rules/graph-explorer/an-origin-without-fragments-says-not-found
+    held_at: |-
+      The empty branch of NodeProvenanceChain, after the pending and error branches.
+    evidence: |-
+      if (data === undefined || data.fragments.length === 0) { return ( <p ... data-testid="node-provenance-empty"> {NODE_DETAIL_COPY.originNotFound}
+  - node: rules/graph-explorer/an-original-input-is-shown-verbatim
+    held_at: |-
+      The details element in ChunkDetails. The summary text is NODE_DETAIL_COPY.originalInputSummary, which reads "Texto original do operador" in NodeDetailPanel.copy.ts.
+    evidence: |-
+      <details ...><summary ...>{NODE_DETAIL_COPY.originalInputSummary}</summary><p className="mt-xs whitespace-pre-wrap" ...>{originalInput}</p></details>
+  - node: rules/graph-explorer/the-origin-body-checks-pending-failure-then-data
+    held_at: |-
+      The order of the early-return branches in NodeProvenanceChain: isPending, then isError, then empty, then the fragment list.
+    evidence: |-
+      if (isPending) { return ( <div ... aria-busy="true" ...> ... <span aria-live="polite" ...>{NODE_DETAIL_COPY.originLoading}</span>
+looked_past: |-
+  The warning versus destructive icon colour by variant, the data-testid attributes and the Tailwind classes are surface and test hooks that state no domain fact.

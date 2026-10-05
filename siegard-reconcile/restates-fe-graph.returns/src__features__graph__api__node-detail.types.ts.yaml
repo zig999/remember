@@ -1,0 +1,89 @@
+findings:
+  - file: src/features/graph/api/node-detail.types.ts
+    where: |-
+      line 3, the NodeWireStatus union
+    evidence: |-
+      export type NodeWireStatus = "active" | "needs_review" | "merged" | "deleted";
+      Node domain/knowledge-base/node-status declares `values: active, needs-review, merged, deleted`. The graph-explorer rules rules/graph-explorer/node-badge-follows-the-node-status and rules/graph-explorer/node-state-follows-its-status-alone spell the value `needs_review`.
+    cost: |-
+      The file declares a second vocabulary for the node status that domain/knowledge-base/node-status does not reach. That node is not bound to this file, so a change to it never touches this union. The two spellings of the needs-review value (`needs-review` in the enumeration, `needs_review` here and in the graph-explorer rules) leave the next reader unsure which one the business decided.
+    kind: contradicts
+    correction: |-
+      The specification has to settle whether the wire value is `needs-review` or `needs_review`. It should also bind domain/knowledge-base/node-status to this file, or the union should be taken from the node that holds it. I found no node that says the wire spelling differs from the enumeration.
+    node: domain/knowledge-base/node-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: |-
+      lines 5-10, the AttributeWireAssertionStatus union
+    evidence: |-
+      export type AttributeWireAssertionStatus =
+        | "proposed"
+        | "accepted"
+        | "uncertain"
+        | "disputed"
+        | "superseded";
+      Node domain/knowledge-base/assertion-status declares `values: active, uncertain, disputed, superseded, deleted`, described as "The state a knowledge link or a node attribute is in."
+    cost: |-
+      The file lists `proposed` and `accepted`, which the node does not hold, and omits `active` and `deleted`, which it does. The node is the business decision, and a reader of this type learns a different set of attribute states. The node is also not bound to this file, so it will not report when it changes.
+    kind: contradicts
+    correction: |-
+      The union has to carry the values of domain/knowledge-base/assertion-status. The node has to be bound to this file for as long as the file declares the enumeration.
+    node: domain/knowledge-base/assertion-status
+  - file: src/features/graph/api/node-detail.types.ts
+    where: |-
+      lines 12-16, the AttributeWireEffectiveStatus union
+    evidence: |-
+      export type AttributeWireEffectiveStatus =
+        | "active"
+        | "inactive"
+        | "uncertain"
+        | "disputed";
+      Node domain/knowledge-base/effective-status declares `values: active, inactive, uncertain, disputed, superseded, deleted`.
+    cost: |-
+      The union drops `superseded` and `deleted`, which the node holds. NodeAttributeView.effectiveStatus takes its type from this union, so the view cannot represent the two values the node says an attribute can be read with. The node is not bound to this file, so a change to it never reaches this declaration.
+    kind: contradicts
+    correction: |-
+      The union has to carry the six values of domain/knowledge-base/effective-status. The node has to be bound to this file for as long as the file declares the enumeration.
+    node: domain/knowledge-base/effective-status
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      NodeDetailWire (lines 59-63) for the read-node answer. The traverse and provenance reads are shaped in other files.
+    evidence: |-
+      export interface NodeDetailWire {
+        readonly node: NodeSummaryWire;
+        readonly aliases: ReadonlyArray<NodeAliasWire>;
+        readonly attributes: ReadonlyArray<AttributeWire>;
+      }
+  - node: domain/knowledge-base/alias-kind
+    held_at: |-
+      NodeAliasWire.kind, line 21
+    evidence: |-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/value-type
+    held_at: |-
+      AttributeWire.value_type, line 39
+    evidence: |-
+      readonly value_type: "text" | "number" | "date" | "bool";
+  - node: rules/graph-explorer/an-attribute-hides-its-bookkeeping-fields
+    held_at: |-
+      NodeAttributeView, lines 76-87
+    evidence: |-
+      export interface NodeAttributeView {
+        readonly id: string;
+        readonly key: string;
+        readonly value: string;
+        readonly valueType: AttributeWire["value_type"];
+        readonly effectiveStatus: AttributeWireEffectiveStatus;
+        readonly isInEffect: boolean;
+        readonly state: ConfidenceState;
+        readonly validFromLabel: string | null;
+        readonly validToLabel: string | null;
+        readonly provenance: ReadonlyArray<ProvenanceEntryView>;
+      }
+      The view carries the id, key, value, value type, effective status, in-effect flag, badge, validity labels and provenance. It declares no is_current, confidence or node_id. The wire shape AttributeWire carries those three, which is the wire and not what is shown.
+looked_past: |-
+  The wire shapes of the provenance entries and the node summary (ProvenanceEntryWire, NodeSummaryWire.merged_into_node_id) belong to other nodes of the trace (an-inline-entry-hides-what-it-lacks, node-detail-has-no-merged-into-by-default), and I did not judge them here.
+candidates_opened:
+  - domain/knowledge-base/node-status
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/effective-status

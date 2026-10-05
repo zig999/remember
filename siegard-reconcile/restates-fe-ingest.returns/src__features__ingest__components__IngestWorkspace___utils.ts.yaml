@@ -1,0 +1,55 @@
+findings: []
+read:
+  - node: domain/ingest-workspace/ingest-failure
+    held_at: |-
+      the return type of classifyError(), lines 3-6, which declares the shape of the failure the owner is shown
+    evidence: |-
+      export function classifyError(err: unknown): {
+        readonly code: string;
+        readonly message: string;
+      }
+  - node: rules/ingest-workspace/connection-drop-is-an-unconflicting-envelope
+    held_at: |-
+      isConnectionDropError(), lines 16-28, the EnvelopeError branch
+    evidence: |-
+      if (err.httpStatus === 409 || err.httpStatus === 422) return false;
+      ...
+      if (err.code === "SYSTEM_LLM_PROVIDER_UNAVAILABLE") return false;
+      if (err.code === "AUTH_SESSION_EXPIRED") return false;
+      if (err.code === "SYSTEM_ABORTED") return false;
+      return true;
+  - node: rules/ingest-workspace/failure-envelope-shows-its-own-code-and-message
+    held_at: |-
+      the EnvelopeError branch of classifyError(), lines 7-9
+    evidence: |-
+      if (err instanceof EnvelopeError) {
+        return { code: err.code, message: err.message };
+      }
+  - node: rules/ingest-workspace/failure-outside-an-envelope-is-no-connection-drop
+    held_at: |-
+      the final statement of isConnectionDropError(), line 27, reached by anything that is not an EnvelopeError
+    evidence: |-
+      return false;
+  - node: rules/ingest-workspace/failure-outside-an-envelope-shows-the-unknown-code
+    held_at: |-
+      the two non-envelope returns of classifyError(), lines 10-13
+    evidence: |-
+      if (err instanceof Error) {
+        return { code: "SYSTEM_UNKNOWN", message: err.message };
+      }
+      return { code: "SYSTEM_UNKNOWN", message: "Erro desconhecido." };
+  - node: scenarios/ingest-workspace/conflicting-extraction-shows-the-failure
+    held_at: |-
+      the 409 and 422 guard of isConnectionDropError(), line 18, together with the envelope branch of classifyError(), lines 7-9
+    evidence: |-
+      if (err.httpStatus === 409 || err.httpStatus === 422) return false;
+  - node: scenarios/ingest-workspace/internal-error-during-extraction-polls-the-run
+    held_at: |-
+      the closing return of the envelope branch of isConnectionDropError(), line 25. A 500 with SYSTEM_INTERNAL_ERROR matches none of the exclusions, so it counts as a connection drop.
+    evidence: |-
+      if (err.code === "SYSTEM_ABORTED") return false;
+      return true;
+looked_past: |-
+  The SYSTEM_NETWORK and SYSTEM_TIMEOUT branch on lines 19-21 returns true like the closing return, so it adds no fact. The text "Erro desconhecido." on line 13 is emitted text that agrees with a node outside this set, contracts/ingest-workspace/ingest-screen, so it is not a finding.
+candidates_opened:
+  - contracts/ingest-workspace/ingest-screen

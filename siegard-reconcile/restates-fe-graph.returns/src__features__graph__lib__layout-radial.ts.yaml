@@ -1,0 +1,42 @@
+read:
+  - node: rules/graph-explorer/a-graph-change-keeps-every-positioned-node-where-it-is
+    held_at: |-
+      The positioning loop over root.descendants() in runRadialLayout, lines 59-72. A node with a pinned position is copied through, and only a node without one is placed from its angle and ring radius.
+    evidence: |-
+      const pinned = pinnedPositions.get(id);
+          if (pinned !== undefined) {
+            out.set(id, { x: pinned.x, y: pinned.y });
+            continue;
+          }
+  - node: rules/graph-explorer/radial-layout-puts-the-root-at-the-centre
+    held_at: |-
+      The d3 tree layout configuration (lines 27-30) and the polar-to-Cartesian conversion (lines 67-71). The separation callback gives the gap of 1 between siblings and 2 between other neighbours, divided by depth. Radius 0 at depth 0 puts the root at (0, 0). Angle 0 maps to the top because y is -radius*cos(theta).
+    evidence: |-
+      .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth);
+      const x = radius * Math.sin(theta);
+      const y = -radius * Math.cos(theta);
+      const radius = d === 0
+            ? 0
+  - node: rules/graph-explorer/radial-rings-take-the-largest-radius
+    held_at: |-
+      The NODE_FOOTPRINT and MIN_RING_GAP constants (lines 10-12) and the ring radius loop (lines 41-57). The loop takes the largest of depth*200, 270/(2*sin(pi/count)) for a ring of two or more nodes, and the previous radius plus 200. Ring 0 has radius 0.
+    evidence: |-
+      const NODE_FOOTPRINT = 270;
+      const MIN_RING_GAP = 200;
+      const angularTerm = count >= 2
+            ? NODE_FOOTPRINT / (2 * Math.sin(Math.PI / count))
+            : 0;
+      : Math.max(
+                d * MIN_RING_GAP,
+                angularTerm,
+                prevRadius + MIN_RING_GAP,
+              );
+  - node: rules/graph-explorer/several-components-hang-under-a-virtual-root
+    held_at: |-
+      Only the half of the fact that this file holds: lines 34 and 61 skip SUPER_ROOT_ID, so the virtual root is never given a position and never counts toward a ring. The id value `__super_root__` and the act of hanging several component roots under it are declared and done in ./spanning-tree (SUPER_ROOT_ID, buildSpanningTree), which this file imports and does not redeclare.
+    evidence: |-
+      if (id === SUPER_ROOT_ID) continue;
+      const rootSpan = buildSpanningTree(nodeIds, linkPairs);
+
+looked_past: |-
+  I did not open ./spanning-tree.ts or ../state/graph-store, so I did not check where SUPER_ROOT_ID gets its value or how components are grouped. They are outside the file set.

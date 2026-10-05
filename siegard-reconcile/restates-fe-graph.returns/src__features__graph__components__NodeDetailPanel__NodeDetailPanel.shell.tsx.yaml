@@ -1,0 +1,68 @@
+findings:
+  - file: src/features/graph/components/NodeDetailPanel/NodeDetailPanel.shell.tsx
+    where: >-
+      ErrorView, the PanelHeader title prop (lines 118-122)
+    evidence: |-
+      <PanelHeader
+        title={NODE_DETAIL_COPY.errorNotFound}
+        closeRef={closeRef}
+        onClose={onClose}
+      />
+    cost: |-
+      Whatever the variant, the header of a failed panel reads "Nó não encontrado.". For a deleted node the alert reads "Este nó foi removido por conformidade." while the header above it says the node was not found. For a generic failure the header says not found while the alert asks for a retry. The owner is shown two messages that disagree, and the not-found wording is the one the specification reserves for RESOURCE_NOT_FOUND. No node says what the header shows in a failed state, so the code is where that decision now lives.
+    kind: contradicts
+    correction: |-
+      The candidate rule says each variant shows its own message and never another variant's. The header text of a failed panel needs a decision: either a node states what the failed header shows, or the header stops carrying another variant's message.
+    node: rules/graph-explorer/a-node-failure-reads-its-wording
+read:
+  - node: contracts/graph-explorer/graph-screen
+    held_at: >-
+      LoadingView (spinner and loading text, close button) and ErrorView (alert, per-variant message, conditional retry button), lines 71-156; the wording itself is read from NODE_DETAIL_COPY in NodeDetailPanel.copy.ts
+    evidence: |-
+      aria-label={NODE_DETAIL_COPY.close}
+      {NODE_DETAIL_COPY.loading}
+      variant === "not-found" ? NODE_DETAIL_COPY.errorNotFound : variant === "deleted" ? NODE_DETAIL_COPY.errorDeleted : NODE_DETAIL_COPY.errorGeneric
+      {NODE_DETAIL_COPY.retry}
+  - node: domain/graph-explorer/node-detail-failure
+    held_at: >-
+      the ErrorVariant type, line 7
+    evidence: |-
+      export type ErrorVariant = "not-found" | "deleted" | "generic";
+  - node: rules/graph-explorer/a-failed-node-read-is-an-alert
+    held_at: >-
+      ErrorView, the role="alert" container and the showRetry guard, lines 115-153
+    evidence: |-
+      const showRetry = variant === "generic";
+      role="alert"
+      {showRetry && (
+  - node: rules/graph-explorer/a-node-failure-is-classified-by-its-code
+    held_at: >-
+      classifyError, lines 9-15
+    evidence: |-
+      if (err === null || typeof err !== "object") return "generic";
+      const code = (err as { code?: unknown }).code;
+      if (code === "RESOURCE_NOT_FOUND") return "not-found";
+      if (code === "BUSINESS_NODE_DELETED") return "deleted";
+      return "generic";
+  - node: rules/graph-explorer/the-close-button-takes-focus
+    held_at: >-
+      the close button in PanelHeader, lines 45-60, which receives closeRef and takes its name from NODE_DETAIL_COPY.close ("Fechar detalhes do nó" in NodeDetailPanel.copy.ts). Nothing in this file focuses it on mount or on a node id change; that is outside this file.
+    evidence: |-
+      <button
+        ref={closeRef}
+        type="button"
+        onClick={onClose}
+        aria-label={NODE_DETAIL_COPY.close}
+  - node: rules/graph-explorer/the-loading-view-says-it-is-loading
+    held_at: >-
+      LoadingView, lines 71-94
+    evidence: |-
+      const title = nodeLabel ?? "";
+      <PanelHeader title={title} closeRef={closeRef} onClose={onClose} />
+      <span aria-live="polite" className="text-xs text-foreground">
+        {NODE_DETAIL_COPY.loading}
+      </span>
+looked_past: >-
+  Styling classes, the lucide icons chosen (Network on the retry button) and the data-testid attributes are surface or code-review matters, not domain facts.
+candidates_opened:
+  - rules/graph-explorer/a-node-failure-reads-its-wording

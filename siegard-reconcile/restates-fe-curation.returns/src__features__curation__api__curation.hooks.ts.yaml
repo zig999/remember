@@ -1,0 +1,89 @@
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      buildQueueQs() and useListReviewQueue() for list-review-queue and read-curation-metrics, and the mutationFn of each of the six mutation hooks for resolve-entity-match, merge-nodes, resolve-dispute, confirm-item, reject-item and correct-item.
+    evidence: |-
+      if (params.kind !== undefined) search.set("kind", params.kind);
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+      if (params.offset !== undefined) search.set("offset", String(params.offset));
+      `/api/v1/curation/queue${buildQueueQs(params)}`
+      "/api/v1/curation/metrics"
+      `/api/v1/curation/entity-matches/${encodeURIComponent(node_id)}/resolve`
+      "/api/v1/curation/nodes/merge"
+      "/api/v1/curation/disputes/resolve"
+      "/api/v1/curation/items/confirm"
+      "/api/v1/curation/items/reject"
+      "/api/v1/curation/items/correct"
+      method: "POST", body: JSON.stringify(body)
+  - node: rules/curation-workspace/confirmation-or-rejection-refreshes-the-provenance-of-the-item
+    held_at: |-
+      the onSuccess of useConfirmItem and of useRejectItem, through invalidateCurationAndAffected().
+    evidence: |-
+      onSuccess: (_data, variables) => {
+        invalidateCurationAndAffected(queryClient, {
+          items: [{ kind: variables.item_kind, id: variables.item_id }],
+        });
+      }
+  - node: rules/curation-workspace/correction-refreshes-the-provenance-and-the-history
+    held_at: |-
+      the onSuccess of useCorrectItem.
+    evidence: |-
+      items: [
+        { kind: variables.item_kind, id: variables.item_id },
+        { kind: variables.item_kind, id: data.new_item_id },
+      ],
+      const historyKey =
+        variables.item_kind === "link"
+          ? ["history", "link", variables.item_id]
+          : ["history", "attribute", variables.item_id];
+      void queryClient.invalidateQueries({ queryKey: historyKey });
+  - node: rules/curation-workspace/dispute-resolution-refreshes-the-provenance-of-its-items
+    held_at: |-
+      the onSuccess of useResolveDispute.
+    evidence: |-
+      items: variables.item_ids.map((id) => ({
+        kind: variables.item_kind,
+        id,
+      })),
+  - node: rules/curation-workspace/entity-match-resolution-refreshes-the-node-details
+    held_at: |-
+      the onSuccess of useResolveEntityMatch.
+    evidence: |-
+      const nodeIds: string[] = [variables.node_id];
+      if (variables.body.target_node_id) {
+        nodeIds.push(variables.body.target_node_id);
+      }
+      invalidateCurationAndAffected(queryClient, { nodeIds });
+  - node: rules/curation-workspace/link-items-use-link-reads-and-others-attribute-reads
+    held_at: |-
+      invalidateCurationAndAffected(), and the history key of useCorrectItem.
+    evidence: |-
+      kind === "link"
+        ? provenanceKeys.link(id)
+        : provenanceKeys.attribute(id);
+      variables.item_kind === "link"
+        ? ["history", "link", variables.item_id]
+        : ["history", "attribute", variables.item_id];
+  - node: rules/curation-workspace/merge-refreshes-both-node-details
+    held_at: |-
+      the onSuccess of useMergeNodes.
+    evidence: |-
+      invalidateCurationAndAffected(queryClient, {
+        nodeIds: [variables.survivor_id, variables.absorbed_id],
+      });
+  - node: rules/curation-workspace/metrics-stay-fresh-for-thirty-seconds
+    held_at: |-
+      the useCurationMetrics() query options, with no refetchInterval.
+    evidence: |-
+      const METRICS_STALE_MS = 30_000;
+      staleTime: METRICS_STALE_MS,
+      refetchOnWindowFocus: true,
+      retry: 1,
+  - node: rules/curation-workspace/successful-action-refreshes-the-queue-and-the-metrics
+    held_at: |-
+      invalidateCurationAndAffected(), called only from the onSuccess of each mutation hook. No onError or onSettled handler exists, so a failed action refreshes nothing.
+    evidence: |-
+      void queryClient.invalidateQueries({ queryKey: curationKeys.all });
+
+looked_past: |-
+  The queue's QUEUE_STALE_MS = 0, QUEUE_POLL_MS = 30_000, refetchOnWindowFocus: true and the `params.limit ?? 20` default are held by rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus and rules/curation-workspace/queue-read-asks-the-first-page-of-twenty, which I opened under the specification root. Neither is in this file's pack, so no finding is owed. Whether curationKeys.all covers the queue and metrics keys is settled in keys.ts, which is outside this file set.

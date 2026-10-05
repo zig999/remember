@@ -1,0 +1,62 @@
+read:
+  - node: rules/graph-explorer/a-node-click-only-reports-the-node-id
+    held_at: |-
+      GraphCanvasRegion, the `canvasNodeSelectProp` spread into `<GraphCanvas ... {...canvasNodeSelectProp} />`, and the `onNodeSelect` forwarding in GraphSpace
+    evidence: |-
+      const canvasNodeSelectProp =
+          onNodeSelect !== undefined ? { onNodeSelect } : {};
+      ... {...canvasNodeSelectProp}
+  - node: rules/graph-explorer/empty-status-without-nodes-shows-only-the-empty-state
+    held_at: |-
+      GraphSpace, `showEmptyState` and the ternary that renders `<GraphEmptyState />` or the canvas
+    evidence: |-
+      const showEmptyState = status === "empty" && nodes.length === 0;
+      ... {showEmptyState ? (
+              <GraphEmptyState />
+            ) : (
+              <ReactFlowProvider>
+  - node: rules/graph-explorer/loading-and-error-overlay-the-canvas
+    held_at: |-
+      GraphCanvasRegion, `overlayVariant` and the overlay rendered after `<GraphCanvas>` in the same container
+    evidence: |-
+      const overlayVariant =
+          status === "loading" ? "loading" : status === "error" ? "error" : null;
+      ... {overlayVariant !== null && (
+              <GraphStatusOverlay variant={overlayVariant} {...overlayErrorProp} />
+            )}
+  - node: rules/graph-explorer/pane-is-a-region-named-after-the-graph
+    held_at: |-
+      the `<section>` element returned by GraphSpace
+    evidence: |-
+      <section
+            role="region"
+            aria-label="Grafo de conhecimento"
+  - node: rules/graph-explorer/pane-is-busy-only-while-loading-or-revealing
+    held_at: |-
+      GraphSpace, `isBusy` and the conditional `aria-busy` attribute on the section
+    evidence: |-
+      const isBusy = status === "loading" || status === "revealing";
+      ... {...(isBusy ? { "aria-busy": true } : {})}
+  - node: rules/graph-explorer/the-canvas-stays-mounted-outside-the-empty-state
+    held_at: |-
+      GraphSpace's ternary. Every status other than the empty state with no nodes renders the same `ReactFlowProvider` and `GraphCanvasRegion` branch. The overlay is a sibling of the canvas, so it does not unmount it.
+    evidence: |-
+      ) : (
+            <ReactFlowProvider>
+              <GraphCanvasRegion
+  - node: rules/graph-explorer/the-pane-reveals-at-the-hooks-default-gap
+    held_at: |-
+      the `revealStaggerMs` default in GraphSpace's destructured props, passed to `useGraphReveal`
+    evidence: |-
+      revealStaggerMs = DEFAULT_REVEAL_STAGGER_MS,
+      ... const revealedIds = useGraphReveal(revealStaggerMs);
+  - node: rules/graph-explorer/the-pane-wires-the-owner-s-arrangement-to-the-store
+    held_at: |-
+      GraphCanvasRegion, the store selectors and the props passed to `<GraphCanvas>`
+    evidence: |-
+      onNodePositionCommit={setNodePosition}
+              onResetLayout={resetLayout}
+              layoutAlgorithm={layoutAlgorithm}
+              onLayoutAlgorithmChange={setLayoutAlgorithm}
+looked_past: |-
+  The Tailwind layout classes on the section and the container div are styling, not a domain fact, so no node was checked against them.

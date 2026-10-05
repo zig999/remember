@@ -1,0 +1,61 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the queryFn of useListConversations (lines 34-40) with buildQueryString (lines 19-26), the list-conversations operation only
+    evidence: |-
+      `/api/v1/conversations${buildQueryString(params)}`, { method: "GET", headers: authHeader() } ... return toConversationList(wire);
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+      if (params.cursor !== undefined) search.set("cursor", params.cursor);
+      if (params.includeArchived === true) search.set("include_archived", "true");
+  - node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+    held_at: |-
+      the STALE_MS constant, line 17, passed as staleTime at line 41; only the conversation listing is read in this file
+    evidence: |-
+      const STALE_MS = 30_000;
+      staleTime: STALE_MS,
+  - node: rules/chat-workspace/details-and-listing-are-read-again-on-focus
+    held_at: |-
+      the useQuery options, line 42; only the listing is read in this file
+    evidence: |-
+      refetchOnWindowFocus: true,
+  - node: rules/chat-workspace/listing-excludes-archived-by-default
+    held_at: |-
+      buildQueryString line 23 and the default at line 31
+    evidence: |-
+      if (params.includeArchived === true) search.set("include_archived", "true");
+      const includeArchived = params.includeArchived ?? false;
+  - node: rules/chat-workspace/listing-sends-its-options-only-when-asked
+    held_at: |-
+      buildQueryString, lines 21-23, and its empty-string fallback at line 25; the message listing is not in this file
+    evidence: |-
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+      if (params.cursor !== undefined) search.set("cursor", params.cursor);
+      if (params.includeArchived === true) search.set("include_archived", "true");
+      return qs.length > 0 ? `?${qs}` : "";
+  - node: rules/chat-workspace/no-page-size-is-fixed-by-the-screen
+    held_at: |-
+      ListConversationsParams, lines 11-15, and buildQueryString, line 21; limit is optional and has no default
+    evidence: |-
+      readonly limit?: number;
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the queryFn, lines 34-40; the http call is awaited with no catch or mapping, so what http raises reaches the query
+    evidence: |-
+      const wire = await http<ConversationListWire>(
+        `/api/v1/conversations${buildQueryString(params)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toConversationList(wire);
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: nowhere
+    evidence: |-
+      the file reads a listing and sends no message; the only header use is `headers: authHeader()` on a GET
+  - node: rules/chat/conversation-listing-excludes-archived
+    held_at: |-
+      buildQueryString line 23; the listing leaves out archived conversations by sending include_archived only when asked for
+    evidence: |-
+      if (params.includeArchived === true) search.set("include_archived", "true");
+looked_past: |-
+  The query key built from includeArchived alone (line 33) leaves limit and cursor out, and the bearer header comes from authHeader in another file; both are code-review or other-file judgments, not a domain fact stated here.

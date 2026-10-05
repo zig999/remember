@@ -1,0 +1,40 @@
+read:
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: |-
+      getJson() and its two callers, useHealth() (line 16) and useCurationCount() (line 28)
+    evidence: |-
+      queryFn: () => getJson("/health")
+      queryFn: () => getJson("/api/v1/curation/queue?limit=1", token)
+      if (token) headers.Authorization = `Bearer ${token}`;
+      return res.json().catch(() => null);
+      const d = q.data as { database?: string; result?: { database?: string } };
+      const d = q.data as { total?: number; result?: { total?: number } } | null | undefined;
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: |-
+      REFETCH_MS (line 6) and the options of both useQuery calls (lines 17-22 and 30-36)
+    evidence: |-
+      const REFETCH_MS = 20_000;
+      refetchInterval: REFETCH_MS,
+      retry: false,
+      queryFn: () => getJson("/health"),
+  - node: rules/application-shell/health-is-judged-by-the-database-field
+    held_at: |-
+      the return statements of useHealth(), lines 23-25
+    evidence: |-
+      if (q.data == null) return "checking";
+      return (d.database ?? d.result?.database) === "ok" ? "ok" : "down";
+  - node: rules/application-shell/the-active-ingestion-segment-is-never-shown
+    held_at: |-
+      useActiveRun(), lines 41-43
+    evidence: |-
+      export function useActiveRun(): { label: string } | null {
+        return null;
+      }
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: |-
+      useCurationCount(), lines 28-39
+    evidence: |-
+      const token = useAuthStore((s) => s.accessToken);
+      queryFn: () => getJson("/api/v1/curation/queue?limit=1", token),
+      enabled: token != null,
+      return d?.total ?? d?.result?.total ?? 0;

@@ -1,0 +1,42 @@
+read:
+  - node: rules/owner-access/any-other-sign-in-failure-is-unknown
+    held_at: |-
+      The fallback throws in signInWithEmail (lines 64-67) and fetchAccessToken (lines 82-88). Both throw an AuthError carrying the provider's own code or "UNKNOWN". Neither throws one of the codes this file reserves for the other kinds. Rule 1 of the pair's own set is the one that sends any other code to unknown, and it sits in classifySignInError in useSignIn.ts, not here.
+    evidence: |-
+      throw new AuthError(
+          body.code ?? "UNKNOWN",
+          body.message ?? `Falha na autenticação (HTTP ${res.status}).`,
+        );
+  - node: rules/owner-access/missing-session-or-token-is-a-session-failure
+    held_at: |-
+      fetchAccessToken, lines 77-79 and 90-103. A 401 throws NO_SESSION. A body that is not JSON, not an object, or has no non-empty string token throws NO_TOKEN. useSignIn.ts maps both codes to the session kind.
+    evidence: |-
+      throw new AuthError("NO_SESSION", body.message ?? "Sessão expirada ou ausente.");
+      ...
+      if (typeof token !== "string" || token.length === 0) {
+          throw new AuthError("NO_TOKEN", "Resposta do servidor de auth não contém token.");
+        }
+  - node: rules/owner-access/rejected-credentials-are-a-credential-failure
+    held_at: |-
+      signInWithEmail, lines 55-63. A body code of INVALID_EMAIL_OR_PASSWORD, or HTTP status 401, throws an AuthError with code INVALID_EMAIL_OR_PASSWORD. The message is "E-mail ou senha incorretos.", which is the contract's own text. A 2xx answer returns early (`if (res.ok) return;`), as the identity-provider contract requires.
+    evidence: |-
+      if (body.code === "INVALID_EMAIL_OR_PASSWORD") {
+          throw new AuthError("INVALID_EMAIL_OR_PASSWORD", body.message ?? "E-mail ou senha incorretos.");
+        }
+        if (res.status === 401) {
+          throw new AuthError(
+            "INVALID_EMAIL_OR_PASSWORD",
+  - node: rules/owner-access/unreachable-provider-is-a-network-failure
+    held_at: |-
+      safeFetch, lines 32-41. A request that fails before any answer (TypeError, or an AbortError DOMException) throws an AuthError with code NETWORK. Both signInWithEmail and fetchAccessToken go through it.
+    evidence: |-
+      if (err instanceof TypeError || (err instanceof DOMException && err.name === "AbortError")) {
+            throw new AuthError("NETWORK", `Network error contacting auth: ${String(err.message ?? err)}`);
+          }
+looked_past: |-
+  The AuthError messages other than "E-mail ou senha incorretos." are not shown to the owner (useSignIn.ts classifies on the code alone), and the code strings NETWORK, NO_SESSION, NO_TOKEN and UNKNOWN, the trailing-slash trim in base() and VITE_NEON_AUTH_URL are internal plumbing and configuration, not domain facts, so I did not report them.
+candidates_opened:
+  - contracts/owner-access/sign-in
+  - domain/owner-access/sign-in-attempt
+  - domain/owner-access/sign-in-failure-kind
+  - contracts/owner-access/identity-provider

@@ -1,0 +1,43 @@
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the mutationFn of useUpdateConversation (the update-conversation operation): the PATCH request, the URL-encoded id, the JSON content type and the conversation read from the answer
+    evidence: |-
+      const wire = await http<ConversationWire>(
+        `/api/v1/conversations/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            ...authHeader(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        },
+      );
+      return toConversation(wire);
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      mutationFn of useUpdateConversation: the error from http() propagates without a try/catch, a code mapping or any text of the screen's own
+    evidence: |-
+      const wire = await http<ConversationWire>(
+        `/api/v1/conversations/${encodeURIComponent(id)}`,
+  - node: rules/chat-workspace/update-refreshes-the-details-and-every-read
+    held_at: |-
+      onSuccess of useUpdateConversation: the details key is invalidated first, then the all-conversations key
+    evidence: |-
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.detail(data.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.all,
+      });
+  - node: rules/chat-workspace/update-sends-only-the-fields-supplied
+    held_at: |-
+      the body construction in mutationFn of useUpdateConversation, plus the UpdateConversationVariables declaration for the optional fields
+    evidence: |-
+      const body: Record<string, unknown> = {};
+      if (title !== undefined) body["title"] = title;
+      if (archivedAt !== undefined) body["archived_at"] = archivedAt;
+      ... body: JSON.stringify(body),
+looked_past: |-
+  The file imports authHeader, toConversation and conversationKeys from sibling files that were not in the set, so I did not read them, and whether conversationKeys.all covers every conversation-scoped read is those files' judgment.

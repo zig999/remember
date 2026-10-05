@@ -1,0 +1,74 @@
+findings: []
+read:
+  - node: contracts/curation-workspace/bff-curation
+    held_at: |-
+      httpCuration(), lines 85-199, for the send-curation-request operation. The other operations of the contract (queue, metrics, resolve and so on) are outside this file.
+    evidence: |-
+      A 2xx answer returns the body unwrapped, and a 204 gives no value:
+        if (response.status === 204) return undefined as unknown as T;
+        return (await response.json()) as T;
+      The failures carry the codes and messages the contract names:
+        code: isTimeout ? "SYSTEM_TIMEOUT" : isAbort ? "SYSTEM_ABORTED" : "SYSTEM_NETWORK"
+        "Tempo limite excedido na requisição." / "Requisição cancelada." / "Falha de rede ao contactar o servidor."
+        code: "SYSTEM_INVALID_RESPONSE", message: "Resposta do servidor não é JSON válido."
+        code: "AUTH_SESSION_EXPIRED", httpStatus: 401, message: "Sua sessão expirou. Faça login novamente."
+      A non-2xx answer takes the error object's string code, its details and its message when that is a string. Otherwise it falls back by status:
+        typeof errObj?.code === "string" ? errObj.code : response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN"
+        "Algo deu errado. Tente novamente." / "Erro desconhecido do servidor."
+      A second 401 skips the refresh branch (`response.status === 401 && __retried !== true`) and goes to that same fallback, which gives SYSTEM_UNKNOWN when the body has no code.
+  - node: rules/curation-workspace/caller-cancellation-ends-the-request
+    held_at: |-
+      composeSignals() and its use in httpCuration(), lines 49-70 and 99-102.
+    evidence: |-
+      const signal = composeSignals([timeoutController.signal, userSignal]);
+      ...
+      if (signal !== undefined) fetchInit.signal = signal;
+      The caller's signal and the cutoff signal are merged, via AbortSignal.any or a controller fallback, so either one aborts the fetch.
+  - node: rules/curation-workspace/curation-request-carries-the-access-token
+    held_at: |-
+      authHeader(), lines 6-9, and the Authorization header set on the resent request, lines 132-138.
+    evidence: |-
+      return token !== null ? { Authorization: `Bearer ${token}` } : {};
+      nextHeaders.set("Authorization", `Bearer ${fresh}`);
+      A bearer is sent when a token is held and no Authorization header is produced otherwise. httpCuration() itself does not call authHeader(), so callers supply it.
+  - node: rules/curation-workspace/curation-request-times-out-after-thirty-seconds
+    held_at: |-
+      DEFAULT_TIMEOUT_MS and the timer in httpCuration(), lines 16 and 93-98.
+    evidence: |-
+      const DEFAULT_TIMEOUT_MS = 30_000;
+      timeoutController.abort(new DOMException("Request timed out after 30s", "TimeoutError"));
+      The resulting failure is EnvelopeError with httpStatus: 0, so it carries no answer status.
+  - node: rules/curation-workspace/first-unauthorized-curation-answer-refreshes-the-token-once
+    held_at: |-
+      trySilentRefresh() and the 401 branch of httpCuration(), lines 72-83 and 129-144.
+    evidence: |-
+      const newJwt = await fetchAccessToken();
+      useAuthStore.getState().setToken(newJwt);
+      return httpCuration<T>(path, { ...opts, headers: Object.fromEntries(nextHeaders.entries()), __retried: true });
+      A new token is obtained, stored, and the request is resent once.
+  - node: rules/curation-workspace/reading-the-answer-body-has-no-cutoff
+    held_at: |-
+      clearTimeout(timer) immediately after the fetch resolves, line 127.
+    evidence: |-
+      clearTimeout(timer);
+
+      if (response.status === 401 && __retried !== true) {
+      The timer is cleared before the body is read, in both the 2xx branch (`response.json()`) and the error branch, so reading the body is never cut off.
+  - node: rules/curation-workspace/resent-curation-request-never-refreshes-again
+    held_at: |-
+      The __retried flag and the recursive call in httpCuration(), lines 89, 129 and 139-143.
+    evidence: |-
+      const { signal: userSignal, __retried, ...init } = opts;
+      if (response.status === 401 && __retried !== true) {
+      return httpCuration<T>(path, { ...opts, headers: ..., __retried: true });
+      The resent call skips the 401 branch, so it starts no second refresh. It enters httpCuration() again and creates its own 30-second timer.
+  - node: rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in
+    held_at: |-
+      the catch of trySilentRefresh(), lines 77-82.
+    evidence: |-
+      useAuthStore.getState().clear();
+      redirectImpl("/sign-in?reason=session_expired");
+      return false;
+      The stored token is cleared and the address is replaced through window.location.replace in redirectImpl.
+looked_past: |-
+  The `details: { cause: String(err) }` payload on the timeout, abort, network and invalid-response failures is a diagnostic shape that no node names, and the test-only export __setCurationRedirectForTests is not a domain fact, so I reported neither.

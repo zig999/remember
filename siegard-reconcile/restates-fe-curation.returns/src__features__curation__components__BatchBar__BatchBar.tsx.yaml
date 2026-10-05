@@ -1,0 +1,69 @@
+findings: []
+read:
+  - node: rules/curation-workspace/batch-bar-actions-follow-the-kind
+    held_at: |-
+      the three flags at lines 40-42 and the conditional renders at lines 110, 123 and 137. A disputed kind sets none of the flags, so it renders no action.
+    evidence: |-
+      const showConfirm = kind === "uncertain";
+      const showReject = kind === "uncertain";
+      const showKeepSeparate = kind === "entity_match";
+  - node: rules/curation-workspace/batch-bar-acts-on-one-kind
+    held_at: |-
+      the `BatchKind` type and the single `kind` prop (lines 7 and 11). The bar takes one count and one kind and derives every action from that kind.
+    evidence: |-
+      export type BatchKind = "entity_match" | "disputed" | "uncertain";
+      readonly count: number;
+      readonly kind: BatchKind;
+  - node: rules/curation-workspace/batch-bar-needs-two-items
+    held_at: |-
+      the early return at line 34
+    evidence: |-
+      if (count < 2) return null;
+  - node: rules/curation-workspace/batch-bar-offers-to-clear-the-selection
+    held_at: |-
+      the clear button at lines 99-107. It calls the caller-supplied `onClear` and does nothing else, so the clearing stays with the caller.
+    evidence: |-
+      aria-label="Limpar seleção"
+      onClick={onClear}
+  - node: rules/curation-workspace/batch-bar-shows-the-count
+    held_at: |-
+      line 98
+    evidence: |-
+      <span aria-live="polite">{count} selecionados</span>
+  - node: rules/curation-workspace/inline-confirmation-confirms-or-cancels
+    held_at: |-
+      handleConfirmReject and handleCancelReject (lines 52-59), wired to the Confirmar and Cancelar buttons. Setting `pendingReject` to false brings the action row back.
+    evidence: |-
+      function handleConfirmReject(): void {
+        setPendingReject(false);
+        onReject?.();
+      }
+      function handleCancelReject(): void {
+        setPendingReject(false);
+      }
+  - node: rules/curation-workspace/pending-confirmation-survives-a-selection-change
+    held_at: |-
+      the `pendingReject` state (line 32). Only the confirm and cancel handlers reset it. No effect or branch on `count` or `kind` clears it, and the `count < 2` early return only skips rendering.
+    evidence: |-
+      const [pendingReject, setPendingReject] = useState(false);
+      {pendingReject ? (
+  - node: rules/curation-workspace/rejecting-five-or-more-asks-first
+    held_at: |-
+      BATCH_REJECT_CONFIRM_THRESHOLD (line 20) and handleRejectClick (lines 44-50)
+    evidence: |-
+      export const BATCH_REJECT_CONFIRM_THRESHOLD = 5;
+      if (count >= BATCH_REJECT_CONFIRM_THRESHOLD) {
+        setPendingReject(true);
+        return;
+      }
+      onReject?.();
+  - node: rules/curation-workspace/submitting-batch-shows-busy-buttons
+    held_at: |-
+      the `loading={submitting}` prop on the Confirmar button of the inline confirmation (line 80) and on the three action buttons (lines 115, 128 and 141). The Cancelar button and the clear button carry no `loading` prop.
+    evidence: |-
+      <Button type="button" size="sm" variant="destructive" loading={submitting} onClick={handleConfirmReject}>
+      <Button type="button" size="sm" variant="outline" onClick={handleCancelReject}>
+looked_past: |-
+  The aria-labels "Ações em lote" and "Limpar seleção" and the `disabled={isDisputed}` props, which are dead code because a disputed bar renders no action button, are accessibility and surface details that no node in the set states. They are not domain facts, so I left them for another judgment.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen

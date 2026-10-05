@@ -1,0 +1,45 @@
+findings: []
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: >-
+      The mutationFn of useDeleteConversation, lines 20-25. It sends the delete-conversation request. The
+      204-only success and the failure answers are not stated in this file. They belong to the helper it calls,
+      httpVoid in ./_request, which this file only invokes.
+    evidence: |-
+      await httpVoid(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: authHeader(),
+      });
+  - node: rules/chat-workspace/create-and-delete-do-not-navigate
+    held_at: >-
+      Nowhere, and that is the conformance. The hook has no navigation call. Its onSuccess only touches the
+      query cache.
+    evidence: |-
+      onSuccess: (_data, { id }) => {
+        queryClient.removeQueries({ queryKey: conversationKeys.detail(id) });
+        queryClient.removeQueries({ queryKey: conversationKeys.messages(id) });
+        queryClient.removeQueries({ queryKey: conversationKeys.usage(id) });
+        void queryClient.invalidateQueries({ queryKey: conversationKeys.all });
+      }
+  - node: rules/chat-workspace/delete-removes-the-conversations-reads
+    held_at: The onSuccess handler of useMutation, lines 26-31.
+    evidence: |-
+      queryClient.removeQueries({ queryKey: conversationKeys.detail(id) });
+      queryClient.removeQueries({ queryKey: conversationKeys.messages(id) });
+      queryClient.removeQueries({ queryKey: conversationKeys.usage(id) });
+      void queryClient.invalidateQueries({ queryKey: conversationKeys.all });
+  - node: rules/chat-workspace/delete-uses-the-no-body-helper
+    held_at: >-
+      The mutationFn, lines 20-25. It calls httpVoid and the async function returns nothing. The mutation
+      result type is UseMutationResult<void, Error, DeleteConversationVariables>.
+    evidence: |-
+      mutationFn: async ({ id }) => {
+        await httpVoid(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: >-
+      The whole hook body. It declares no onError, no catch, and no code mapping or message text. A failure
+      raised by httpVoid propagates as the mutation's Error.
+    evidence: |-
+      return useMutation({
+        mutationFn: async ({ id }) => {
+          await httpVoid(`/api/v1/conversations/${encodeURIComponent(id)}`, {

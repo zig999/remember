@@ -1,0 +1,66 @@
+findings: []
+read:
+  - node: rules/curation-workspace/decision-moves-to-the-ring-neighbour
+    held_at: |-
+      the getNextItem callback passed to useDecisionDispatch, lines 30-31
+    evidence: |-
+      getNextItem: () =>
+            neighbour(queue, useCurationStore.getState().selectedItem, "next"),
+  - node: rules/curation-workspace/decision-on-the-wrong-kind-sends-nothing
+    held_at: |-
+      the early returns in onResolveEntityMatch (line 48) and onResolveDispute (line 64)
+    evidence: |-
+      if (item.kind !== "entity_match") return;
+      if (item.kind !== "disputed") return;
+  - node: rules/curation-workspace/destructive-decisions-carry-a-caption
+    held_at: |-
+      the captions passed to dispatchDestructive for the merge (line 53), the preference (line 70) and the rejection (line 90)
+    evidence: |-
+      "Item fundido",
+      "Lado preferido",
+      "Item rejeitado",
+  - node: rules/curation-workspace/destructive-decisions-wait-for-undo
+    held_at: |-
+      the three dispatchDestructive calls: merge_into (line 50), prefer_one (line 67) and onReject (line 88)
+    evidence: |-
+      dispatch.dispatchDestructive(
+                    { kind: "resolve_entity_match_merge", nodeId: item.nodeId, body },
+      dispatch.dispatchDestructive(
+                    { kind: "resolve_dispute_prefer", body },
+      dispatch.dispatchDestructive(
+                  { kind: "reject_item", body },
+  - node: rules/curation-workspace/dispute-evidence-counts-as-viewed-when-its-trail-says-so
+    held_at: |-
+      provenanceContextOf (lines 9-16), the evidenceViewed store read set by ProvenanceTrail's onEvidenceViewed, and the effectiveEvidenceViewed expression (line 37)
+    evidence: |-
+      const first = item.sides[0];
+        if (first === undefined) return null;
+      const effectiveEvidenceViewed = armedImmediately || evidenceViewed;
+      onEvidenceViewed={() => {
+                    setEvidenceViewed(true);
+  - node: rules/curation-workspace/entity-match-evidence-counts-as-viewed-at-once
+    held_at: |-
+      the entity_match branch of provenanceContextOf (line 12) together with armedImmediately (line 36)
+    evidence: |-
+      if (item.kind === "entity_match") return null;
+      const armedImmediately = provenance === null;
+  - node: rules/curation-workspace/immediate-decisions-are-sent-at-once
+    held_at: |-
+      the dispatchNonDestructive calls for the entity-match keep (line 56), dispute keep (line 73), adjust (line 78), confirm (line 85) and correct (line 95)
+    evidence: |-
+      dispatch.dispatchNonDestructive({ kind: "resolve_dispute_keep",
+      dispatch.dispatchNonDestructive({ kind: "confirm_item", body });
+      dispatch.dispatchNonDestructive({ kind: "correct_item", body });
+  - node: rules/curation-workspace/page-does-not-remove-a-decided-item-itself
+    held_at: |-
+      the no-op removal and restore callbacks passed to useDecisionDispatch, lines 32-33
+    evidence: |-
+      onItemRemove: () => {},
+          onItemRestore: () => {},
+  - node: rules/curation-workspace/preference-removes-its-item-by-the-first-id
+    held_at: |-
+      the optimisticId expression in onResolveDispute, line 65
+    evidence: |-
+      const optimisticId = body.item_ids[0] ?? item.sides[0]?.itemId ?? "";
+looked_past: |-
+  The px-md className on the provenance wrapper and the DecisionPanel and ProvenanceTrail composition are layout and surface, not a domain fact, so I did not judge them.

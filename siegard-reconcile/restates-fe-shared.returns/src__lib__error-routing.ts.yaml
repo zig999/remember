@@ -1,0 +1,108 @@
+findings: []
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: |-
+      the MSG table and the routeError switch (lines 19-83). The show-failure wording and routing are held here. The 401 "session expired" failure the contract assigns to the request helper is raised in http.ts, not in this file.
+    evidence: |-
+      accessDenied: "Acesso negado.", validationInvalid: "Há campos inválidos no formulário.", notFound: "Nenhum resultado encontrado.", conversationNotFound: "Conversa não encontrada.", gone: "Esta fonte foi removida por conformidade.", business: "Operação não pôde ser concluída.", system: "Algo deu errado. Tente novamente.", offline: "Sem conexão."
+  - node: domain/application-shell/failure-action
+    held_at: |-
+      the ErrorAction union type (lines 5-13)
+    evidence: |-
+      | { kind: "redirect"; to: string } | { kind: "toast-and-navigate"; ... } | { kind: "boundary"; message: string } | { kind: "set-error"; ... } | { kind: "inline-empty"; ... } | { kind: "inline-gone"; ... } | { kind: "toast"; ... } | { kind: "silent" }
+  - node: rules/application-shell/a-business-failure-shows-its-message
+    held_at: |-
+      the BUSINESS_ prefix branch in the default case of routeError, line 75
+    evidence: |-
+      if (code.startsWith("BUSINESS_")) {
+        return { kind: "toast", tone: "warning", message: fallbackMessage ?? MSG.business };
+      }
+  - node: rules/application-shell/a-conversation-resource-is-recognised-by-its-key
+    held_at: |-
+      isConversationResourceKey, lines 85-92
+    evidence: |-
+      if (queryKey.length < 2) return false;
+      if (queryKey[0] !== "conversations") return false;
+      ... if (second === "list") return false;
+      return second.length > 0;
+  - node: rules/application-shell/a-forbidden-failure-reads-access-denied
+    held_at: |-
+      the AUTH_FORBIDDEN case of routeError, lines 44-45. Showing the boundary as an error toast is done by applyErrorAction in query-client.ts, which this file does not contain.
+    evidence: |-
+      case "AUTH_FORBIDDEN":
+        return { kind: "boundary", message: MSG.accessDenied };
+  - node: rules/application-shell/a-gone-resource-reads-removed-for-compliance
+    held_at: |-
+      the RESOURCE_GONE case of routeError, lines 65-66
+    evidence: |-
+      case "RESOURCE_GONE":
+        return { kind: "inline-gone", message: MSG.gone };
+  - node: rules/application-shell/a-missing-conversation-returns-to-chat
+    held_at: |-
+      the conversation branch of the RESOURCE_NOT_FOUND case, lines 55-62
+    evidence: |-
+      if (context?.isConversationResource === true) {
+        return {
+          kind: "toast-and-navigate",
+          tone: "warning",
+          message: MSG.conversationNotFound,
+          to: "/chat",
+        };
+      }
+  - node: rules/application-shell/a-missing-resource-elsewhere-is-an-empty-state
+    held_at: |-
+      the fall-through of the RESOURCE_NOT_FOUND case, line 63
+    evidence: |-
+      return { kind: "inline-empty", message: fallbackMessage ?? MSG.notFound };
+  - node: rules/application-shell/a-network-failure-reads-no-connection
+    held_at: |-
+      the SYSTEM_NETWORK and SYSTEM_ABORTED cases, lines 68-72
+    evidence: |-
+      case "SYSTEM_NETWORK":
+        return { kind: "toast", tone: "warning", message: MSG.offline };
+      case "SYSTEM_ABORTED":
+        return { kind: "silent" };
+  - node: rules/application-shell/an-authorization-failure-sends-the-owner-to-sign-in
+    held_at: |-
+      the three AUTH_ cases of routeError, lines 39-42. The action and address are chosen here. Clearing the stored token is done by applyErrorAction in query-client.ts, not in this file.
+    evidence: |-
+      case "AUTH_UNAUTHORIZED":
+      case "AUTH_TOKEN_EXPIRED":
+      case "AUTH_TOKEN_INVALID":
+        return { kind: "redirect", to: "/sign-in?reason=session_expired" };
+  - node: rules/application-shell/an-invalid-format-is-a-form-error
+    held_at: |-
+      the VALIDATION_INVALID_FORMAT case of routeError, lines 47-52
+    evidence: |-
+      case "VALIDATION_INVALID_FORMAT":
+        return {
+          kind: "set-error",
+          message: fallbackMessage ?? MSG.validationInvalid,
+          ...("details" in err && err.details !== undefined ? { details: err.details } : {}),
+        };
+  - node: rules/application-shell/any-other-code-shows-a-danger-toast
+    held_at: |-
+      the last return of the default case, line 81
+    evidence: |-
+      return { kind: "toast", tone: "danger", message: fallbackMessage ?? MSG.system };
+  - node: rules/application-shell/any-other-system-failure-hides-its-message
+    held_at: |-
+      the SYSTEM_ prefix branch in the default case, lines 78-80
+    evidence: |-
+      if (code.startsWith("SYSTEM_")) {
+        return { kind: "toast", tone: "danger", message: MSG.system };
+      }
+  - node: rules/application-shell/failure-routing-lives-in-one-function
+    held_at: |-
+      routeError, lines 31-83: exact codes in the switch cases, then the BUSINESS_ prefix check, then the SYSTEM_ prefix check, in the default case
+    evidence: |-
+      switch (code) { case "AUTH_UNAUTHORIZED": ... default:
+        if (code.startsWith("BUSINESS_")) { ... }
+        if (code.startsWith("SYSTEM_")) { ... }
+looked_past: |-
+  MSG.sessionExpired is declared in this file and never read, and the same wording is emitted from http.ts and the feature _request.ts files. That is dead code and duplication, so it is a code review matter and not a conformance one.
+candidates_opened:
+  - domain/application-shell/failure-router
+  - domain/application-shell/toast-tone
+  - rules/application-shell/a-toast-keeps-its-tone
+  - rules/application-shell/every-failure-goes-to-the-router

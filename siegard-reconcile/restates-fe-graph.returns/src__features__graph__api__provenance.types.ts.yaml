@@ -1,0 +1,55 @@
+findings:
+  - file: src/features/graph/api/provenance.types.ts
+    where: |-
+      line 1, the ProvenanceKind union
+    evidence: |-
+      export type ProvenanceKind = "links" | "attributes" | "fragments";
+    cost: |-
+      The graph-explorer contract lists only read-link-provenance and read-attribute-provenance. The "fragments" kind is held by a node of the curation-workspace feature, so a reader of the graph-explorer nodes has no sign that this file also reads provenance by fragment. A change to that operation reaches this file only through a bind that does not exist.
+    kind: unstated
+    correction: |-
+      The graph-explorer contract would have to state a read-fragment-provenance operation, or the "fragments" member would have to leave this file. Which of the two is the specification's decision to make.
+    node: contracts/curation-workspace/bff-curation-reads
+  - file: src/features/graph/api/provenance.types.ts
+    where: |-
+      lines 3-27, the ProvenanceRawInformationWire, ProvenanceChunkWire and ProvenanceFragmentWire interfaces
+    evidence: |-
+      readonly chunk_index: number;
+        readonly offset_start: number;
+        readonly offset_end: number;
+      ...
+        readonly source_type: string;
+        readonly received_at: string;
+        readonly metadata?: Readonly<Record<string, unknown>>;
+    cost: |-
+      The graph-explorer nodes in this set name the chunk's index, offsets and raw information only in general terms. The wire attribute names are spelled out only in the curation-workspace contract, so the set holds no field name the file declares. A rename of those names would be decided in a node this file is not bound to.
+    kind: unstated
+    correction: |-
+      The wire field names would have to be held by a node the graph-explorer contract answers to, or this file would have to be bound to the node that holds them.
+    node: contracts/curation-workspace/bff-curation-reads
+read:
+  - node: contracts/graph-explorer/bff-node-reads
+    held_at: |-
+      the ProvenanceResponseWire, ProvenanceFragmentWire, ProvenanceChunkWire and ProvenanceRawInformationWire interfaces, lines 3-31
+    evidence: |-
+      export interface ProvenanceResponseWire {
+        readonly fragments: ReadonlyArray<ProvenanceFragmentWire>;
+      }
+  - node: rules/graph-explorer/a-fragment-status-is-free-text
+    held_at: |-
+      the status member of ProvenanceFragmentWire (line 25) and ProvenanceFragmentView (line 58)
+    evidence: |-
+      readonly status: string;
+  - node: rules/graph-explorer/a-provenance-answer-is-a-list-of-fragments
+    held_at: |-
+      ProvenanceFragmentWire and ProvenanceChunkWire, lines 11-27, with the view counterparts at lines 42-60
+    evidence: |-
+      readonly id: string;
+        readonly text: string;
+        readonly confidence: number;
+        readonly status: string;
+        readonly chunks: ReadonlyArray<ProvenanceChunkWire>;
+looked_past: |-
+  The view-side label fields (receivedAtLabel, documentDateLabel, offsetRangeLabel, confidenceLabel) are formatting facts governed by rules bound to provenance.transforms.ts, which is another file's judgment.
+candidates_opened:
+  - contracts/curation-workspace/bff-curation-reads

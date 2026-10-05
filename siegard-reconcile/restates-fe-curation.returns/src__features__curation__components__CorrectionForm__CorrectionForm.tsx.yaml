@@ -1,0 +1,80 @@
+findings:
+  - file: src/features/curation/components/CorrectionForm/CorrectionForm.tsx
+    where: |-
+      the reason Textarea inside the Controller for "reason", line 138
+    evidence: |-
+      placeholder="Explique brevemente por que a correção é necessária."
+    cost: |-
+      The form tells the owner this guidance sentence, and it is emitted text. A search of the specification root finds no node holding it. The curation-screen contract lists the other correction-form messages but not this one. If the wording changes, nobody reading the specification will know it was ever decided.
+    kind: unstated
+    correction: |-
+      Either the correct-item operation of the curation-screen contract gains this placeholder text, or the specification names it as surface. The file cannot settle which.
+    node: contracts/curation-workspace/curation-screen
+read:
+  - node: rules/curation-workspace/correction-fields-start-from-the-item
+    held_at: |-
+      the defaultValues argument of useForm (lines 47-56), which calls buildDefaults and falls back to "document" for the basis
+    evidence: |-
+      defaultValues: buildDefaults({
+            itemKind,
+            itemId,
+            value: defaults.value ?? null,
+            targetNodeId: defaults.targetNodeId ?? null,
+            validFrom: defaults.validFrom ?? null,
+            validTo: defaults.validTo ?? null,
+            validFromSource: defaults.validFromSource ?? "document",
+            validFromFragmentId: defaults.validFromFragmentId ?? null,
+          })
+      The reason starts empty in buildDefaults in correction-schema.ts, a different file (`reason: "",`). This file passes no reason.
+  - node: rules/curation-workspace/correction-shows-submitting
+    held_at: |-
+      the two Buttons in the footer row, lines 151-168
+    evidence: |-
+      onClick={onCancel}
+                disabled={submitting}
+      ...
+      loading={submitting}
+  - node: rules/curation-workspace/field-messages-appear-on-blur-and-submit
+    held_at: |-
+      the useForm option `mode: "onBlur"` (line 57) together with `onSubmit={handleSubmit(submit)}` (line 96) and the error paragraph for the reason field
+    evidence: |-
+      mode: "onBlur",
+      ...
+      onSubmit={handleSubmit(submit)}
+      ...
+      {errors.reason && (
+  - node: rules/curation-workspace/save-is-disabled-without-a-stated-fragment
+    held_at: |-
+      the disabled prop of the submit Button, lines 162-165
+    evidence: |-
+      disabled={
+                  validFromSource === "stated" &&
+                  (watch("validFromFragmentId") ?? "").length === 0
+                }
+  - node: rules/curation-workspace/server-refusal-lands-on-its-field
+    held_at: |-
+      fieldForServerCode (lines 19-32), the useEffect that calls setError (lines 77-83), and formLevelError (lines 89-92)
+    evidence: |-
+      case "BUSINESS_TEMPORAL_INCOHERENT":
+            return "validTo";
+      ...
+      setError(field, { type: "server", message: serverError.message });
+      ...
+      serverError?.code === "BUSINESS_CORRECTION_NO_CHANGES"
+            ? "Nenhuma alteração detectada. Modifique pelo menos um campo."
+      The code-to-field mapping and the fixed message agree with the curation-screen contract's correct-item refusals.
+  - node: rules/curation-workspace/unmapped-refusal-shows-nothing-on-the-form
+    held_at: |-
+      the default branch of fieldForServerCode, line 29, which the useEffect guards with `if (field)`
+    evidence: |-
+      default:
+            return null;
+      ...
+      if (field) {
+            setError(field, { type: "server", message: serverError.message });
+          }
+      Only BUSINESS_CORRECTION_NO_CHANGES sets formLevelError; any other code leaves the form unchanged.
+looked_past: |-
+  The static labels "Motivo" and the aria-label "Formulário de correção" are surface text no node holds, and I left them out as a surface judgment rather than a domain fact.
+candidates_opened:
+  - contracts/curation-workspace/curation-screen
