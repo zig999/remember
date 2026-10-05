@@ -53,7 +53,7 @@ export type DocumentContextStatus = z.infer<typeof DocumentContextStatusSchema>;
 
 export const DocumentEntitySchema = z.object({
   node_type: z.string(),
-  names: z.array(z.string()),
+  names: z.array(z.string()).min(1),
 });
 export type DocumentEntity = z.infer<typeof DocumentEntitySchema>;
 

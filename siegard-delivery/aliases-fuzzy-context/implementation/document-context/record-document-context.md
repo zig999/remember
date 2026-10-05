@@ -4,12 +4,12 @@ task: sha256:997fa153a01f92527f75f959c9a07661cd5bcdc732839387b2a39c194af74258
 standard:
   at: ../standards/backend-node-service.yaml
   pin: sha256:8c38c4f11796188276d89c2c7ed1710a4eed05f701034f22c68af0a554142c77
-run: run/document-context-record-document-context-build
+run: run/prove-aliases-fuzzy-context-2
 title: Record the document context on the run
-summary: The llm_run repository can now write a run's document context and its document context status separately, and every query that returns a run row reads both back, null when none was recorded.
+summary: The llm_run repository can now write a run's document context and its document context status separately, and every query that returns a run row reads both back, null when none was recorded. An entity in a document context must list at least one name.
 files:
 - path: src/modules/ingestion/dto/llm-run.dto.ts
-  effect: Declares DocumentContextStatusSchema (produced, single-chunk, too-long, failed), DocumentEntitySchema ({ node_type, names }), DocumentContextSchema ({ summary, entities, model }) and their inferred types. The file's comments were removed, since it was delivered whole.
+  effect: Declares DocumentContextStatusSchema (produced, single-chunk, too-long, failed), DocumentEntitySchema ({ node_type, names }, with names a string array of at least one element, so an entity listed with no name is refused with the issue on the path "names"), DocumentContextSchema ({ summary, entities, model }, which inherits that refusal through its entities) and their inferred types. The file's comments were removed, since it was delivered whole.
 - path: src/modules/ingestion/repository/ingestion.repository.ts
   effect: LlmRunRow now carries document_context (DocumentContext | null) and document_context_status (DocumentContextStatus | null). insertLlmRun and findLlmRunByIdempotencyKey return both columns. The file's comments were removed.
 - path: src/modules/ingestion/repository/llm-run.repository.ts
@@ -23,7 +23,7 @@ criteria:
   how: Each entry of entities is stored as { node_type, names } in the same jsonb. It reads back through findLlmRunById, retryLlmRunRow and closeLlmRunRow as document_context.entities[].node_type.
 - criterion: A run whose document context was recorded reads back with each listed entity's names.
   met: true
-  how: entities[].names, a string array, is stored and returned unchanged in the same jsonb, in the same order.
+  how: entities[].names, a string array, is stored and returned unchanged in the same jsonb, in the same order. DocumentEntitySchema (src/modules/ingestion/dto/llm-run.dto.ts) now requires at least one name per entity, so a context whose entity lists none is refused with the issue on "names" and is never recorded.
 - criterion: A run whose document context was recorded reads back with the model that produced the context.
   met: true
   how: DocumentContext.model is stored in the jsonb. It is separate from llm_run.model, which is the extraction model.
@@ -45,11 +45,11 @@ nodes:
 - node: domain/knowledge-base/document-context
   encoded_at:
   - src/modules/ingestion/dto/llm-run.dto.ts
-  how: 'DocumentContextSchema declares its shape: summary, entities (many) and model. It is stored as one jsonb value on the run.'
+  how: 'DocumentContextSchema declares its shape: summary, entities (many) and model. It is stored as one jsonb value on the run. Its entities are DocumentEntitySchema, so the minimum of one name per entity applies to every entity it lists.'
 - node: domain/knowledge-base/document-entity
   encoded_at:
   - src/modules/ingestion/dto/llm-run.dto.ts
-  how: DocumentEntitySchema declares the entity as names (a string array) plus its node type. The node type is held as the node-type's name string, under the key node_type.
+  how: DocumentEntitySchema declares the entity as names plus its node type. names is a string array that requires at least one element, because an entity listed with no name gives the model nothing to recognise in a chunk (the node's decision log). The node type is held as the node-type's name string, under the key node_type.
 - node: domain/knowledge-base/document-context-status
   encoded_at:
   - src/modules/ingestion/dto/llm-run.dto.ts
@@ -63,6 +63,8 @@ inferences:
   from: The inventory's convention for lifecycle rows. tool_call.arguments and raw_information.metadata are handled this way in the same repository files.
 - inferred: insertToolCallStandalone's empty catch around ROLLBACK, which only held a comment, now marks the connection for discard and calls client.release(true). A client whose rollback failed is destroyed by the pool instead of being returned to it.
   from: The comment rule forces the comment out of the file, and COR-01 and ESLint's no-empty forbid leaving the catch empty. The pg release(err) argument is the handling that keeps the original error propagating.
+- inferred: The names minimum is expressed as .min(1) on the array alone. Each name string is not constrained to be non-blank.
+  from: The node's decision log requires that names is required and that an entity with no name is useless, which is a rule about the list. No node states a rule about the content of an individual name, so none was added.
 divergences:
 - from: the project's comment rule (siegard framework) applied to the files this task writes; the inventory's note that the tree carries many comments
   departure: The comments of the three files written whole (llm-run.dto.ts, ingestion.repository.ts, llm-run.repository.ts) were removed, including JSDoc and the header notes that cited BR-19, BR-23 and CLAUDE.md.
@@ -86,9 +88,8 @@ deferred:
 
 ## What it is
 
-The llm_run repository can now write a run's document context and its document context status separately, and every query that returns a run row reads both back, null when none was recorded.
+The llm_run repository can now write a run's document context and its document context status separately, and every query that returns a run row reads both back, null when none was recorded. An entity in a document context must list at least one name.
 
 ## Notes
 
-The columns this record reads and writes come from migrations/0008_llm_run_document_context.sql, applied to the database by the owner's approval outside this target.
-The empty catch around ROLLBACK in insertToolCallStandalone now releases the client with discard, so a connection whose rollback failed leaves the pool.
+Re-delivered after red run run/prove-aliases-fuzzy-context, whose diagnosis read cause code: DocumentEntitySchema names gained a minimum of one element.
