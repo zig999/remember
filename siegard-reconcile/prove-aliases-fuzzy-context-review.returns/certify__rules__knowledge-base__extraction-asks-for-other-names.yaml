@@ -1,0 +1,9 @@
+certified:
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-other-names-single-instruction.spec.ts
+        name: >-
+          sends under every held prompt version from v5 on one instruction that asks, with each node, for every other name the text gives that entity, names an acronym, a short name and another spelling, and excludes a pronoun alone and a role alone
+    why: >-
+      The named test runs runLlmExtraction under every prompt version it can select from v5 on. For each one it captures the system text actually sent to the model. It fails if v5 is not held, or if any part of the fact is missing from that text under any of those versions. The parts it checks are: the ask for every other name, tied to each node; names the text itself gives that entity; an acronym, a short name and another spelling as examples; and a pronoun alone and a role alone excluded. Two things are left for a reader to route. First, the test asserts more than the fact states. It requires all of these parts in one instruction block, under one heading or paragraph. The first case of the it.each test ("judges %s as missing a part of the single instruction") shows this: a prompt that asks in one section and excludes pronouns and roles in another is judged as failing. The node does not say the fact must sit in one block. So a later prompt that holds the fact across two sections would fail this test. Second, the probe stops at v50 (MAX_PROBED_VERSION) and only tries names of the form v<integer>. A held version past v50, or one named another way, would not be read. The it.each cases test only the test's own judge against fixed strings. They never run the extraction, so they do not bear on the fact. What they show is that the judge can return a failure.

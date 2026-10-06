@@ -1,0 +1,68 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never states the five-minute wait or the two retries. The stubs
+      `anthropicFactory: () => capturingClient(systemTexts)` and
+      `finalMessage: async () => END_TURN_MESSAGE` answer at once, and nothing in
+      the file bounds the call.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      `document_context: null,` and `document_context_status: null,` in runRow()
+      are fixture values. No assertion reads the run's document context status
+      after an extraction.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states none of the values single-chunk, too-long, failed or
+      produced, and no 100000 threshold. The one fixture chunk
+      (`chunk_index: 0`) is not asserted against any status.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const CHUNK_ID = "66666666-6666-4666-8666-666666666666";` appears only in
+      the CHUNK_ROW fixture. No fragment is proposed or anchored, because
+      END_TURN_MESSAGE carries only a text block, `content: [{ type: "text", text: "done", citations: null }]`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      The PARTS table, the judge() function and the first `it(...)`, lines
+      129-144, 185-192 and 298-310. Each of v5 and every later held version
+      must send a system text whose single block satisfies every part.
+    evidence: >-
+      `[ASKS_EVERY_OTHER_NAME]: (block) => /\b(?:every|all)\s+(?:the\s+)?other\s+names?\b/i.test(block)`;
+      `[TIES_ASK_TO_EACH_NODE]` matches "with each propose_node";
+      `[GIVES_ACRONYM]: (block) => /\bacronyms?\b/i.test(block)`;
+      `[GIVES_SHORT_NAME]` and `[GIVES_SPELLING]` follow;
+      `[EXCLUDES_PRONOUN]: excludesAlone("pronoun")` and
+      `[EXCLUDES_ROLE]: excludesAlone("role")`;
+      `const versions = heldVersionsFrom(FIRST_OTHER_NAMES_VERSION);` with
+      `expect(results).toEqual(allTrue(results));`
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file probes only the other-names instruction, through the PARTS table.
+      It never reads or compares v4's system prompt, and
+      `heldVersionsFrom(FIRST_OTHER_NAMES_VERSION)` starts at v5.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (sql.includes("FROM raw_chunk")) return rowsOf([CHUNK_ROW]);` answers
+      with a single chunk. Chunk order, the 200 code points of the preceding
+      chunk, the source type, document date, title and reception time, and the
+      document context are never asserted.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns extraction prompts only. It has no search item,
+      knowledge link, information fragment, node match or similarity, apart from
+      the answer stub `if (sql.includes("FROM information_fragment")) return rowsOf([{ n: 0 }]);`.
+looked_past: >-
+  The test requires the ask, the three examples and the pronoun and role exclusions to sit in one block (the "pronoun and role exclusions sit in another block" lacking case); I read this as the test's way of judging the node's one-sentence ask, and the node's own statement does not say it separately.

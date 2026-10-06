@@ -1,0 +1,62 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no timeout and no retry count. The reader stub only does
+      `stream: () => ({ finalMessage: async () => { if (shape.readingFails === true) throw new Error("provider unavailable"); ... } })`.
+      It makes one call and neither waits nor retries.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The helper always passes `run: { id: RUN_ID, prompt_version: promptVersion, document_context: null }`.
+      It never gives the run a document context already held, so the reuse path is not built here.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      The exported constants `CONTENT_LIMIT_UNITS` (the 100000 threshold) and
+      `ONE_CHUNK` and `SEVERAL_CHUNKS` (the chunk counts either side of it).
+      Also `statusRecordedOnRun`, which drives `produceDocumentContext` and
+      returns the status written by the `SET document_context_status` query.
+      `contentOfUnits` and `astralContentOfUnits` build content measured in UTF-16 code units.
+      `readerFor` makes the preliminary reading fail through `shape.readingFails`.
+    evidence: >-
+      `export const CONTENT_LIMIT_UNITS = 100_000;`
+      `export const ONE_CHUNK = 1;`
+      `export const SEVERAL_CHUNKS = 3;`
+      `const UNITS_PER_ASTRAL_CHARACTER = 2;`
+      `if (/SET document_context_status/.test(sql.replace(/\s+/g, " "))) { store.status = params[1] as DocumentContextStatus; }`
+      `if (shape.readingFails === true) throw new Error("provider unavailable");`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records only the run's document context status. It proposes no
+      fragment and names no raw chunk. The only chunk value is `chunkCount: shape.chunkCount`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. The model answer is a fixed fixture,
+      `JSON.stringify({ summary: "Ata de reuniao.", entities: [] })`, with no names or aliases asked for.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no system prompt. `promptVersion` is only a string passed
+      through: `run: { id: RUN_ID, prompt_version: promptVersion, document_context: null }`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not read chunks in index order. It passes only
+      `chunkCount: shape.chunkCount, content: shape.content` to `produceDocumentContext`.
+      It shows the model no source type, date, title, reception time or preceding 200 code points.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns ingestion and holds no search item, node match or similarity.
+      Its only domain type is `DocumentContextStatus`.
+looked_past: >-
+  The pool stub matches the persistence query's text with `/SET document_context_status/` and takes the status from `params[1]`, which ties the helper to the store's SQL shape, but that is test-harness coupling and states no domain fact.

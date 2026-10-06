@@ -1,0 +1,61 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions the five-minute wait or the two retries. It only calls
+      `statusRecordedOnRun(FIRST_READING_VERSION, shape)` and compares the result with
+      `expect(recorded).toBe("single-chunk")`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run that already holds a document context. `RunShape` is built only from
+      `chunkCount`, `content` and `readingFails`, for example `{ chunkCount: SEVERAL_CHUNKS, content: contentOfUnits(SHORT_CONTENT_UNITS), readingFails: true }`.
+      Nothing asserts that the status is left as it was.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      The whole file, lines 19-134. Lines 19-73 hold one test per status. The table-driven test
+      at lines 75-134 holds the same four statuses under "v5" and "v6".
+    evidence: >-
+      Test cases: `expect(recorded).toBe("single-chunk")` for one chunk over the limit,
+      `expect(recorded).toBe("too-long")` for several chunks over the limit,
+      `expect(recorded).toBe("failed")` for `readingFails: true`, and
+      `expect(recorded).toBe("produced")` for `contentOfUnits(CONTENT_LIMIT_UNITS)`.
+      Version coverage: `const FIRST_READING_VERSION = "v5"; const LATER_VERSION = "v6";` and
+      `expect(observed).toEqual(wanted);`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions fragments, raw chunk anchoring, or what the model names. It
+      observes only the recorded status, as in `const recorded = await statusRecordedOnRun(FIRST_READING_VERSION, shape);`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions the prompt text, aliases, acronyms or other names. Its only
+      prompt-related values are the version strings `"v5"` and `"v6"`, passed to `statusRecordedOnRun`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never examines the v5 or v4 system prompt. The versions appear only as
+      `const FIRST_READING_VERSION = "v5";` and `const LATER_VERSION = "v6";`, arguments to the status helper.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunk order, the 200-code-point overlap, the source metadata shown
+      to the model, or the document context shown to it. `chunkCount` is used only as
+      `ONE_CHUNK` or `SEVERAL_CHUNKS` to select a status.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions search, search items, node matches or similarity. Its only
+      imports are `DocumentContextStatus` and the world helpers for the status helper.
+looked_past: >-
+  The 100000 limit and the status words appear in the test titles, which are not emitted text,
+  and the limit itself is read from `CONTENT_LIMIT_UNITS` in the world helper, a file outside
+  this set. I treated them as the test restating the node, not as a second authority.

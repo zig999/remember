@@ -1,0 +1,32 @@
+certified:
+  - node: >-
+      constraints/extraction-model-call-bounded
+    state: >-
+      partial
+    tests:
+      - file: >-
+          src/__tests__/unit/ingestion/extraction-model-call-bounded.spec.ts
+        name: >-
+          attempts a chunk extraction call at most three times when the model answers overloaded on every attempt
+      - file: >-
+          src/__tests__/unit/ingestion/extraction-model-call-bounded.spec.ts
+        name: >-
+          waits at most five minutes per attempt and attempts at most three times when the model never answers
+    why: >-
+      Both bounds are tested on the client that defaultAnthropicFactory builds. That client is
+      called through messages.stream with a hand-built request and no per-request options.
+      The first test would fail with a third retry under repeated overload. The second test
+      runs on fake timers. It would fail if an attempt waited more than five minutes on a
+      model that never answers, and also if a fourth attempt started within twenty minutes.
+      Neither test runs the extraction path itself. If that path passed its own timeout or
+      retry options when it called the model, or used a client other than the default factory
+      builds, the extraction call could wait longer or retry more while both tests still pass.
+      So the bounds on the call the extraction actually makes are not tested.
+    remainder: >-
+      testable
+    remainder_why: >-
+      Run one chunk through the extraction service's own entry point, wired with the default
+      factory, while fetch never answers. Advance fake time past three five-minute windows plus
+      backoff. Expect no attempt to wait more than five minutes and no more than three attempts
+      (one call and two retries). A second test is the same run with fetch answering overloaded
+      every time, expecting no more than three attempts.

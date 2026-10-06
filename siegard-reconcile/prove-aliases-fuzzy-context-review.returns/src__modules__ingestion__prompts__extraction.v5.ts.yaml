@@ -1,0 +1,110 @@
+read:
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere. The file reads summary and entities from a DocumentContext imported from
+      ../dto/llm-run.dto.js and declares no shape for it.
+    evidence: >-
+      import type { DocumentContext } from "../dto/llm-run.dto.js"; ... "Summary:",
+      context.summary, ... ...renderEntities(context)
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere. The file reads node_type and names from entries of the imported DocumentContext
+      and declares no shape for the entity.
+    evidence: >-
+      `- ${entity.node_type}: ${entity.names
+        .map((name) => JSON.stringify(name))
+        .join(", ")}`
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      the PROMPT_VERSION constant, which names the v5 member for this prompt module. The
+      enumeration's shape is not declared in this file.
+    evidence: >-
+      export const PROMPT_VERSION = "v5" as const;
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      OTHER_NAMES_DIRECTIVE, appended to the v5 system prompt by system().
+    evidence: >-
+      "- With each `propose_node`, ALSO send in `aliases` every OTHER name the text",
+      "  itself gives that same entity: an acronym (\"PMO\" for \"Escritório de",
+      "- A pronoun alone (\"ele\", \"ela\", \"isso\") is NOT another name of the entity.",
+      "- A role alone (\"o gerente\", \"o cliente\", \"a diretora\") is NOT another name of"
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      the composition in system(), which returns the v4 system prompt whole. The words "hoje",
+      "ontem" and "amanhã" are not written in this file. They live in extraction.v4.ts, which
+      is outside the file set and which I did not read.
+    evidence: >-
+      export function system(catalog: CatalogSnapshot): string {
+        return `${systemV4(catalog)}\n${OTHER_NAMES_DIRECTIVE}`;
+      }
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      system(), which builds the v5 prompt as the v4 prompt followed by the v5 directive, so
+      every v4 instruction is carried by construction.
+    evidence: >-
+      return `${systemV4(catalog)}\n${OTHER_NAMES_DIRECTIVE}`;
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      user(), only for the clause about showing the run's document context when it holds one.
+      The chunk order, the source metadata and the 200 code points of the previous chunk are
+      produced by userV1 in extraction.v1.ts, which is outside the file set, and by the
+      calling service.
+    evidence: >-
+      const blocks = userV1(args);
+      if (args.documentContext === undefined || args.documentContext === null) {
+        return blocks;
+      }
+      const context = contextBlock(args.documentContext);
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      the composition in system(), which carries the v4 system prompt whole. The instruction
+      itself is not written in this file; it lives in extraction.v4.ts, which is outside the
+      file set and which I did not read.
+    evidence: >-
+      return `${systemV4(catalog)}\n${OTHER_NAMES_DIRECTIVE}`;
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      renderEntities() and contextBlock(), which show the model each listed entity with every
+      name the document uses for it. Resolving the proposal to the earlier node and anchoring
+      the fragment to chunk 3 happen outside this file.
+    evidence: >-
+      "Entities the document speaks of, with every name it uses for each:",
+      ...renderEntities(context),
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds prompts and makes no model call. It holds no timeout and no retry count;
+      the only exports are PROMPT_VERSION, MAX_TOKENS, the CONTEXT_* markers,
+      OTHER_NAMES_DIRECTIVE, system and user.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads or writes a run or a document context status. It only renders a
+      DocumentContext passed in: `function contextBlock(context: DocumentContext)`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No status value (single-chunk, too-long, failed, produced) and no 100000 threshold
+      appears. The file only renders an existing context: `export function user(args:
+      ContextUserPromptArgs)`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment to any chunk. It returns TextBlockParam[] prompt blocks
+      and handles no proposal.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item, node match or similarity. Its content is prompt
+      construction: `export function system(catalog: CatalogSnapshot): string`.
+looked_past: >-
+  Text the system emits to the model, such as the section headings, the "- (none listed)"
+  line and the CONTEXT_OPEN marker, is behavior; the markers agree with the candidate
+  constraints/document-content-is-data, so I did not report them.
+candidates_opened:
+  - constraints/document-content-is-data

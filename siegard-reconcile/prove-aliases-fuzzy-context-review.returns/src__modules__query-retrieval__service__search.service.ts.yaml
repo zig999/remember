@@ -1,0 +1,116 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      searchKnowledgeService, the expansion step (lines 247-256), together with scoreMatchedNodes (lines 329-339)
+    evidence: >-
+      `if (provenance.length === 0) continue;` skips a node hit before it becomes an item. The expansion is then seeded from the items only: `const expanded = await collectExpandedLinks(context, scoreMatchedNodes(items));`, where scoreMatchedNodes does `for (const it of items) { if (it.kind === "node") { matchedById.set(it.id, ...` and never reads `nodeHits`.
+    cost: >-
+      A knowledge node the node layer matched but that holds no provenance does not seed expansion, and the links around it never appear. The two nodes say only that a search expands "from its matched knowledge nodes" and that a matched node without provenance does not surface. Neither says whether such a node still seeds expansion. That choice lives only in this code, where the next reader will not look for it in the specification.
+    kind: unstated
+    correction: >-
+      Analysis would have to settle whether an unsurfaced matched node seeds expansion. The answer then belongs in rules/knowledge-base/expansion-starts-from-matched-nodes or in rules/knowledge-base/matched-node-requires-provenance.
+    node: rules/knowledge-base/expansion-starts-from-matched-nodes
+read:
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared in this file. It is imported (`type NodeMatch,` from "../dto/response.dto.js") and only its values are assigned: `return { ...row, match: "exact" };` and `return { ...row, match: "approximate" };`.
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of the SearchServiceInput interface, lines 56-57, with the cut at line 265
+    evidence: >-
+      `readonly limit: number;` and `readonly offset: number;`, applied as `const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the IntermediateItem interface (lines 60-76), which declares kind, layer, score, hop, summary, flags, match, similarity and provenance. toSearchItem (lines 542-554) turns it into the SearchItem returned.
+    evidence: >-
+      `readonly kind: "node" | "link" | "fragment"; readonly layer: SearchLayer; score: number; readonly hop: number; summary: string; flags: AssertionFlag[]; provenance: SearchProvenanceEntry[]; readonly match?: NodeMatch; readonly similarity?: number;`
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      the SearchServiceInput interface, lines 47-58
+    evidence: >-
+      `readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[]; readonly limit: number; readonly offset: number;`
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      traverseFrom, lines 362-378. The file forwards the as-of date to traverseNodes, and the filtering on link validity is done in that function, in another file.
+    evidence: >-
+      `asOf: context.input.asOf,` inside the call `traverseNodes(context.client, { startingNodeIds: [startId], direction: "both", linkTypeIds: context.linkTypeIds, depth: context.input.expandDepth, asOf: context.input.asOf, inEffectOnly: context.input.inEffectOnly }, context.logger)`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      collectExpandedLinks, lines 387-394. The 0.5 itself is TRAVERSAL_DECAY, imported from the knowledge-graph module.
+    evidence: >-
+      `score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score,`
+  - node: rules/knowledge-base/expansion-hop
+    held_at: >-
+      collectExpandedLinks, lines 387-394. The hop is read from the traversal link, and traverseNodes assigns it, counting from 1.
+    evidence: >-
+      `keepBestPath(reached, { link, hop: link.hop, score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score, reachedExactly: start.exact, });`
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      traverseFrom, lines 362-378. The file forwards the switch, and the filtering is done in traverseNodes, in another file.
+    evidence: >-
+      `inEffectOnly: context.input.inEffectOnly,`
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      The fragment items pushed at lines 191-205 and the link item returned by toExpandedLinkItem (lines 450-463) set neither `match` nor `similarity`. matchFields (lines 556-562) returns `{}` for any item without a `match`.
+    evidence: >-
+      `if (it.match === undefined) return {};`. The link item literal `{ key: `link:${link.id}`, kind: "link", layer: "node", id: link.id, score, hop, recordedAtTs: ..., approximateOnly: !reachedExactly, summary: ..., flags: ..., provenance, status: meta.status, }` sets neither field.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      searchNodeLayer, lines 294-312. The exact alias layer is queried first, and its rows are marked exact. The lexical parse itself is in the repository.
+    evidence: >-
+      `const exactRows = await searchNodeAliasLayer(client, query, PER_LAYER_FETCH_LIMIT); const exactHits = exactRows.map(toExactHit);` and `return { ...row, match: "exact" };`
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      searchKnowledgeService, lines 264-265
+    evidence: >-
+      `const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds, lines 482-496, called at line 117 only when the search expands
+    evidence: >-
+      `const row = catalog.linkTypeByName.get(name); if (row === undefined) { throw new UnknownLinkTypeError(name); }`
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      searchNodeLayer, lines 294-312. It combines the exact rows with approximate rows for the nodes not already matched exactly. The word-by-word matching of the aliases is in the repository functions.
+    evidence: >-
+      `const approximateRows = await searchNodeAliasApproximateLayer(client, { query, limit: remaining, excludedNodeIds: exactHits.map((hit) => hit.node_id), }); return [...exactHits, ...approximateRows.map(toApproximateHit)];`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file has no call to a language model and no timeout or retry. Its only I/O is the repository functions, traverseNodes and the logger.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a run, a document context or a document context status. It holds only the search service.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a run, a document context or a document context status. It holds only the search service.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file proposes no fragment and anchors nothing. It only reads fragments and chunks (`searchFragmentLayer`, `searchChunkLayer`).
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt for a model.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no prompt version.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads a raw information's chunks in index order and shows nothing to a model. Its chunk use is `searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT)`, which feeds the dedup count only.
+looked_past: >-
+  The constants 200 and 0.4, the layer-default resolution, the item flags, the ranking comparator and the link and node summaries all agree with nodes outside this pack (search-layer-candidate-cap, item-flags, search-ranking and others), so they are no finding; the log lines and the silent drop of a reached link whose metadata row is missing are not domain facts this pass judges.
+candidates_opened: []

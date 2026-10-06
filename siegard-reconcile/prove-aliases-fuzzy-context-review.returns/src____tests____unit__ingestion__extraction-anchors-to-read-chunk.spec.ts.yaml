@@ -1,0 +1,59 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a wait limit or a retry count. It stubs the handler
+      with `proposeFragmentHandlerMock.mockResolvedValue({ ok: true, result: { fragment_id: "fragment-1", status: "proposed" } })`
+      and calls `__testing__.dispatchToolUse("propose_fragment", rawInput, buildDeps(), READ_CHUNK_ID)`,
+      which makes no model call.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no reference to a document context or its status. The only deps built
+      are `pool`, `logger`, `llm_run_id`, `catalog` and `now`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No `single-chunk`, `too-long`, `failed` or `produced` status, and no 100000 threshold,
+      appears in the file. It exercises only `dispatchToolUse("propose_fragment", ...)`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      The assertions in the three `it` blocks (lines 78, 90 and 101), run through
+      `proposeWhileReadingChunk` (lines 39-52). The test states the fact as expected behavior
+      and makes the code under test hold it; the file declares no shape of its own.
+    evidence: >-
+      `expect([first, second]).toEqual([[READ_CHUNK_ID], [READ_CHUNK_ID]]);`
+      `expect(anchored).toEqual([READ_CHUNK_ID]);`
+      The inputs name `chunk_ids: [READ_CHUNK_ID, SAME_RAW_OTHER_CHUNK_ID]`,
+      `chunk_ids: [OTHER_RAW_CHUNK_ID]`, `chunk_ids: [SAME_RAW_OTHER_CHUNK_ID]` and no `chunk_ids`.
+      The handler receives `chunk_ids` of `[READ_CHUNK_ID]` in every case.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text, no prompt version and no mention of alternative names.
+      It only dispatches a `propose_fragment` tool use.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports only `buildSnapshot` and `__testing__` from
+      `extraction.service.js` and the catalog module, and reads no system prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes a single chunk id into dispatch (`READ_CHUNK_ID`). It has no iteration
+      over chunks, no index ordering, no 200-code-point overlap and no source metadata shown
+      to the model.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item, node match or similarity. Its only domain subject is
+      the `chunk_ids` handed to `proposeFragmentHandler`.
+looked_past: >-
+  The fixture values (`FRAGMENT_CONFIDENCE = 0.9`, the fixed `now` date and the fixed UUIDs) are test inputs rather than domain facts the test asserts, so I did not report them.

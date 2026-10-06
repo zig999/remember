@@ -1,0 +1,43 @@
+certified:
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-chunk-reception-time-and-sequence.spec.ts
+        name: >-
+          shows received_at and never the run's started_at in every chunk prompt when the two differ
+      - file: src/__tests__/unit/ingestion/extraction-chunk-reception-time-and-sequence.spec.ts
+        name: >-
+          never has two chunk model calls in flight at once for a multi-chunk run holding no document context
+    why: >-
+      Two parts of the fact are tested. Every chunk prompt must show the source's reception
+      time; the test checks this for a v4 run and for a v5 run, three chunks each. A run must
+      never have two chunk calls in flight at once; the test checks this only for runs holding
+      no document context, which are a v4 run and a v5 run whose preliminary reading failed.
+      Nothing checks one-at-a-time reading for a run that does hold a document context.
+
+      Nothing checks index order. Chunk prompts are recorded, but their order is never
+      compared with chunk_index. The stubbed raw_chunk query also returns rows already sorted,
+      whatever SQL is sent, so dropping the ordering would still pass.
+
+      Nothing looks for these in any prompt: the source type ("transcricao"), the document
+      date ("2026-09-30"), the title ("Relatorio Orion"), the last 200 Unicode code points of
+      the previous chunk, or the run's document context. The v5 shape is named "holding a
+      document context", but nothing confirms the context was stored, and nothing checks that
+      SUMMARY appears in any chunk prompt.
+
+      The first test also asserts that the run's started_at never appears in a chunk prompt.
+      That is more than the fact states: the fact only says what each prompt shows.
+    remainder: testable
+    remainder_why: >-
+      Input: a run of three or more chunks whose rows come back in an order different from
+      chunk_index, with a raw information carrying source type, document date and title, a
+      chunk longer than 200 code points that includes non-BMP characters, and a stored
+      document context.
+
+      Expected result: chunk prompts are issued in chunk_index order with no two in flight at
+      once. Each prompt contains the source type, document date, title, reception time and the
+      document context's summary. Each prompt after the first contains exactly the last 200
+      code points of the chunk before it.
+
+      Second input: the same run with no document context. Expected result: no context
+      appears in any prompt.

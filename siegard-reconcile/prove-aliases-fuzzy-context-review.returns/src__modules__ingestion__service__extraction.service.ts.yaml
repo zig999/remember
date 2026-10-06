@@ -1,0 +1,154 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      runChunkLoop, line 466, the system block built for every model call
+    evidence: >-
+      { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+    cost: >-
+      Marking the system prompt for ephemeral caching is a rule about how the
+      model is called, and it lives only in this line. No node states it, so a
+      reader looking in the specification for how extraction calls the model
+      finds the timeout, the retries and the token ceiling, each in its own
+      node, and does not find this.
+    kind: unstated
+    correction: >-
+      Either a node for how the extraction calls the model holds the caching
+      mark, or the specification states that it is not a domain fact.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      runChunkLoop, line 487, the request passed to anthropic.messages.stream
+    evidence: >-
+      thinking: { type: "adaptive" },
+    cost: >-
+      The thinking mode the model runs under on every extraction turn is
+      fixed here. The sibling call parameters, the five-minute wait, the two
+      retries and the 8000-token ceiling, each have a node. The thinking mode
+      has none, so changing it would change what the extraction does without
+      reaching any node.
+    kind: unstated
+    correction: >-
+      A node for the extraction's model-call parameters holds the thinking
+      mode.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      closeRunSafe, lines 672-687, called at lines 371, 386, 394 and 404
+    evidence: >-
+      } catch {
+          await client.query("ROLLBACK").catch(() => undefined);
+        } finally {
+    cost: >-
+      When closing the run fails, nothing is logged and nothing is raised.
+      The extraction goes on and answers the run as read back, which can
+      still be running. No node says what an extraction answers when it
+      cannot close its run. The ingestion contract states the fallback only
+      for ingest-document and ingest-directed. The behavior therefore lives
+      only in this swallow.
+    kind: unstated
+    node: rules/knowledge-base/extraction-closes-its-run
+    correction: >-
+      The node that holds the extraction's closing of its run, or the
+      run-extraction operation of the ingestion contract, states what is
+      answered when the close fails.
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      lines 137-145, ANTHROPIC_REQUEST_TIMEOUT_MS and ANTHROPIC_MAX_RETRIES
+      passed to the client built by defaultAnthropicFactory
+    evidence: >-
+      const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+      const ANTHROPIC_MAX_RETRIES = 2;
+      ... new AnthropicClient({ apiKey, timeout: ANTHROPIC_REQUEST_TIMEOUT_MS, maxRetries: ANTHROPIC_MAX_RETRIES, })
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the run-extraction refusals: RunNotRunnableError (lines 56-74, 409,
+      BUSINESS_RUN_NOT_RUNNABLE, status named), LlmProviderFatalError
+      (lines 76-94, 502, SYSTEM_LLM_PROVIDER_UNAVAILABLE, failed run
+      carried), ExtractionFatalError (lines 96-112, 500, SYSTEM_INTERNAL_ERROR,
+      failed run carried), and the throws in runLlmExtraction (lines 312-314
+      and 381-402). Proposal dispatch to the four handlers is at lines 155-217.
+    evidence: >-
+      public readonly statusCode = 409;
+      public readonly code = "BUSINESS_RUN_NOT_RUNNABLE" as const;
+      public readonly statusCode = 502;
+      public readonly code = "SYSTEM_LLM_PROVIDER_UNAVAILABLE" as const;
+      public readonly statusCode = 500;
+      public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the LoadedRunContext.run type (lines 601-613) and readFinalRun
+      (lines 689-722), which assembles the run's model, prompt version,
+      status, attempts, start and finish times, idempotency key, summary and
+      document context. closeRunSafe (lines 672-687) is the close operation.
+      The full shape of the run response is declared in dto/llm-run.dto.ts,
+      not in this file.
+    evidence: >-
+      const base: LlmRunResponse = { id: row.id, model: row.model, prompt_version: row.prompt_version, started_at: row.started_at.toISOString(), finished_at: ..., status: row.status, attempts: row.attempts, input_raw_information_id: row.input_raw_information_id, idempotency_key: row.idempotency_key, summary, ...documentContextFields(row), };
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the inline union "running" | "completed" | "failed" at lines 60, 64 and
+      604, and the "completed" | "failed" close outcome at line 675
+    evidence: >-
+      public readonly currentStatus: "running" | "completed" | "failed";
+      readonly status: "running" | "completed" | "failed";
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      dispatchToolUse, case "propose_fragment" (lines 162-174), which
+      overwrites chunk_ids with the chunk being read. buildTool and
+      stripProperty (lines 246-278) remove chunk_ids from the schema the
+      model sees.
+    evidence: >-
+      const withChunk = { ...(rawInput as Record<string, unknown>), chunk_ids: [chunkId], };
+      if (name === "propose_fragment") { schema = stripProperty(schema, "chunk_ids"); }
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the for loop over chunks in runLlmExtraction (lines 352-380), with
+      PREV_TAIL_CHARS and lastCodePoints (lines 282-286). The document
+      metadata is built at lines 636-642 and the chunks are read in
+      chunk_index order by findChunksByRawInformationId. runChunkLoop
+      (lines 468-473) hands the metadata, previous tail and document context
+      to prompt.user.
+    evidence: >-
+      for (const chunk of chunks) { ... prevTail, documentContext, ...
+      prevTail = lastCodePoints(chunk.text, PREV_TAIL_CHARS);
+      export const PREV_TAIL_CHARS = 200 as const;
+      return Array.from(text).slice(-count).join("");
+      source_type: rawInfo.source_type, document_date: stringOrNull(metadataObj["document_date"]), title: stringOrNull(metadataObj["title"]), received_at: rawInfo.received_at.toISOString(),
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      the part this file holds is the anchoring to the chunk being read
+      (dispatchToolUse, line 165) and the document context passed to every
+      chunk's user prompt (runChunkLoop, lines 468-473). The node proposal's
+      resolution to the node created from chunk 1 happens in
+      proposeNodeHandler, outside this file.
+    evidence: >-
+      const documentContext = await produceDocumentContext({ ... });
+      documentContext,
+      chunk_ids: [chunkId],
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      This file only hands the run and the content to the preliminary reading,
+      and sets no document context status itself: const documentContext = await produceDocumentContext({ pool, anthropic, catalog, logger, model: deps.env.CONTEXT_MODEL, run, chunkCount: chunks.length, content, });
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file holds no 100000 threshold, no single-chunk, too-long, failed or
+      produced status. It only calls produceDocumentContext({ ..., run, chunkCount: chunks.length, content, }).
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt wording. It only selects and calls the prompt
+      module: const prompt = selectPromptModule(run.prompt_version); and const systemText = input.prompt.system(input.catalog);
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file holds no instruction of any prompt version. It only selects the
+      module: const prompt = selectPromptModule(run.prompt_version);
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file concerns extraction and has no search item, node match or
+      similarity. Its proposal dispatch holds only propose_fragment,
+      propose_node, propose_link and propose_attribute.
+looked_past: >-
+  The chunk turn cap of 64, the three consecutive system errors, the resume on pause_turn, the skip on refusal, the 8000-token ceiling and the two refused-call messages are all held here and match nodes outside this set that this file is not bound to, and there are further things I saw and did not report because they are another judgment's: the run-status vocabulary is declared again inline when dto/llm-run.dto.ts already declares it, the ok-envelope-with-outcome-error branch of isErrorValidationOutcome has no producer I could find, and the burstReset variable is dead code.

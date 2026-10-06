@@ -1,0 +1,187 @@
+findings:
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      readsDocumentFirst(), lines 76-82, with FIRST_PRELIMINARY_READING_VERSION at line 31.
+      It gates both the skipped-status path and the read path.
+    evidence: >-
+      const FIRST_PRELIMINARY_READING_VERSION = 5 as const;
+      ... return (
+          major !== undefined &&
+          Number.parseInt(major, 10) >= FIRST_PRELIMINARY_READING_VERSION
+        );
+    cost: >-
+      The rule that v4 and earlier make no preliminary reading and record no document context and
+      no status is implemented here, and the node holding it is not bound to this file. If the
+      node moves, for example to a different first version, `--check` does not reach this file.
+      Two homes then answer which prompt versions read the document first.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/no-document-context-before-v5 to this file in the trace. Code does
+      not read the specification, so the bind is what makes this declaration claimed.
+    node: rules/knowledge-base/no-document-context-before-v5
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      shouldReadDocument(), lines 84-92, and PRELIMINARY_READING_MAX_CONTENT_UNITS at line 28.
+    evidence: >-
+      request.chunkCount > 1 &&
+          request.content.length <= PRELIMINARY_READING_MAX_CONTENT_UNITS &&
+          (request.run.document_context === null ||
+            request.run.document_context === undefined)
+    cost: >-
+      The conditions under which the whole content is read once to produce a context are
+      implemented here, and the node that states them is not bound to this file. The 100000 limit
+      and the more-than-one-chunk condition can change in the node without `--check` reaching
+      this file.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/document-context-read-first to this file in the trace.
+    node: rules/knowledge-base/document-context-read-first
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      cutSummaryToLines(), lines 94-99. The line-counting half: a trailing newline starts no
+      line, and an empty line counts.
+    evidence: >-
+      const lines = summary.split(LINE_BREAK);
+        if (lines[lines.length - 1] === "") lines.pop();
+        if (lines.length <= maxLines) return summary;
+    cost: >-
+      What counts as a line of the summary is implemented here, and the node defining it is not
+      bound to this file. A change to the definition, such as carriage returns ending a line,
+      would not reach this file through `--check`.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/document-context-summary-lines to this file in the trace.
+    node: rules/knowledge-base/document-context-summary-lines
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      cutSummaryToLines(), line 98, applied in readDocumentContext() at line 145. The cutting half:
+      an overlong summary is cut to its first lines, and the reading still counts as produced.
+    evidence: >-
+      return lines.slice(0, maxLines).join(LINE_BREAK);
+      ... summary: cutSummaryToLines(reading.summary, SUMMARY_MAX_LINES),
+    cost: >-
+      The decision to cut an overlong summary, rather than fail the reading, is implemented here.
+      The node recording that decision is not bound to this file, so a reversal in the node does
+      not reach this code.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/document-context-summary-cut-to-five-lines to this file in the
+      trace.
+    node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      keepCatalogEntities(), lines 101-106, applied at line 146.
+    evidence: >-
+      return entities.filter((e) => catalog.nodeTypeByName.has(e.node_type));
+    cost: >-
+      Dropping an entity listed under a node type the catalog does not hold, while keeping the
+      reading as produced, is implemented here. The node holding that decision is not bound to
+      this file, so a reversal in the node does not reach this code.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/document-context-entity-type-in-catalog to this file in the trace.
+    node: rules/knowledge-base/document-context-entity-type-in-catalog
+  - file: src/modules/ingestion/service/preliminary-reading.ts
+    where: >-
+      produceDocumentContext(), the catch block at lines 268-274.
+    evidence: >-
+      try {
+          context = await readDocumentContext(request);
+        } catch (err) {
+          await recordFailedReading(request, err);
+          return null;
+        }
+    cost: >-
+      The rule that a failed preliminary reading never fails the extraction is implemented here.
+      The node stating it is not bound to this file. If the node changes, so that a failed reading
+      fails the run, this return-null path stays and nothing reports it.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/failed-preliminary-reading-continues to this file in the trace.
+    node: rules/knowledge-base/failed-preliminary-reading-continues
+read:
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the shape and does not declare it: `import type { DocumentContext, DocumentContextStatus, DocumentEntity } from "../dto/llm-run.dto.js";`.
+      It only builds a value of it: `return { summary: ..., entities: ..., model: request.model };`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is imported as a type from "../dto/llm-run.dto.js". This file only
+      passes its values along, as in `document_context_status: "produced"`, and declares no
+      enumeration of its own.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `DocumentEntity` is imported from "../dto/llm-run.dto.js". The file reads one field of it,
+      `catalog.nodeTypeByName.has(e.node_type)`, and declares no shape.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The LLMRun shape is declared in another file. This file declares only the request type
+      `readonly run: { readonly id: string; readonly prompt_version: string; readonly document_context: DocumentContext | null | undefined; }`,
+      and writes the context and status through `recordDocumentContext` and
+      `recordDocumentContextStatus` imported from "../repository/llm-run.repository.js".
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      produceDocumentContext(), lines 260-261, and the null guard of shouldReadDocument(), lines 89-90.
+    evidence: >-
+      const held = request.run.document_context ?? null;
+        if (held !== null) return held;
+      A held context returns before any call to recordSkippedReading, recordFailedReading or recordProducedContext, so the status is untouched.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      skippedReadingStatus(), lines 218-230. recordFailedReading(), lines 203-216, records failed.
+      recordProducedContext(), lines 151-182, records produced. All are gated by readsDocumentFirst().
+    evidence: >-
+      if (request.chunkCount === SINGLE_CHUNK_COUNT) return "single-chunk";
+        if (
+          request.chunkCount > SINGLE_CHUNK_COUNT &&
+          request.content.length > PRELIMINARY_READING_MAX_CONTENT_UNITS
+        ) {
+          return "too-long";
+        }
+      ... await recordReadingStatus(request.pool, request.run.id, "failed");
+      ... document_context_status: "produced",
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The call is `request.anthropic.messages.stream({ model, system, max_tokens, messages })` on an injected `ContextReader`.
+      `ContextMessageRequest` carries no timeout and no retry count, and the file states neither five minutes nor two retries.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file reads the whole document and anchors no fragment. The `PreliminaryReadingResponseDto` carries a summary and entities only, and nothing here proposes or anchors fragments.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The preliminary-reading prompt text lives in "../prompts/preliminary-reading.js", imported as `system` and `user`.
+      This file only calls `system(request.catalog)` and `user(request.content)`. It holds no instruction about other names.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction system prompt is declared in this file. It calls `system(request.catalog)` imported from the preliminary-reading prompt module.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes one whole-document call, `messages: [{ role: "user", content: user(request.content) }]`.
+      It reads no chunks in index order and shows no source type, previous-chunk tail or document date.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item. It touches no node match or similarity, and its only output is the document context.
+looked_past: >-
+  The injected ContextReader carries no timeout or retry setting in this file, and whether the client that implements it enforces the extraction-model-call-bounded limits is another file's judgment.
+candidates_opened:
+  - domain/knowledge-base/prompt-version

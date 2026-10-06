@@ -1,0 +1,67 @@
+findings:
+  - file: src/__tests__/unit/ingestion/extraction-chunk-reception-time-and-sequence.spec.ts
+    where: >-
+      the receptionProblems helper (lines 265-275) and the title of the first test (line 277)
+    evidence: >-
+      const showsStarted = [STARTED_AT_DATE, STARTED_AT_TIME]
+            .filter((needle) => prompt.includes(needle))
+            .map((needle) => `chunk ${at + 1} shows started_at (${needle})`);
+      it("shows received_at and never the run's started_at in every chunk prompt when the two differ", async () => {
+    cost: >-
+      The test fails any chunk prompt that shows the run's start date or time, so the code now carries a
+      prohibition that is in no node. rules/knowledge-base/extraction-reads-chunks-in-order says what the
+      prompt shows (the source's type, document date, title and reception time) and says nothing about
+      what it must not show. A reader looking for what a chunk prompt may carry will not find this
+      exclusion in the specification, and a later prompt change that legitimately shows the run's start
+      time would fail here with no rule to consult.
+    kind: unstated
+    correction: >-
+      Either a node states that a chunk prompt never shows the run's start time, or the assertion
+      narrows to what the nodes hold, which is that the prompt shows the reception time.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never asserts a five-minute wait or a retry limit. Its stubs are `finalMessage: async () => { await tick(); return textMessage(CHUNK_REPLY); }`, and no timeout or retry count is observed.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      `updateRun` records `world.run.document_context_status = value;`, but no test reads or asserts the status of a run that reuses a held context. The only assertions are `chunksPrompted`, `problems` and `largestNumberOfChunkCallsInFlight`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The preliminary-reading-failed scenario (`readingError: new Error("provider unavailable")`) is run, but the status it records is never asserted. `expect(observed).toEqual({... chunksPrompted: 3, largestNumberOfChunkCallsInFlight: SINGLE_FLIGHT })` does not mention `document_context_status`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model stub only replies `CHUNK_REPLY = "done"`. It proposes no fragment, so no anchoring to a chunk is observed.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The test never inspects the system prompt. `chunkStream` records only `promptOf(req.messages)`, the user message, and the reading answer carries `names: ["Joao Silva"]` as stub data.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No system prompt is compared between versions. `promptVersion` is only an input to the scenarios (`{ promptVersion: "v5" }`, `{ promptVersion: "v4" }`).
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      The first test (lines 277-294, with receptionProblems) holds the reception-time clause. The second test (lines 296-320, with chunkStream's in-flight counter) holds the one-at-a-time clause. Index order, document date, title, the previous-chunk tail and document context display are not asserted.
+    evidence: >-
+      const lacksReceived = prompt.includes(RECEIVED_AT_PREFIX)
+      world.inFlight += 1;
+        world.maxInFlight = Math.max(world.maxInFlight, world.inFlight);
+      largestNumberOfChunkCallsInFlight: SINGLE_FLIGHT,
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises only `runLlmExtraction` over ingestion stubs. It has no search item, node match or similarity.
+looked_past: >-
+  The file's hand-built pool, route table and model stubs are test scaffolding for the ingestion service, and whether that scaffolding is well structured is a code-review question, not a conformance one.

@@ -1,0 +1,66 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a search-service unit test. It has no model call, wait bound or retry count. The only calls
+      it makes are `searchKnowledgeService(buildClient(store), emptyCatalog, { query: "termo", ... },
+      silentLogger)` against a stub client.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run, no document context and no extraction. Its subject is `searchKnowledgeService`,
+      and its two cases are `searchOver(MATCHED_BY_EVERY_LAYER)` and `searchOver(MATCHED_BY_THE_CHUNK_LAYER_ONLY)`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a document context status, a chunk count or a length threshold. The only
+      assertions are `expect(itemsThatAreNotNodes(body)).toEqual([...])` and
+      `expect(fragmentItemsCarryingAMatch(body)).toEqual([])`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal and no extraction. `provenanceRow` and `respondToProseLayers` are search
+      fixtures. They answer a stub query, for example `return result([{ fragment_id: FRAGMENT_ID, raw_chunk_id: CHUNK_ID }]);`.
+      They do not anchor a fragment to a chunk being read.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no extraction prompt. It reaches the search service only through
+      `searchKnowledgeService(buildClient(store), emptyCatalog, {...}, silentLogger)`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no prompt text and no prompt version. It imports only `PoolClient`, `pino`, vitest,
+      `CatalogSnapshot`, `SearchResponse` and `searchKnowledgeService`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction. `chunkHitRow` returns a search hit, `{ id, raw_information_id: "raw-1",
+      chunk_index: 0, ..., score: CHUNK_SCORE }`. It does not read chunks in order or build a model-facing context.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      The two `it` cases at lines 319-333. The first asserts that link items, including links reached from an
+      exact or an approximate node, and a directly matched fragment item carry no match and no similarity.
+      The second asserts the same for a fragment surfaced by the chunk layer.
+    evidence: >-
+      expect(itemsThatAreNotNodes(body)).toEqual([
+        { kind: "fragment", id: FRAGMENT_ID },
+        { kind: "link", id: "link-a" },
+        { kind: "link", id: "link-x" },
+      ]);
+      and
+      expect(fragmentItemsCarryingAMatch(body)).toEqual([]);
+      The first expectation reads `match: item.match ?? undefined` and `similarity: item.similarity ?? undefined`.
+      The fixtures give the approximate node `similarity: APPROXIMATE_SIMILARITY` and a score of 0.72, so a
+      carried match or similarity would fail the comparison.
+looked_past: >-
+  The fixture constants such as EXACT_NODE_SCORE 0.4, APPROXIMATE_NODE_SCORE 0.72, FRAGMENT_SCORE and RESULT_LIMIT 100 are
+  stub values the test feeds in, and the test asserts no score, rank or limit, so I did not treat them as a domain fact
+  the code states.

@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-recorded
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records single-chunk on the run when the stored raw information holds one chunk longer than 100000 UTF-16 code units
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records single-chunk on the run when the stored raw information holds one chunk within 100000 UTF-16 code units
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records too-long on the run when the stored raw information holds several chunks whose content exceeds 100000 UTF-16 code units
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records failed on the run when the stored raw information holds several chunks within 100000 UTF-16 code units and the preliminary reading fails
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records produced on the run when the stored raw information holds several chunks of exactly 100000 UTF-16 code units and the preliminary reading yields a document context
+      - file: src/__tests__/unit/ingestion/document-context-status-recorded.spec.ts
+        name: >-
+          records each of the four document context statuses by chunk count, content length in UTF-16 code units and reading outcome under v5 and under a later prompt version
+    why: >-
+      The four-way decision is well exercised. That covers one chunk at either length, several
+      chunks at 100001 units, several chunks over the limit in UTF-16 units but within it in code
+      points, a failed reading, and a reading that yields a context at exactly 100000 units. Each
+      is checked under v5 and v6, against the status written to the run. The proof's own fixture,
+      document-context-status-recorded-world.ts, drives produceDocumentContext directly. It passes
+      in a chunk count and content that the test supplies, and it uses a fake pool. No extraction
+      runs in it. The node says an extraction records the status from what the raw information
+      holds, and that part is unexercised. The tests would still pass if the extraction stopped
+      calling the preliminary reading. They would also still pass if it called the reading with a
+      chunk count or content not taken from the stored raw information's chunks. "Later" is
+      exercised only by v6. A prompt version such as v10, whose order against v5 differs as a
+      string from its order as a version number, is never submitted.
+    remainder: testable
+    remainder_why: >-
+      Run an extraction under v5 over a stored raw information that holds several chunks whose
+      content exceeds 100000 UTF-16 code units. Expect the run's document context status to read
+      back as too-long. Run one with a single chunk and expect single-chunk. Repeat under a later
+      version whose string order differs from its numeric order, such as v10, and expect the same
+      statuses.

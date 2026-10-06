@@ -1,0 +1,12 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading-status-kept-on-reuse.spec.ts
+        name: >-
+          leaves the held document context status unchanged when a run holding a document context is extracted under v5 and under a later prompt version
+    why: >-
+      The test runs an extraction for a run that already holds a document context. The run's status starts as produced, the document has several chunks, the content is over the limit, and it runs under v5 and under v6. The test fails in two cases. First, if the extraction makes a preliminary reading, because the stub reader throws. Second, if it writes a status through a statement whose SQL contains the text "SET document_context_status", because the fake pool copies the second parameter of that statement into the observed status. Any other way of changing the run's document context status is never recorded, so the test still sees the held status and passes. That includes a combined update that sets document_context first and the status after it, and any write where the status column does not follow SET directly. So the test proves that the status stays as it was only for writes spelled the way the fake recognises. A status the extraction changes through any other statement goes unexercised.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. The input is a run that holds a document context with a known status, extracted under v5 and under a later prompt version. The expected result is that the run's document context status, read back from where it is stored, equals the status it held before the extraction. The read-back must be one that any write to that status would change, for example against a real database or a fake that fails on any statement touching the run's document context status. It must not depend on a single SQL spelling.

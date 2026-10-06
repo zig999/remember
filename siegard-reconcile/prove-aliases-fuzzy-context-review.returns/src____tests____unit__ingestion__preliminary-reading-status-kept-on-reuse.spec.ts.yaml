@@ -1,0 +1,69 @@
+read:
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no timeout and no retry count. The reader stub's only
+      behavior is `finalMessage: async () => { throw new Error("no preliminary
+      reading is expected for a run holding a context"); }`, and the call is
+      never expected to be made.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      The test's `it(...)` block, lines 81-93, together with
+      `statusAfterExtraction` (lines 66-79). The store starts at
+      `HELD_STATUS` ("produced"), `produceDocumentContext` is called with
+      `run: { ..., prompt_version: promptVersion, document_context:
+      HELD_CONTEXT }`, and the status is expected to be unchanged under "v5"
+      and under the later "v6".
+    evidence: >-
+      const wanted = { [FIRST_READING_VERSION]: HELD_STATUS, [LATER_VERSION]:
+      HELD_STATUS }; ... expect(observed).toEqual(wanted);
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never asserts a status of single-chunk, too-long, failed or
+      produced as recorded by a reading. `chunkCount: SEVERAL_CHUNKS` and
+      `content: "x".repeat(OVER_LIMIT_UNITS)` (100_001) are inputs that would
+      select too-long if a reading were made, and the test expects the held
+      status to stay instead. The recording rule is not exercised.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no fragment and no proposal. Its stubbed `query` returns
+      `{ rows: [{}] }` and only captures `params[1]` on a statement matching
+      `/SET document_context_status/`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt and checks no prompt text. The reader's
+      `messages.stream` is a stub that throws if it is reached.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads or compares any extraction system prompt. It has
+      only the constants `FIRST_READING_VERSION = "v5"` and `LATER_VERSION =
+      "v6"` as `prompt_version` inputs.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not read chunks, order them or build a per-chunk message.
+      It passes only `chunkCount: SEVERAL_CHUNKS` and a content string to
+      `produceDocumentContext`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file touches no search item, node match or similarity. It imports
+      only `produceDocumentContext`, `buildSnapshot` and the types
+      `ContextReader`, `DocumentContext` and `DocumentContextStatus`.
+looked_past: >-
+  The test's thrown message, its `HELD_CONTEXT.summary` fixture text and its
+  stub shapes are test scaffolding that states no domain fact, so I left them
+  to a code-review judgment.
+candidates_opened:
+  - domain/knowledge-base/document-context-status
