@@ -125,7 +125,7 @@ scope: knowledge-base
 
 ## Description
 
-None.
+It does not cover the source's metadata shown with each chunk.
 
 === constraints/document-content-is-data.log
 ---
@@ -138,6 +138,10 @@ entries:
   unstated: Nothing said where the document's content and the context read from it are carried in the call to the model, so a change that put them in the system prompt beside the instructions would still read as marked apart.
   decided: They are never carried in the system prompt, which holds the instructions alone. Which marks set the content apart inside the call (a data label, a closing delimiter) is how a project arranges its source and stays out of this node.
   why: The system prompt is the channel the model reads as instruction, so content placed there is no longer apart from the instructions whatever mark surrounds it; the label and the closing delimiter are one way to mark and a project's own arrangement.
+- field: statement
+  unstated: Nothing said whether the source's metadata shown with each chunk (source type, reception date, document date, title) is document content.
+  decided: It is the source's trusted record, not document content, so this node does not cover it.
+  why: The owner decided it is trusted record data; it is not text read from the document.
 ---
 
 === constraints/every-operation-requires-owner-authentication

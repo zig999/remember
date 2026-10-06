@@ -5,4 +5,4 @@ scope: knowledge-base
 
 ## Description
 
-None.
+It does not cover the source's metadata shown with each chunk.
