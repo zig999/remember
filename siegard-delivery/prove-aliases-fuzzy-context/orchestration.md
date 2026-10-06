@@ -7,3 +7,4 @@ Delivered task/close-testable-remainders/extraction-anchors-to-read-chunk in f33
 Delivered task/close-testable-remainders/extraction-asks-for-other-names in d7d4e26: proof only over the standing implementation, build and suite green on the first run.
 Delivered task/close-testable-remainders/extraction-model-call-bounded in 81224d0: proof only over the standing implementation, build and suite green on the first run; the test author recorded one contested item.
 Delivered task/close-testable-remainders/extraction-prompt-v5-keeps-v4 in 86cdf9f: proof only over the standing implementation, build and suite green on the first run; the test author recorded one contested item.
+Delivered task/close-testable-remainders/extraction-reads-chunks-in-order in 01a6759: proof only over the standing implementation, build and suite green on the first run; the moved binding on extraction.v1.ts is disclosed in the implementation record.
