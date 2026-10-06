@@ -1,0 +1,348 @@
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The run and tool-call response schemas, the retry request schema and the tool-call listing query schema (LlmRunResponseSchema, ToolCallResponseSchema, ListToolCallsResponseSchema, RetryLlmRunRequestSchema, ListToolCallsQuerySchema).
+    evidence: >-
+      reason: z.string().max(500).optional(); limit: z.coerce.number().int().min(1).max(100).default(50); offset: z.coerce.number().int().min(0).default(0); total / limit / offset / items on ListToolCallsResponseSchema; document_context_status: DocumentContextStatusSchema.optional(); affected_nodes: z.array(AffectedNodeSchema).optional()
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      DocumentContextSchema.
+    evidence: >-
+      export const DocumentContextSchema = z.object({ summary: z.string(), entities: z.array(DocumentEntitySchema), model: z.string(), });
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      DocumentContextStatusSchema.
+    evidence: >-
+      z.enum(["produced", "single-chunk", "too-long", "failed"])
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      DocumentEntitySchema.
+    evidence: >-
+      export const DocumentEntitySchema = z.object({ node_type: z.string(), names: z.array(z.string()).min(1), });
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      IngestToolNameSchema, in the underscore spelling the node says the material uses.
+    evidence: >-
+      z.enum(["propose_fragment", "propose_node", "propose_link", "propose_attribute"])
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      LlmRunResponseSchema, which declares the run's attributes.
+    evidence: >-
+      model: z.string(), prompt_version: z.string(), started_at: ..., finished_at: z.string().datetime({ offset: true }).nullable(), status: LlmRunStatusSchema, attempts: z.number().int().positive(), input_raw_information_id: z.string().uuid(), idempotency_key: ..., summary: LlmRunSummarySchema, document_context_status, document_context
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      LlmRunStatusSchema.
+    evidence: >-
+      export const LlmRunStatusSchema = z.enum(["running", "completed", "failed"]);
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      LlmRunSummarySchema.
+    evidence: >-
+      accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error, orphaned_fragments, each z.number().int().nonnegative()
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      ToolCallResponseSchema.
+    evidence: >-
+      tool_name: IngestToolNameSchema, arguments: z.record(z.string(), z.unknown()), result: z.record(z.string(), z.unknown()).nullable(), validation_outcome: ValidationOutcomeSchema, created_at: z.string().datetime({ offset: true })
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      ValidationOutcomeSchema.
+    evidence: >-
+      z.enum(["accepted", "consolidated", "superseded_previous", "needs_review", "uncertain", "disputed", "rejected", "error"])
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      The idempotency_key field of LlmRunResponseSchema, for the format only (64 lowercase hexadecimal characters). The derivation (digest of content hash, prompt version, model and chunking version) is not computed in this file.
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds only response and request schemas and types; no prompt or presentation of document content to a model appears in it.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No timeout or retry bound appears; the file's only numeric bounds are `.max(500)`, `.max(100)`, `.min(1)` and `.min(0)` on request fields.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search, provenance, catalog or graph read shapes; its schemas concern LLM runs and tool calls only.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No enumeration of uncertain, disputed or low-confidence appears in the file; the closest `z.enum` is ValidationOutcomeSchema, which is another node's.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No exact or approximate match enumeration appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string() declares a free string with no enumeration of v1 to v5.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item shape (kind, layer, score, hop, flags, match, similarity).
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias or node proposal handling; it declares run and tool-call schemas only.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search or similarity computation.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search or similarity computation.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string() carries no default; no `v5` appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      node_type: z.string() on DocumentEntitySchema is not checked against any catalog in this file.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      model: z.string() on DocumentContextSchema names no default model.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds the shape of a document context only; nothing reads a document or produces one.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      document_context_status: DocumentContextStatusSchema.optional() is a response shape; no extraction behavior is held.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the status enumeration only; no condition that selects a status appears.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      summary: z.string() carries no line limit or truncation.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      summary: z.string() carries no line limit.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No scoring or hop appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment anchoring appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chunk-reading behavior.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction flow; "failed" appears only as a value of DocumentContextStatusSchema and LlmRunStatusSchema.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No weights appear in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name normalization appears in the file; names: z.array(z.string()).min(1) is not normalized.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      document_context and document_context_status are merely `.optional()`; no version condition appears.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity threshold appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search matching appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string() admits any string; no membership check against held versions appears.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      RetryLlmRunRequestSchema carries only `reason: z.string().max(500).optional()`; no retry effect on the document context status is held.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search candidate cap appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity computation appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal or alias behavior.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no entity resolution.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal answer; no ALIAS_NOT_IN_SOURCE appears.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction flow.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search behavior.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction flow.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search behavior.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search behavior.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading behavior.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no retry or extraction behavior.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search behavior.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction flow.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search behavior.
+looked_past: >-
+  The limit bounds, offset floor and default of 50 on ListToolCallsQuerySchema, and the positive attempts bound, are held by nodes outside this set (rules/knowledge-base/page-limit-bounds, page-offset-non-negative, tool-call-page-defaults, run-opens-with-one-attempt) and agree with them, so they are no finding here.

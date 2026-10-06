@@ -1,0 +1,446 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      searchKnowledgeService, lines 216-221 and 248-253: the node loop skips a matched node that holds no provenance, and expansion then starts only from the node items that were kept
+    evidence: >-
+      if (provenance.length === 0) continue;
+      ...
+      const expanded = await collectExpandedLinks(
+            context,
+            scoreMatchedNodes(items)
+          );
+    cost: >-
+      The code decides that a matched knowledge node without provenance, which is not shown, also starts no expansion, so the links around it are never reached. A reader of expansion-starts-from-matched-nodes would expect expansion to start from every matched node. matched-node-requires-provenance only says the node does not surface. The decision exists only in this file, where the next reader will not look for it.
+    kind: unstated
+    correction: >-
+      A node would have to say whether a matched node that does not surface still starts expansion. Candidates are rules/knowledge-base/expansion-starts-from-matched-nodes or rules/knowledge-base/matched-node-requires-provenance.
+    node: rules/knowledge-base/expansion-starts-from-matched-nodes
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      resolveLayers, lines 469-471
+    evidence: >-
+      if (layers === undefined || layers.length === 0) {
+          return new Set(ALLOWED_LAYERS);
+        }
+    cost: >-
+      The code treats a query that names an empty list of layers as one that omitted them, and searches every layer. search-option-defaults only covers an omitted option. Whether an empty list means "no layers" or "all layers" is therefore a rule that lives only in this branch, and a reader of the specification cannot find it.
+    kind: unstated
+    correction: >-
+      search-option-defaults, or another node of search-query, would have to say how a query that names an empty list of layers is read.
+    node: rules/knowledge-base/search-option-defaults
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      resolveLinkTypeIds, line 486
+    evidence: >-
+      if (names === undefined || names.length === 0) return undefined;
+    cost: >-
+      The code treats an empty list of link types as no restriction, so expansion follows links of every type. expansion-restricted-to-named-link-types speaks only of a query that names link types. What an empty list does is decided here alone, and a reader of the specification cannot find it.
+    kind: unstated
+    correction: >-
+      expansion-restricted-to-named-link-types, or a node of search-query, would have to say what a query that names an empty list of link types follows.
+    node: rules/knowledge-base/expansion-restricted-to-named-link-types
+read:
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is declared in dto/response.dto.ts and imported here as `NodeMatch`. This file only assigns its values: `return { ...row, match: "exact" };` and `return { ...row, match: "approximate" };`.
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the limit and offset fields of SearchServiceInput, and the slice that cuts the page in searchKnowledgeService
+    evidence: >-
+      readonly limit: number;
+        readonly offset: number;
+      ...
+      const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the IntermediateItem interface, which declares kind, layer, score, hop, summary, flags, match, similarity and provenance, and the toSearchItem projection
+    evidence: >-
+      interface IntermediateItem {
+        readonly key: string;
+        readonly kind: "node" | "link" | "fragment";
+        readonly layer: SearchLayer;
+        ...
+        readonly match?: NodeMatch;
+        readonly similarity?: number;
+      }
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      the SearchServiceInput interface, which declares the query text, layers, asOf, inEffectOnly, includeUncertain, expand, expandDepth, expandLinkTypes, limit and offset
+    evidence: >-
+      export interface SearchServiceInput {
+        readonly query: string;
+        readonly layers?: readonly string[];
+        readonly asOf?: string;
+        readonly inEffectOnly: boolean;
+        readonly includeUncertain: boolean;
+        readonly expand: boolean;
+        readonly expandDepth: number;
+        readonly expandLinkTypes?: readonly string[];
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      toExactHit, which sets only the match for an exact hit, and matchFields, which passes a similarity along only when the item has one
+    evidence: >-
+      function toExactHit(row: NodeAliasHitRow): NodeLayerHit {
+        return { ...row, match: "exact" };
+      }
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      traverseFrom, which forwards the query's as-of date to the traversal that expansion runs through
+    evidence: >-
+      asOf: context.input.asOf,
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      collectExpandedLinks, the decayed score of each link reached
+    evidence: >-
+      score: Math.pow(TRAVERSAL_DECAY, link.hop) * start.score,
+  - node: rules/knowledge-base/expansion-hop
+    held_at: >-
+      collectExpandedLinks, which takes each link's hop from the traversal
+    evidence: >-
+      hop: link.hop,
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      traverseFrom, which forwards the in-effect-only switch to the traversal that expansion runs through
+    evidence: >-
+      inEffectOnly: context.input.inEffectOnly,
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      the fragment item pushed in searchKnowledgeService and the link item built in toExpandedLinkItem, neither of which sets match or similarity
+    evidence: >-
+      approximateOnly: false,
+              summary: f.text,
+      ...
+      approximateOnly: !reachedExactly,
+          summary: `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`,
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      the node item pushed in searchKnowledgeService, at hop 0
+    evidence: >-
+      hop: 0,
+              recordedAtTs: 0,
+              approximateOnly: n.match === "approximate",
+      ...
+              match: n.match,
+              similarity: n.similarity,
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      searchNodeLayer, which takes approximate hits only for nodes the exact lookup did not return. The length threshold of 5 and the word-similarity threshold of 0.6 are not in this file.
+    evidence: >-
+      const approximateRows = await searchNodeAliasApproximateLayer(client, {
+          query,
+          limit: remaining,
+          excludedNodeIds: exactHits.map((hit) => hit.node_id),
+        });
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      searchNodeLayer, the exact alias lookup
+    evidence: >-
+      const exactRows = await searchNodeAliasLayer(
+          client,
+          query,
+          PER_LAYER_FETCH_LIMIT
+        );
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      the PER_LAYER_FETCH_LIMIT constant, applied to the fragment, node and chunk layers, and the total taken from the kept items
+    evidence: >-
+      const PER_LAYER_FETCH_LIMIT = 200;
+      ...
+      const total = filtered.length;
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      compareItems and the sort of the filtered items
+    evidence: >-
+      if (a.approximateOnly !== b.approximateOnly) return a.approximateOnly ? 1 : -1;
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      searchKnowledgeService, where the total is taken before the page is cut
+    evidence: >-
+      const total = filtered.length;
+        const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds, called only when the query expands
+    evidence: >-
+      const row = catalog.linkTypeByName.get(name);
+          if (row === undefined) {
+            throw new UnknownLinkTypeError(name);
+          }
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      searchNodeLayer with toExactHit, which returns each exact hit with the match exact
+    evidence: >-
+      const exactHits = exactRows.map(toExactHit);
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      searchNodeLayer with toApproximateHit, and the node item at hop 0 that carries the match and the similarity
+    evidence: >-
+      return [...exactHits, ...approximateRows.map(toApproximateHit)];
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      searchNodeLayer with toApproximateHit. The word-level matching is in the approximate lookup the repository runs, not in this file.
+    evidence: >-
+      const approximateRows = await searchNodeAliasApproximateLayer(client, {
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns search only, and it sends nothing to a language model. Its first export is `export async function searchKnowledgeService(`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no call to a language model. Its first export is `export async function searchKnowledgeService(`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no ingestion operation. It concerns search only: `export async function searchKnowledgeService(`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the search operation only: the throws of InvalidSearchQueryError, InvalidSearchLayerError and UnknownLinkTypeError, and the SearchResponse that carries the page of items and the total. The error codes and HTTP statuses are not in this file.
+    evidence: >-
+      throw new InvalidSearchQueryError("empty_after_parse", {
+            query: input.query,
+            parsed: "",
+          });
+      ...
+      items: sliced.map(toSearchItem),
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is declared in dto/response.dto.ts and imported as `AssertionFlag`. This file only pushes its values: `flags.push("uncertain");`, `flags.push("disputed");` and `flags.push("low_confidence");`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context appears in the file. Its first export is `export async function searchKnowledgeService(`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context status. Its first export is `export async function searchKnowledgeService(`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document entity. Its first export is `export async function searchKnowledgeService(`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no LLM run. Its first export is `export async function searchKnowledgeService(`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads aliases through `searchNodeAliasLayer`. It admits none.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The value comes from the repository row and is only passed on, with no calculation here: `similarity: n.similarity,`.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The node item's score is taken from the repository row and not computed here: `score: n.score,`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file configures no language model. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context status. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context status. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context summary. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context summary. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node proposal. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no layer weight. Fragment scores are taken from the repository row as they are: `score: f.score,`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no alias. It only reads aliases through `searchNodeAliasLayer`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name. It passes the query text to the repository unchanged: `searchNodeAliasLayer(client, query, PER_LAYER_FETCH_LIMIT)`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no knowledge node and records no alias. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no text matching of its own. It delegates it to the repository: `searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT)`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no LLM run. Its first export is `export async function searchKnowledgeService(`.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity. It only calls `searchNodeAliasApproximateLayer(client, {`.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file admits no alias. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node proposal. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file admits no alias. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no directed ingestion. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The word-level matching of a name inside a longer query is done by the repository lookup, not by this file. The file only passes the whole query along: `searchNodeAliasApproximateLayer(client, {
+        query,`.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no preliminary reading. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no LLM run. Its first export is `export async function searchKnowledgeService(`.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The minimum alias length is not stated in this file. The file only calls the repository lookup: `searchNodeAliasApproximateLayer(client, {`.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction. Its first export is `export async function searchKnowledgeService(`.
+looked_past: >-
+  The file also applies facts held by nodes outside this set, which are not findings. These are the uncertain filter, the matched-node and expanded-link provenance requirement, the low-confidence threshold of 0.4, the hop-0 and layer-node values, the summaries and the link-once scoring. The file also emits log lines and warnings, and it fetches chunk-layer hits that it uses only to count a deduplication figure for the log.

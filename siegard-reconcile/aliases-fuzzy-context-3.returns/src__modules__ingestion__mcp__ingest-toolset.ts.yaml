@@ -1,0 +1,369 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the registration of the read tool in registerIngestToolset (the mcp.registerTool("ingest", ...) call after the health tool), and its repeat in READ_ONLY_TOOL_NAMES
+    evidence: >-
+      name: "get_ingestion_status",
+      description: IngestToolDescriptions.get_ingestion_status,
+      ...
+      const READ_ONLY_TOOL_NAMES = [
+        "health",
+        "get_ingestion_status",
+        "list_recent_ingestions",
+      ] as const;
+    cost: >-
+      The MCP name `get_ingestion_status` is the public name a model calls to read an LLM run, and no node holds it. The ingestion contract's operation is `read-llm-run`, and `domain/knowledge-base/ingest-tool` holds only the four `propose_*` names. A reader who looks in the specification for the tool that reads a run's status will not find it, and the name lives only in this file.
+    kind: unstated
+    correction: >-
+      The analysis would give the MCP name of the run read a node, most likely in contracts/knowledge-base/ingestion beside its read-llm-run operation.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      mapReadError, the ResourceNotFoundError branch
+    evidence: >-
+      if (err instanceof ResourceNotFoundError) {
+        return {
+          ok: false,
+          error: {
+            code: err.code,
+            message: err.message,
+            details: { entity: err.entity, id: err.entityId },
+          },
+        };
+      }
+    cost: >-
+      The not-found answer of the run read over MCP carries the details keys `entity` and `id`, and the ingestion contract's read-llm-run refusal names only the error code RESOURCE_NOT_FOUND. A caller reading the specification cannot learn what the answer names. The retrieval contract spells the equivalent ("naming the entity and identity") for its own reads, so the same fact is stated in one place and omitted in the other.
+    kind: unstated
+    correction: >-
+      The analysis would extend the read-llm-run not-found refusal in contracts/knowledge-base/ingestion with what the answer names, or decide that the details are not part of the contract.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the handlers of ingest_document and ingest_directed in registerIngestToolset, which await the whole ingestion before answering
+    evidence: >-
+      return await ingestDocumentHandler(parsed.data, {  ...  return await ingestDirectedHandler(
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      runZodFailureAudit, which routes a refused proposal through runIngestHandler so that only its tool call is recorded
+    evidence: >-
+      return (await runIngestHandler({ deps: { pool, logger, llm_run_id: llmRunId }, tool_name: toolName, input: rawInput as never, run: async () => { throw new ValidationFailure(
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file registers tools and forwards arguments to handlers; it builds no prompt and presents no document content to a model
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `anthropicApiKey`, `ingestModel` and `contextModel` to ingestDocumentHandler and holds no timeout or retry bound
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the handlers of propose_fragment, propose_node, propose_link, propose_attribute, ingest_document, ingest_directed, get_ingestion_status and list_recent_ingestions in registerIngestToolset, and mapReadError
+    evidence: >-
+      message: "ingest_document arguments failed validation.", ... "MCP tool args failed Zod parse.", ... const items = await withReadOnly(pool, (client) => listRecentIngestions(client, limit)); return { ok: true, result: { items } };
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file registers no search, provenance, catalog or graph read tool; its tools are the four proposals, the two ingestions, the health tool and the two run reads
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      no flag vocabulary is declared in the file
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no document context shape; it only forwards `contextModel: deps.env.CONTEXT_MODEL`
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no status values are declared in the file
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity shape is declared in the file
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares `IngestToolsetDeps` and `McpEnvelopeJson` and reads a run only through `getLlmRunById(client, llm_run_id)`; the run's shape is declared elsewhere
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      no match vocabulary appears in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version value is declared in the file
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no search item shape appears in the file
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      proposeNodeHandler(input, { pool, logger, llm_run_id, catalog }) is called with no alias logic in this file
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      ingestDocumentHandler(parsed.data, {...}) receives the parsed arguments with no prompt-version default applied in this file
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `catalog` to handlers and applies no document context filtering
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      only `contextModel: deps.env.CONTEXT_MODEL` forwards a configured value, with no fallback model named in the file
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction or preliminary reading logic
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no summary handling
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no summary handling
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      entity resolution is behind proposeNodeHandler, not in this file
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no chunk reading logic
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no preliminary reading logic
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      alias recording is behind proposeNodeHandler, not in this file
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no names
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      node creation is behind proposeNodeHandler, not in this file
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no prompt version
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no matching logic
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file registers no retry tool
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no similarity logic
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      alias admission is behind proposeNodeHandler, not in this file
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      resolution is behind proposeNodeHandler, not in this file
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the proposal is forwarded as `proposeNodeHandler(input, { pool, logger, llm_run_id, catalog })`; the not-admitted answer is built elsewhere
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only dispatches `ingestDirectedHandler(rawInput, { pool, logger, catalog, now }, invocation_context ...)`
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no preliminary reading logic
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file registers no retry tool and holds no extraction logic
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction logic
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search logic
+looked_past: >-
+  The health tool (answered by collectHealth) and the validation, store-unavailable and internal-error answers of mapReadError are held by contracts/knowledge-base/access, a node outside the set that I opened to attribute, so they are no finding.
+candidates_opened:
+  - domain/knowledge-base/ingest-tool

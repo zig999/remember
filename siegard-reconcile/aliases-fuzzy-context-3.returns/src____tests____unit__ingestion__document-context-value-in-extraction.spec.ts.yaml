@@ -1,0 +1,316 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The expectations are `EXPECTED.producedContextShownToEveryChunk` and `showsSummaryAndEntities: EVERY_CHUNK_TRUE`. They check that each prompt `includes` the summary and names. Nothing checks that the content is marked apart from the instructions.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a timeout or a retry limit. Its only model reference is `readerModels: [CONTEXT_MODEL]`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls no operation of the contract. It drives `extract(world)` and reads `recordedContext(world)` through helpers in another file.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search or read surface. It only has `extractedAfterReading` and `observeTheContextInExtraction`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no mention of flags such as uncertain, disputed or low-confidence.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      The `observeRefusal` function and the `EXPECTED.incompleteContextRefused` expectation. The shape itself is declared in another file and is only read here.
+    evidence: >-
+      `schemaAcceptsContextWithoutModel: DocumentContextSchema.safeParse({ summary: FIRST_LINE, entities: [] }).success` and `schemaAcceptsContextWithoutSummary: DocumentContextSchema.safeParse({ entities: [], model: CONTEXT_MODEL }).success` are both expected `false`. `contextOf` parses `DocumentContextSchema.nullable().parse(recordedContext(world))`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No expectation reads or names a document context status. `EXPECTED` has no field for produced, single-chunk, too-long or failed.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only imports `type DocumentEntity` and builds fixtures such as `const MARIA: DocumentEntity = { node_type: "Person", names: [...] }`. The shape is declared in `llm-run.dto.js`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never declares or asserts a run attribute. It reads the recorded context only through `recordedContext(world)` from the helper file.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search or match vocabulary.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never names a prompt version. `newWorld({ readingAnswer: JSON.stringify(reading) })` carries none.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item. It tests extraction only.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      `MARIA.names` and `ACME.names` are shown to the model as names. No expectation concerns alias admission on a node.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity value.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity value.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ingestion request and no prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture `UNKNOWN_TYPE: DocumentEntity = { node_type: "Planet", names: ["Zork Prime"] }` is fed to the reading. No expectation names its dropping: `SHOWN_WHOLE` omits it, and `sameStringsInEveryChunk` only compares shown with recorded.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      The `recordedContextEqualsShownContext` expectation, in `observeProducedContext`. The configured model value `CONTEXT_MODEL` comes from the helper file.
+    evidence: >-
+      `recordedModel: contextOf(produced)?.model, readerModels: readerModels(produced)` is expected to equal `recordedModel: CONTEXT_MODEL, readerModels: [CONTEXT_MODEL]`.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      The `observeProducedContext` function and `EXPECTED.producedContextShownToEveryChunk`. They show that a reading is made and yields a context that is then shown to the chunks.
+    evidence: >-
+      `const produced = await extractedAfterReading({ summary: SUMMARY_LINES.join("\n"), entities: [MARIA, ACME, UNKNOWN_TYPE] });` is expected to give `chunksRead: CHUNK_COUNT` and `showsSummaryAndEntities: EVERY_CHUNK_TRUE`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no reuse case and no status assertion. There is a single `extract(world)` per world.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no status. `EXPECTED` holds the context, the models and the writes only.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      `SUMMARY_LINES` has 7 lines and `SHOWN_WHOLE` takes only `FIRST_LINE`. No expectation states that the summary is cut to 5 lines. `sameStringsInEveryChunk` only requires that shown and recorded strings be equal.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No expectation states a limit on the number of summary lines. `recordedStrings` splits `context?.summary.split("\n")` only to compare.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no resolution.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search expansion.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts no fragment anchoring. Its writes are only filtered by `KNOWLEDGE_TABLES.includes(write.table)`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the instructions about other names.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not run an extraction under any version earlier than v5.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      The `showsSummaryAndEntities` function and `EXPECTED.producedContextShownToEveryChunk`. It covers only the part of the rule that shows the run's document context to each chunk read.
+    evidence: >-
+      `chunkPrompts(world).map((prompt) => SHOWN_WHOLE.every((text) => prompt.includes(text)))` is expected to equal `EVERY_CHUNK_TRUE`, with `chunksRead: CHUNK_COUNT`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no relative-date case.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      `observeRefusal` runs `extractedAfterReading({ entities: [MARIA] })`. This is a reading that lacks its summary, not a failed reading. Only `readingWithoutSummaryRecords: recordedContext(lacksSummary)` is observed, and no expectation concerns the chunks being read afterwards.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no layer weights.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its only write check is `writesForTheEntity`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file compares names with `prompt.includes(text)` and `lines.includes(text)`, which is exact string inclusion. There is no normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node creation. `knowledgeWritesOrWritesNamingIt` is expected to be `[]`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never runs an extraction under an earlier version.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never names a prompt version.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no stemming or accent-insensitive matching.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retry. Each world is extracted once.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity computation.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal with an alias.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no resolution of a later proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no ALIAS_NOT_IN_SOURCE.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal resolved to a node created in an earlier chunk.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      No reading answers with a provider error. The only malformed reading is `extractedAfterReading({ entities: [MARIA] })`, which has no summary.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      The `observeUnmentionedEntity` function and `EXPECTED.entityNoChunkMentions.knowledgeWritesOrWritesNamingIt`.
+    evidence: >-
+      `writesForTheEntity` filters `KNOWLEDGE_TABLES.includes(write.table) || JSON.stringify(write.params).includes(GHOST_NAME)`. It is expected to equal `knowledgeWritesOrWritesNamingIt: []` after a reading that lists `GHOST`.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retry and no pre-held context.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file extracts only a multi-chunk document: `chunksRead: CHUNK_COUNT`. It has no single-chunk case.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.

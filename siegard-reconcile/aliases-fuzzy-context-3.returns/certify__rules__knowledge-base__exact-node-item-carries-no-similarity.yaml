@@ -1,0 +1,19 @@
+certified:
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    state: covered
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+        name: answers a knowledge node matched both exactly and approximately with no similarity, though one of its aliases is similar enough for an approximate match
+      - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+        name: answers an exactly matched node with the match exact and no similarity, and an approximately matched node with the match approximate and the highest word similarity of its aliases, not its weighted score
+    why: >-
+      The first test is the one that carries the weight. Its store has the exact route return node-both
+      with no similarity and the approximate route return node-both with word similarity 0.8. It then
+      asserts that the single node-both item carries no similarity. If the exactly matched item took
+      the similarity from its alias's approximate row, the test would fail. The second test checks only
+      the case where no alias is similar enough: node-exact is never offered to the approximate route.
+      It asserts no similarity on the exact item on the way to asserting the approximate item, so it
+      bears on the fact only incidentally. One limit stays outside the proof. The test's stand-in for
+      the database drops from the approximate route any node id passed in the first array parameter.
+      It decides this from the parameters, not from the SQL text. If the service relies on that
+      exclusion, the SQL clause that does the excluding is never checked against the text sent.

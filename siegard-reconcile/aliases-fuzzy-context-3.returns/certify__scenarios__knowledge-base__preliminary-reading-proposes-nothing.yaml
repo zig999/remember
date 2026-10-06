@@ -1,0 +1,28 @@
+certified:
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: proposes nothing and writes nothing but the run's own context columns before its first chunk is read
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records on the run the summary and the entities the preliminary reading yielded
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: makes the preliminary reading before the first chunk is read
+    why: >-
+      Not a gap, an over-assertion. The test "proposes nothing and writes nothing but the run's
+      own context columns before its first chunk is read" runs a v5 raw information of 3 chunks.
+      The knowledge base starts empty, and the reading yields a context listing two entities, a
+      Person and an Organization. Before the first chunk call it keeps every statement that is
+      not SELECT, BEGIN, COMMIT or ROLLBACK. Then it requires that none of them is anything other
+      than an "UPDATE llm_run". So a proposal written before the first chunk would fail it, and so
+      would a knowledge node, information fragment, knowledge link or node attribute. That much
+      is what the node states. But the assertion also rules out every other write to any other
+      table before the first chunk. That is a totality over shared ground the node never states.
+      It holds today, and it breaks the day a sibling task legitimately writes something
+      unrelated before the first chunk, such as an audit row. On its own the test does not show
+      that the reading actually happened and yielded the two entities. If no reading happened it
+      would pass vacuously. Two sibling tests in the same file show this over the same default
+      scenario: "makes the preliminary reading before the first chunk is read" and "records on
+      the run the summary and the entities the preliminary reading yielded". Writes are only seen
+      through the pool's connect() client handed to runLlmExtraction. A write through any other
+      database handle would not be seen.

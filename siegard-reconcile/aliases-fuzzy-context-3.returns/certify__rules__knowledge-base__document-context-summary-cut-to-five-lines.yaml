@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    state: covered
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: records the first 5 lines of a 7-line summary as the document context summary
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: counts an empty line as a line when it cuts a summary to 5 lines
+      - file: src/__tests__/unit/ingestion/preliminary-reading.spec.ts
+        name: lets a carriage return end no line when it cuts a summary to 5 lines
+    why: >-
+      Each named test runs runLlmExtraction on a v5, three-chunk run whose
+      preliminary reading returns a summary of 6 or 7 lines. It then checks
+      that the run's recorded document_context.summary is exactly that
+      summary's first 5 lines. If the cut stopped happening, or kept a
+      different number of lines, these checks would fail. The harness reads
+      the recorded value back through DocumentContextSchema.parse in its
+      UPDATE llm_run stub. So the tests check the schema's parse of what the
+      run writes, not the raw column.
+
+      One finding: "lets a carriage return end no line when it cuts a summary
+      to 5 lines" asserts more than this node states. It requires that "\r"
+      is not a line ending and that the trailing "\r" of the fifth line is
+      kept ("a\r\nb\r\nc\r\nd\r\ne\r"). The node does not say which characters
+      end a line. That test will change whenever the line-ending policy
+      changes, even if the 5-line cut still holds.

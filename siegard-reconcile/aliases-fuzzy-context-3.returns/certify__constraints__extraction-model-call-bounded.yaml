@@ -1,0 +1,35 @@
+certified:
+  - node: constraints/extraction-model-call-bounded
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+        name: abandons a model call that never answers within five minutes and attempts it at most three times, for the preliminary reading and for a chunk alike
+      - file: src/__tests__/unit/ingestion/preliminary-reading-model-call-bounds.spec.ts
+        name: calls the context model exactly three times for one preliminary reading when it answers a retryable error on every attempt
+    why: >-
+      The five-minute wait is exercised for both calls. The first test uses a
+      model that never answers and checks that every attempt, on the context
+      model and on the run model, is aborted within five minutes. If there were
+      no timeout, or a longer one, it would fail. The retry bound is exercised
+      only partly. The one test that sends a retryable error (529 overloaded) on
+      every attempt counts only the context-model call of the preliminary
+      reading. Nothing in the set answers a chunk extraction call, on the run
+      model, with a retryable error. So if that call retried such an error more
+      than twice, both tests would still pass, unless the code also retries the
+      timeout case. The first test does cover the timeout case with its at most
+      three attempts. The tests also read "waits at most five minutes" as a bound
+      on each attempt. Nothing asserts how long one call takes in total across
+      its retries. Two assertions go beyond the fact. First, the second test
+      asserts exactly three attempts, so a call retried once or never would
+      satisfy the fact but fail the test. Second, the first test's "firstChunk"
+      bound counts every run-model attempt in the whole extraction, not just the
+      attempts for the first chunk. It holds only while the extraction stops
+      after the first chunk's call fails, and the node does not state that. If
+      later chunks were still called, it would fail even with each call within
+      its bound.
+    remainder: testable
+    remainder_why: >-
+      Input: a chunk extraction call to the run model that gets a retryable
+      error (for example 529 overloaded) on every attempt. Expected: that call
+      is attempted at most three times, meaning it is retried at most twice,
+      counted for that chunk alone.

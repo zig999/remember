@@ -1,0 +1,335 @@
+findings:
+  - file: src/__tests__/unit/ingestion/document-context-dto.spec.ts
+    where: >-
+      the test "is refused when its names list is empty", in the describe "a document entity" (lines 67-73)
+    evidence: >-
+      it("is refused when its names list is empty", () => {
+          const withEmptyNames = { node_type: "Person", names: [] };
+
+          const refused = refusedFields(DocumentEntitySchema, withEmptyNames);
+
+          expect(refused).toEqual(["names"]);
+    cost: >-
+      The test decides that an empty names list is refused, as a minimum of one name. The node document-entity declares names only as `required: true` and `many: true` and sets no minimum. The next reader who asks whether an entity may list no names looks in the node, finds no answer, and finds the answer only in this test and in the DTO's `.min(1)`.
+    kind: unstated
+    correction: >-
+      The specification would have to state whether a document entity must list at least one name, in domain/knowledge-base/document-entity or in a rule constraining it. This file cannot close that on its own.
+    node: domain/knowledge-base/document-entity
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only imports `DocumentContextSchema, DocumentContextStatusSchema, DocumentEntitySchema` and calls `schema.safeParse(input)`; it presents nothing to a language model
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no call to a language model and no wait or retry bound; its only calls are `schema.safeParse(input)` and `DocumentContextStatusSchema.options`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never touches an operation, an answer or a refusal of the contract; it tests only `refusedFields(DocumentContextSchema, withoutSummary)` and the entity and status schemas
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search or read operation; it imports only the schemas from "../../../modules/ingestion/dto/llm-run.dto.js"
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no assertion flag; its only enumeration is `const declared = ["produced", "single-chunk", "too-long", "failed"];`
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      the describe "a document context", lines 32-48, which asserts that a document context without summary or without model is refused
+    evidence: >-
+      const withoutSummary = { entities: [ENTITY], model: MODEL }; ... expect(refused).toEqual(["summary"]); and const withoutModel = { summary: SUMMARY, entities: [ENTITY] }; ... expect(refused).toEqual(["model"]);
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      the test in the describe "the document context status enumeration the specification declares", lines 22-30
+    evidence: >-
+      const declared = ["produced", "single-chunk", "too-long", "failed"]; const members = [...DocumentContextStatusSchema.options].sort(); expect(members).toEqual([...declared].sort());
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      the describe "a document entity", lines 50-74, which asserts that an entity without node_type or without names is refused
+    evidence: >-
+      const withoutNodeType = { names: NAMES }; ... expect(refused).toEqual(["node_type"]); and const withoutNames = { node_type: "Person" }; ... expect(refused).toEqual(["names"]);
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file imports no LLM run schema and never names model, prompt_version, status, attempts or idempotency_key of a run; it tests only the document context schemas
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item or match; only `refusedFields(schema: ZodType, input: unknown): string[]` and the three schema describes
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no prompt version; it holds no `v1` to `v5`, only `const MODEL = "claude-haiku-4-5";`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item attribute such as kind, layer, score, hop or flags
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no alias admission; `const NAMES = ["Maria Souza", "M. Souza", "Maria"];` is only input for a schema test
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity; its only assertions are `expect(refused).toEqual([...])` over field paths
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no match strength or word similarity
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no prompt version and no default for one
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not check a node type against a catalog; `{ node_type: "Person", names: NAMES }` is only an input literal, and only the missing node_type is tested
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no rule about which model produces a context; `const MODEL = "claude-haiku-4-5";` is only an input literal, and the test asserts only that a missing model is refused
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no preliminary reading, no chunk count and no 100000 bound
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no reuse of a context and no run; only `DocumentContextStatusSchema.options` is read
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks the status enumeration's members, `expect(members).toEqual([...declared].sort());`, and records no status for any run
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no summary; `const SUMMARY = "Ata da reuniao do comite sobre a renovacao do contrato.";` is a one-line input literal
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no line limit on a summary; the only summary test is "is refused when it lacks a summary"
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no entity resolution; no node, alias or proposal appears in it
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item or similarity
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no hop or score
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no fragment or chunk
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt; `names` appears only as `const NAMES = ["Maria Souza", "M. Souza", "Maria"];`
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt and no prompt version
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no chunk reading
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no date handling
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never runs an extraction; `failed` appears only as a member of `const declared = ["produced", "single-chunk", "too-long", "failed"];`
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no layer weight
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no node proposal or alias
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no name; `NAMES` is passed through unchanged to `schema.safeParse(input)`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no knowledge node or alias
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt version and no run
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search item
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search or similarity threshold
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no prompt version check
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no text matching
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no retry
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search or candidate cap
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no ranking
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no trigram similarity
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no scenario about an acronym or about CNPq; its describes are "the document context status enumeration the specification declares", "a document context" and "a document entity"
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no proposal resolution
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no alias admission and no ALIAS_NOT_IN_SOURCE
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction over chunks; `ENTITY = { node_type: "Person", names: NAMES }` is only an input literal
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no directed ingestion
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never runs an extraction and holds no failed reading
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no preliminary reading and no proposal
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no retry and no run
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction; `single-chunk` appears only in `const declared = ["produced", "single-chunk", "too-long", "failed"];`
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no search
+looked_past: >-
+  The test imports its three schemas from another file and holds none of their shapes itself, so where a shape is declared and who answers for it is the binding's question, not this pass's.

@@ -1,0 +1,318 @@
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly held. RunNotRetryableError (BUSINESS_RUN_NOT_RETRYABLE, 409) and RunNotRunningError (BUSINESS_RUN_NOT_RUNNING, 409) declare the two run-status refusals. getLlmRunById holds read-llm-run, with ResourceNotFoundError for a missing run and affected nodes only for a completed run. listToolCallsByLlmRun holds list-tool-calls. retryLlmRun holds retry-llm-run. listRecentIngestions holds the list-recent-ingestions item shape.
+    evidence: >-
+      public readonly code = "BUSINESS_RUN_NOT_RETRYABLE" as const; ... public readonly code = "BUSINESS_RUN_NOT_RUNNING" as const; ... if (row.status === "completed") { const cached = getCachedAffectedNodes(llmRunId); ... } ... if (existing.status !== "failed") { throw new RunNotRetryableError(llmRunId, existing.status); } ... return { total, limit: args.limit, offset: args.offset, items: rows.map(toToolCallResponse), };
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and passes no document content to a model. Its only run-level operations are findLlmRunById, retryLlmRunRow, closeLlmRunRow and aggregateToolCallOutcomes.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls no language model and sets no timeout or retry count. It holds no wait of five minutes and no limit of two retries.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no search, provenance, catalog or graph surface. It has no function over nodes, links or attributes beyond deriveAffectedNodes, which it calls but does not declare.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no enumeration and handles no search item flags. The strings "uncertain", "disputed" and "low-confidence" do not appear in it.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is not declared here. The file only spreads another file's result into the response: "...documentContextFields(row),".
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no status enumeration. The status reaches the response only through "...documentContextFields(row),", imported from ./run-document-context.js.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no entity shape and reads no entity of a document context.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The aggregate's shape is declared elsewhere, in LlmRunRow (ingestion.repository) and LlmRunResponse (llm-run.dto). This file only maps one onto the other: "id: row.id, model: row.model, prompt_version: row.prompt_version, started_at: row.started_at.toISOString(), ... idempotency_key: row.idempotency_key,".
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search code. The values "exact" and "approximate" do not appear in it.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no prompt-version enumeration. prompt_version is passed through as "prompt_version: row.prompt_version," and the type "string | null" in RecentIngestionItem.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item shape. Its only item type is RecentIngestionItem, which is the recent-ingestion row of the ingestion contract.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no node proposal and no alias. The word "alias" does not appear in it.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity. It has no search code.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no match strength. It has no search code.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no default. The prompt version is only read back: "prompt_version: row.prompt_version,".
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file filters no document context entities by node type. It only spreads "...documentContextFields(row),".
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file chooses no context model. The string "claude-haiku-4-5" does not appear in it.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading. It has no chunk reading and no 100000 threshold.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context status. It only reads one through "...documentContextFields(row),".
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context status. The values "produced", "single-chunk", "too-long" and "failed" (as a status) do not appear in it.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file cuts no summary to five lines. The only summary it touches is the run summary, "summary," from aggregateToolCallOutcomes.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no line-counting rule for a document context's summary.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no entity resolution. It has no node proposal code.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item. It has no search code.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file scores no link by hop. It has no search code and no 0.5 decay.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment to a chunk. It reads no chunk.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. The words "hoje", "ontem" and "amanhã" do not appear in it.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction system prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk and builds no chunk prompt. It has no 200 code point tail.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text and resolves no relative date.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and so has no failure of one to continue past.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file weights no search layer. The numbers 1.0, 0.9 and 0.6 do not appear in it.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file adds no alias to a node. It has no node proposal code.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name. It has no lower-casing, accent removal or whitespace collapsing.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no knowledge node and no alias.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt-version branch. The only mention of the version is "prompt_version: row.prompt_version,".
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item at hop 0.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file matches no node. The 5-character alias threshold and the 0.6 word similarity do not appear in it.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer and no lexical parse of a query.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no prompt version against a held set. It only passes the stored value along: "prompt_version: row.prompt_version,".
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no full-text matching. It has no Portuguese stemming and no query over fragment or chunk text.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      retryLlmRun neither sets nor clears the document context status. It delegates the update to the repository, "const updated = await retryLlmRunRow(client, llmRunId);", and the status is only read back through "...documentContextFields(row),". Whether the update statement leaves the column alone is not decided in this file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file keeps no search candidates. The number 200 does not appear in it.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file ranks no search items.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no trigram similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no node proposal or alias.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no entity resolution.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never produces the reason ALIAS_NOT_IN_SOURCE. The string does not appear in it.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk and resolves no node proposal.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no directed ingestion code.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and reads no chunk.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file decides no reuse of a document context. retryLlmRun calls "retryLlmRunRow(client, llmRunId)" and returns "toLlmRunResponse(updated, summary)", with the context fields spread from the row.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading and records no status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+looked_past: >-
+  Seen and not reported because it is another judgment's: the retry guard (only a failed run is retried, "if (existing.status !== "failed")") agrees with rules/knowledge-base/llm-run-lifecycle, which is outside this set, and the in-process cache of affected nodes (getCachedAffectedNodes/setCachedAffectedNodes) is an implementation choice that states no domain fact.

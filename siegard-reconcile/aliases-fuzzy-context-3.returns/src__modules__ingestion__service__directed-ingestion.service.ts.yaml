@@ -1,0 +1,491 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      The file header comment, lines 20-23, in the bullet list "Distinct from `runLlmExtraction`".
+    evidence: >-
+      "// Distinct from `runLlmExtraction`:
+      //   - No `LLMRun` pre-check: the orchestrator OPENS the run as part of
+      //     intake (BR-34 step 2). Failure to open the run is the only `failed`
+      //     terminal outcome; otherwise the run always lands `completed`.
+      //   - No chunk loop, no model dispatch — items are pre-structured."
+    cost: >-
+      The header says in prose that a directed ingestion opens a run and calls no model. The code holds both facts in the `ingestRaw` call with `DIRECTED_MODEL` and `DIRECTED_PROMPT_VERSION`, and in the absence of any model call. A reader who finds the comment will treat it as the home of the rule and will not look in the specification. If the node moves, the comment keeps the old wording.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route, then run /reconcile over the file. The code in this file already carries the fact.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      The header comment, lines 24-25, and the comment above the attribute loop, lines 584-586.
+    evidence: >-
+      "//   - Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+      //     when the caller omits it (BR-34 step 4)."
+      and
+      "//     either is missing. `confidence = 1.0`; `valid_from_basis` defaults to
+      //     `'stated'` when omitted by caller (BR-34 Defaults matrix)."
+    cost: >-
+      The default basis is stated in prose twice, citing "BR-34", a rule identity from outside the specification. The code holds the same fact at `valid_from_basis: item.valid_from_basis ?? "stated"`, lines 621 and 701. A reader looking for the default finds the comment first and treats it as a second authority. The comments say nothing of the change hint the node also holds, so they do not even agree with the node's full statement.
+    kind: restates
+    correction: >-
+      Remove both comments by the comment route, then run /reconcile over the file. The code at lines 621-622 and 701-702 holds the fact.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Line 93, the `IsoDateSchema` message, and the `valid_to` fields of `DirectedAttributeItemSchema` (line 133) and `DirectedLinkItemSchema` (line 144), forwarded at lines 620 and 700.
+    evidence: >-
+      "const IsoDateSchema = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");"
+      "valid_to: IsoDateSchema.optional(),"
+      "...(item.valid_to !== undefined ? { valid_to: item.valid_to } : {}),"
+    cost: >-
+      The service lets a directed attribute or link state a validity end and proposes it. The specification states only a validity start for a directed item. The decision log of directed-validity-start-shape records "Only the validity start is stated, because the tool strips any other field before the service reads it." A caller who reaches the service directly can state a validity end that no node holds. The code becomes the only place that capability is decided, and the next reader will not look for it there. The validation message the service emits also names `valid_to` as a shape the specification does not hold.
+    kind: unstated
+    correction: >-
+      Either the analysis gives a validity end of a directed item a node, or the service stops accepting it. This pass does not choose between the two.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      `DirectedNodeItemSchema` (lines 102-108), the `key` of `DirectedAttributeItemSchema` (line 129) and the `link_type` of `DirectedLinkItemSchema` (line 140).
+    evidence: >-
+      "node_type: z.string().min(1),
+        name: z.string().min(1).max(500),
+        node_id: z.string().uuid().optional(),
+        aliases: z.array(z.string().min(1).max(500)).optional(),"
+      "key: z.string().min(1),"
+      "link_type: z.string().min(1),"
+    cost: >-
+      The service refuses the whole directed request when a node name or alias runs past 500 characters, when a node type, attribute key or link type is empty, or when a pinned identity is not a UUID. The contract lists six rules that refuse an ingest-directed request, and none of them is any of these. node-name-length applies to a node proposal, not to the directed request. A caller cannot learn from the specification that these values fail the entire request before any item is dispatched. The refusal behavior lives only in the schema.
+    kind: unstated
+    correction: >-
+      The analysis would give the directed request these refusals a place in the ingest-directed answers of the contract, or state that they are refused per item through the proposal rules. This pass does not choose.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      The comment on `metadataPointer`, lines 273-281, and the comment above the metadata merge, lines 336-338.
+    evidence: >-
+      "* Non-PII pointer back to the chat row that triggered this directed run
+         * (TC-02 / BR-34). When the chat-agent dispatch invoked the tool the route
+         * supplies `{ conversation_id, message_id }` so the orchestrator can merge
+         * it into the `RawInformation.metadata` jsonb."
+      and
+      "// TC-02 / BR-34 — chat-row pointer (non-PII; the verbatim text lives in
+        // `original_input`, not here). Merged in only when the chat dispatch
+        // supplied it; REST / MCP-direct calls emit metadata without these keys."
+    cost: >-
+      Two comments restate which metadata a directed ingestion records and when. The code holds it at `intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;` and the lines beside it. A reader may treat the comment as the authority for when the pointer is recorded. The comments cite "TC-02 / BR-34", identities that live outside the specification.
+    kind: restates
+    correction: >-
+      Remove both comments by the comment route, then run /reconcile over the file. The code at lines 330-342 holds the fact.
+    node: rules/knowledge-base/directed-source-metadata
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      The Zod-failure refusal at the start of `directedIngestionService`, lines 299-314.
+    evidence: >-
+      "code: "VALIDATION_INVALID_FORMAT",
+          message: "Input failed Zod parse.","
+    cost: >-
+      The contract answers every ingest-directed request refused for shape with the message "ingest_directed arguments failed validation.". The caller-facing handler `directed-ingest.handler.ts` already emits that wording before the service runs. The service emits a different message when its own parse fails. The text is reachable only when the service is called without the handler, and a reader comparing the two sees two messages for one refusal. The service schema is also a second implementation of the shape rules the handler's schema `IngestDirectedMcpInputSchema` already checks.
+    kind: contradicts
+    correction: >-
+      The message the service emits on its own parse failure would have to be the one the contract names, or the service would have to stop re-parsing a payload the handler has already validated. This pass does not choose.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      `refForAttribute`, lines 914-916, which names an attribute's report entry.
+    evidence: >-
+      "function refForAttribute(item: DirectedAttributeItem): string {
+        return `${item.node_ref}.${item.key}`;
+      }"
+    cost: >-
+      The contract says only that a link's reference is its source reference, link type and target reference joined by "->", and says nothing of the reference of an attribute entry. The form `<node_ref>.<key>` is decided only in this function, and callers that read the report depend on it. Two attributes of one node and key share this reference with no rule saying which the reference names, and the specification does not hold that either.
+    kind: unstated
+    correction: >-
+      The analysis would give the report reference of an attribute entry a place in the ingest-directed answer of the contract, beside the link form it already states.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      The `fallback` of `readClosedRunSafe`, lines 1035-1039, and its use at lines 1052, 1058 and 1072.
+    evidence: >-
+      "const fallback = {
+          started_at: new Date(0).toISOString(),
+          finished_at: new Date(0).toISOString(),
+          attempts: 1,
+        };"
+      "finished_at:
+            row.finished_at === null
+              ? new Date(0).toISOString()
+              : row.finished_at.toISOString(),"
+    cost: >-
+      When the closed run cannot be read, or has no finish time, the response reports the run starting and finishing at 1970-01-01T00:00:00.000Z with one attempt. The contract says only that the run is reported completed even where closing it failed. It holds no value for the times or attempts of a run that cannot be read. A caller or an audit reading the response receives an invented timestamp that looks like a real one, and no rule says it is a placeholder.
+    kind: unstated
+    correction: >-
+      The analysis would give the times and attempts a directed run reports when its row cannot be read a place in the ingest-directed answer of the contract, or say they are omitted. This pass does not choose.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      The attribute dispatch, line 621-622, and the link dispatch, lines 701-702.
+    evidence: >-
+      "valid_from_basis: item.valid_from_basis ?? "stated",
+      change_hint: item.change_hint ?? "none","
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      The `ingestRaw` call at lines 346-358, which opens the run with the directed model and prompt version. The values come from `directed-run.js`. The file calls no language model.
+    evidence: >-
+      "model: DIRECTED_MODEL,
+        prompt_version: DIRECTED_PROMPT_VERSION,"
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      The fragment loop, lines 468-470, and the node loop, lines 504 and 554, where a reference is written only on acceptance.
+    evidence: >-
+      "if (envelope.ok) {
+          refToFragmentId.set(item.ref, envelope.result.fragment_id);"
+      "refToNodeId.set(item.ref, envelope.result.node_id);"
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      The metadata built at lines 330-342.
+    evidence: >-
+      "const intakeMetadata: Record<string, unknown> = {
+          directed: true,
+        };
+        if (payload.source_label !== undefined) {
+          intakeMetadata.source_label = payload.source_label;
+        }"
+      "intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+          intakeMetadata.message_id = deps.metadataPointer.message_id;"
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      `DirectedFragmentItemSchema`, line 99.
+    evidence: >-
+      "text: z.string().min(1).max(1000),"
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      `evidence_ref` in `DirectedAttributeItemSchema` and `DirectedLinkItemSchema`, lines 131 and 142, and the cited fragment passed at lines 618 and 698.
+    evidence: >-
+      "evidence_ref: DirectedRefSchema,"
+      "fragment_ids: [fragmentId],"
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file presents no content to a language model. Its only collaborators are `ingestRaw` and the four propose handlers.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no call to a language model and sets no wait or retry bound.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      In part, for the ingest-directed operation. The result at lines 791-812, the persistence refusals at lines 370-381, 406-414 and 430-437, the pin refusals in `verifyNodePin` at lines 862-875, the link reference at line 918 and the swallowed run close in `closeRunCompletedSafe`. The final refusal "Unexpected error during directed ingestion." is not in this file.
+    evidence: >-
+      "message: "Directed ingestion intake produced no chunks.","
+      "message: "Failed to persist the directed payload before dispatch.","
+      "message: "node_id pin does not resolve to an existing knowledge_node row.","
+      "return `${item.source_ref}->${item.link_type}->${item.target_ref}`;"
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search, provenance or catalog read. Its only reads are `findLlmRunById` and the `knowledge_node` status query in `verifyNodePin`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no assertion flag. Its report vocabulary is `DirectedItemStatus`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares and reads no document context. The run response carries only `affected_nodes`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `DirectedRunResponse` has no document context status field.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document entity.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      In part, the `DirectedRunResponse` interface at lines 224-234, which names the run's model, prompt version, status, attempts and start and finish times.
+    evidence: >-
+      "export interface DirectedRunResponse {
+        readonly id: string;
+        readonly model: typeof DIRECTED_MODEL;
+        readonly prompt_version: typeof DIRECTED_PROMPT_VERSION;
+        readonly status: "completed";"
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no node match. Its node resolution is `ProposeNodeResolution`, imported.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no prompt version enumeration. It uses the imported `DIRECTED_PROMPT_VERSION`.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file forwards `aliases` to `proposeNode` and applies no source test or directed exception. The directed run it opens, with `model: DIRECTED_MODEL`, is what the exception reads in other files.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no match strength.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never defaults a prompt version. It sets `prompt_version: DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file configures no context model.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunk loop and no preliminary reading.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no document context summary.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no document context summary.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file delegates node resolution to `proposeNode(nodeInput, ...)` and resolves nothing itself.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file scores no link.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunk. It anchors fragments to `anchorChunkId = chunks[0]!.id`, a different rule.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunk loop and shows nothing to a model.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt and resolves no relative date.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file weights no match.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file adds no alias to a node. It forwards `aliases` to `proposeNode`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node and records no alias.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context and no document context status.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs no node-layer match.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs no node-layer match.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no prompt version against the versions the system holds.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file matches no text.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file ranks nothing.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file admits no alias. It forwards `aliases` through `proposeNode(nodeInput, ...)`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file tests no alias against the source content.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunk loop and no document context.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no alias admission test. It opens the directed run with `model: DIRECTED_MODEL` and forwards `aliases` to `proposeNode`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run and reads no document context.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no document context status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file searches nothing.
+looked_past: >-
+  The file also holds facts of directed-ingestion nodes outside this set (full confidence, first-chunk anchoring, dependency-failed cascade, item status, pinned node, run completion, nonce content), which are held by code and left to those nodes' own passes, while comments such as "chunkV1 always emits at least one chunk for non-empty content (BR-03)" state a fact only in prose and the "BR-xx" and "TC-xx" citations name identities outside the specification.

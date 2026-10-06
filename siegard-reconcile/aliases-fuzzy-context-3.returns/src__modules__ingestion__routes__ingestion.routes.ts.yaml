@@ -1,0 +1,323 @@
+read:
+  - node: constraints/request-body-ceiling
+    held_at: >-
+      the constant POST_INGEST_BODY_LIMIT and its use as the bodyLimit option of the POST "/raw-information" route.
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024; app.post("/raw-information", { bodyLimit: POST_INGEST_BODY_LIMIT }, ...)
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers routes and does not build any prompt. Its only extraction call is `runLlmExtraction(deps.pool, params.llmRunId, deps.logger, orchestratorCatalog, {...})`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sets no timeout and no retry count. It only forwards `env: orchestratorEnv` and `anthropicFactory` to `runLlmExtraction`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the REST routes in registerIngestionRoutes and the error mapping in handleProposeMirror. These cover intake, read-raw-information, list-raw-chunks, read-llm-run, list-tool-calls, run-extraction, retry-llm-run and the four propose mirrors.
+    evidence: >-
+      `if (err instanceof RunNotRunnableError) { return reply.status(409).send({ ok: false, error: { code: err.code, ... current_status: err.currentStatus } }) }`; `if (err instanceof LlmProviderFatalError) { return reply.status(502) ... partial_run: err.partialRun }`; `if (err instanceof ExtractionFatalError) { return reply.status(500) ... }`; `if (err instanceof RunNotRetryableError) { return reply.status(409) ...}`; `if (run.status !== "running") { throw new RunNotRunningError(llmRunId, run.status); }` mapped to 409; `if (isValidationFailure(err)) { throw new ProposeMirrorEnvelopeReject({ ok: false, ... }) }` answered with `reply.status(200).send(err.envelope)`; `RunLlmExtractionRequestSchema = z.object({}).strict().default({})`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only ingestion routes: /raw-information, /llm-runs/:llmRunId, tool-calls, run, retry and the propose mirrors. It registers no search, provenance, catalog-listing, node, link or traverse route.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no enumeration. It contains no "uncertain", "disputed" or "low-confidence" value.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the document context. It never reads or writes one.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document-context-status enumeration. It contains no "produced", "single-chunk", "too-long" or "failed" value.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document-entity shape.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no LLM run shape. It only passes runs along (`const body = await getLlmRunById(client, params.llmRunId)`) and reads `run.status` and `run.input_raw_information_id`, a shape declared elsewhere.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no node-match enumeration. It contains no "exact" or "approximate" value.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no prompt-version enumeration. It contains no "v1" to "v5" value.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search-item shape. It registers no search route.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The propose-node mirror only forwards input: `return await proposeNodeService(client, input, runCtx, { catalog });`. The file holds no alias test.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no similarity computation and no search route.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no match strength computation and no search route.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version default. It has no ingest-document route.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no document context handling. `catalog` is only passed through to `runLlmExtraction` and the propose services.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares `readonly CONTEXT_MODEL: string;` in the deps type and forwards `env: orchestratorEnv`. It names no model and holds no default.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading and no 100000 threshold. It only calls `runLlmExtraction(...)`.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file writes no document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file writes no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no summary handling.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no summary handling.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no entity resolution. It only calls `proposeNodeService(client, input, runCtx, { catalog })`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item construction.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no expansion or score computation.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no fragment anchoring. The propose-fragment mirror only forwards `rawInformationId: run.input_raw_information_id` to the service.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no chunk reading loop. It only delegates to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no prompt text.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no 1.0, 0.9 or 0.6 weights and no search route.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item construction.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias handling.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no name normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias handling.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version branching.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item construction.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no 0.6 threshold, no 5-character alias minimum and no search route.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt version check. A prompt version failure surfaces only as `ExtractionFatalError`, mapped with `reply.status(500)`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no full-text matching.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The retry route calls `retryLlmRun(client, params.llmRunId)` and holds no document context status handling.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no 200 candidate cap and no search route.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no similarity computation.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no alias admission or node creation. It only forwards the proposal to `proposeNodeService`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no entity resolution.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no ALIAS_NOT_IN_SOURCE and no alias handling. The propose-node mirror only returns the service envelope with `reply.status(200).send(envelope)`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no chunk reading, no document context and no resolution.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no directed ingestion and no alias handling.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The retry route only calls `retryLlmRun(client, params.llmRunId)`. It holds no document context reuse.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no chunk count handling and no document context status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search route.
+looked_past: >-
+  The route-registration conditions (the run route only when catalog and env are present, the propose-node, propose-link and propose-attribute mirrors only when a catalog is present, with a warn log otherwise) and the repeated 404 mapping blocks are wiring and code-quality matters, not domain facts, so they are another judgment's.

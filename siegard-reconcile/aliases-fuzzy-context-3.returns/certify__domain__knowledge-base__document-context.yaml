@@ -1,0 +1,26 @@
+certified:
+  - node: domain/knowledge-base/document-context
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/document-context-value-in-extraction.spec.ts
+    why: >-
+      Exercised: a context missing its summary or its model is refused by DocumentContextSchema; a
+      reading answered without a summary records no context; the produced summary and entities are
+      shown in every chunk's prompt; the recorded context carries the same strings each chunk was
+      shown, and its model is the one that did the reading; and an entity named only in the context
+      produces no knowledge write. Not exercised: the node says the context is what a reading of the
+      whole document yields. Nothing in the test inspects what the preliminary reading was given. A
+      reading that saw only the first chunk, or any subset, would still pass, so the "whole
+      document" half of the fact, and with it "knowing what the rest of the document says", has no
+      test against it. The test also asserts more than the node states:
+      knowledgeWritesOrWritesNamingIt expects no write to any knowledge table at all during that
+      run, not only none for the context-only entity. This holds only while the chunk model in the
+      world extracts nothing, and it does not come from this node. Every observation goes through
+      helpers in document-context-extraction-world.js (chunkPrompts, recordedContext, readerModels,
+      world.writes). The pack did not offer that file and it was not opened, so this judgment takes
+      those helpers to mean what their names say.
+    remainder: testable
+    remainder_why: >-
+      Input: a document split into several chunks, each with a distinct marker. Expected: the
+      prompt of the preliminary reading contains every chunk's marker, which is the whole document,
+      and the reading happens before the first chunk extraction prompt is issued.

@@ -1,0 +1,563 @@
+findings:
+  - file: src/config/env.ts
+    where: >-
+      line 12-13, the CORS_ORIGINS schema default
+    evidence: >-
+      CORS_ORIGINS: z.string().default("http://localhost:5173,http://127.0.0.1:5173")
+    cost: >-
+      Which origins are allowed when nothing configures them is a decision about who may call the system from a
+      browser. It lives only in this default. The next reader looks for it in the specification, finds only that an
+      answer to an allowed origin carries that origin, and cannot tell which origins those are.
+    kind: unstated
+    correction: >-
+      The analysis would give the default set of allowed origins a node, beside
+      constraints/answers-carry-allowed-origin, which states only how an allowed origin is answered.
+    node: constraints/answers-carry-allowed-origin
+  - file: src/config/env.ts
+    where: >-
+      line 39, the NEON_AUTH_JWKS_TTL_S schema entry
+    evidence: >-
+      NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600)
+    cost: >-
+      The 600-second default and the 60-second floor for how long the auth provider's key set is kept are thresholds
+      the code applies. A token signed with a rotated key is refused or admitted according to them, and no node states
+      them.
+    kind: unstated
+    correction: >-
+      The analysis would give the key-set lifetime, its default and its minimum, a node. The nearest nodes state only
+      that a key set which cannot be fetched is a refusal.
+  - file: src/config/env.ts
+    where: >-
+      line 50, the INGEST_MODEL schema default
+    evidence: >-
+      INGEST_MODEL: z.string().min(1).default("claude-sonnet-4-6")
+    cost: >-
+      The node holds this default, but this declaration is its only code home in this file and the node is not bound
+      here. When the node moves, --check does not reach this file. If the node's bound file also holds the value,
+      there are two homes and nobody knows which was decided.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/default-extraction-model to src/config/env.ts so the declaration is the claimed home.
+      Code never reads the specification, and the bind is what closes it.
+    node: rules/knowledge-base/default-extraction-model
+  - file: src/config/env.ts
+    where: >-
+      lines 54-57, the CHAT_ENABLED schema default
+    evidence: >-
+      CHAT_ENABLED: z.union([z.boolean(), z.enum(["true", "false"])]).transform(...).default(true)
+    cost: >-
+      The chat-enabled default is held here and the node is not bound to this file. A change to the node does not
+      reach this declaration through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/chat-enabled-by-default to src/config/env.ts.
+    node: rules/chat/chat-enabled-by-default
+  - file: src/config/env.ts
+    where: >-
+      line 58, the CHAT_MODEL schema default
+    evidence: >-
+      CHAT_MODEL: z.string().min(1).default("claude-opus-4-8")
+    cost: >-
+      The node's default model is declared here, in a file the node is not bound to. A change to the node does not
+      reach this value through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/turn-model-default to src/config/env.ts.
+    node: rules/chat/turn-model-default
+  - file: src/config/env.ts
+    where: >-
+      line 59, the CHAT_UTILITY_MODEL schema default
+    evidence: >-
+      CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5")
+    cost: >-
+      The utility-model default is declared here, in a file the node is not bound to. A change to the node does not
+      reach this value through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/utility-model-default to src/config/env.ts.
+    node: rules/chat/utility-model-default
+  - file: src/config/env.ts
+    where: >-
+      line 60, the CHAT_PROMPT_VERSION schema default
+    evidence: >-
+      CHAT_PROMPT_VERSION: z.string().min(1).default("v4")
+    cost: >-
+      The default chat prompt version is declared here, in a file the node is not bound to. A change to the node does
+      not reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/default-chat-prompt-version to src/config/env.ts.
+    node: rules/chat/default-chat-prompt-version
+  - file: src/config/env.ts
+    where: >-
+      lines 61-64, the CHAT_INGEST_ENABLED schema default
+    evidence: >-
+      CHAT_INGEST_ENABLED: z.union([z.boolean(), z.enum(["true", "false"])]).transform(...).default(false)
+    cost: >-
+      The directed-ingestion-off default is declared here, in a file the node is not bound to. A change to the node
+      does not reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/directed-ingestion-disabled-by-default to src/config/env.ts.
+    node: rules/chat/directed-ingestion-disabled-by-default
+  - file: src/config/env.ts
+    where: >-
+      line 65, the MAX_HISTORY_MESSAGES schema default
+    evidence: >-
+      MAX_HISTORY_MESSAGES: z.coerce.number().int().min(1).default(40)
+    cost: >-
+      A cap of 40 history messages is a threshold in what the assistant is given, and no node states it. The nearest
+      node, rules/chat/model-context-window, bounds the history by the recent window of owner-written messages (6 by
+      default) and states no message-count cap. The next reader looks for the cap in the specification and does not
+      find it.
+    kind: unstated
+    correction: >-
+      The analysis would give the maximum number of history messages a node, or settle that it is not a rule.
+  - file: src/config/env.ts
+    where: >-
+      line 66, the MAX_CONTENT_LENGTH schema default
+    evidence: >-
+      MAX_CONTENT_LENGTH: z.coerce.number().int().min(1).default(32_768)
+    cost: >-
+      The message-content limit is declared here, in a file the node is not bound to. A change to the node does not
+      reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/message-content-length to src/config/env.ts.
+    node: rules/chat/message-content-length
+  - file: src/config/env.ts
+    where: >-
+      line 67, the MAX_ITERATIONS schema default
+    evidence: >-
+      MAX_ITERATIONS: z.coerce.number().int().min(1).default(8)
+    cost: >-
+      The model-call limit is declared here, in a file the node is not bound to. A change to the node does not reach
+      it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/turn-model-call-limit to src/config/env.ts.
+    node: rules/chat/turn-model-call-limit
+  - file: src/config/env.ts
+    where: >-
+      line 68, the TURN_TIMEOUT_MS schema default
+    evidence: >-
+      TURN_TIMEOUT_MS: z.coerce.number().int().min(1).default(90_000)
+    cost: >-
+      The turn-time limit is declared here, in a file the node is not bound to. A change to the node does not reach
+      it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/turn-time-limit to src/config/env.ts.
+    node: rules/chat/turn-time-limit
+  - file: src/config/env.ts
+    where: >-
+      line 69, the TOOL_TIMEOUT_MS schema default
+    evidence: >-
+      TOOL_TIMEOUT_MS: z.coerce.number().int().min(1).default(15_000)
+    cost: >-
+      The tool-time limit is declared here, in a file the node is not bound to. A change to the node does not reach
+      it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/tool-failure-continues-turn to src/config/env.ts.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/config/env.ts
+    where: >-
+      line 70, the TOOL_RESULT_MAX_CHARS schema default
+    evidence: >-
+      TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000)
+    cost: >-
+      The tool-result cut limit is declared here, in a file the node is not bound to. A change to the node does not
+      reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/tool-result-truncated to src/config/env.ts.
+    node: rules/chat/tool-result-truncated
+  - file: src/config/env.ts
+    where: >-
+      line 71, the CHAT_RECENT_WINDOW schema default
+    evidence: >-
+      CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6)
+    cost: >-
+      The recent-window size is declared here, in a file the node is not bound to. A change to the node does not
+      reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/model-context-window to src/config/env.ts.
+    node: rules/chat/model-context-window
+  - file: src/config/env.ts
+    where: >-
+      line 72, the CHAT_SUMMARY_AFTER_TURNS schema default
+    evidence: >-
+      CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20)
+    cost: >-
+      A threshold of 20 turns after which summarising applies is a rule the code states, and no node holds it.
+      rules/chat/rolling-summary-refresh makes a refold depend on owner-written messages older than the recent
+      window, not on a turn count. The two answer differently for a conversation of fewer than 20 turns, and the
+      reader looking in the specification finds only the first.
+    kind: unstated
+    correction: >-
+      The analysis would give the turn count after which summarising applies a node, or settle that the setting is not
+      a rule and remove it.
+    node: rules/chat/rolling-summary-refresh
+  - file: src/config/env.ts
+    where: >-
+      line 74, the CHAT_SUMMARY_PROMPT_VERSION schema default
+    evidence: >-
+      CHAT_SUMMARY_PROMPT_VERSION: z.string().min(1).default("v2")
+    cost: >-
+      The default summary prompt version is declared here, in a file the node is not bound to. A change to the node
+      does not reach it through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/default-summary-prompt-version to src/config/env.ts.
+    node: rules/chat/default-summary-prompt-version
+  - file: src/config/env.ts
+    where: >-
+      lines 75-82, the CHAT_TITLE_ENABLED and CHAT_SUMMARY_ENABLED schema defaults
+    evidence: >-
+      CHAT_TITLE_ENABLED: ....default(true), CHAT_SUMMARY_ENABLED: ....default(true)
+    cost: >-
+      The distillation-enabled defaults are declared here, in a file the node is not bound to. A change to the node
+      does not reach them through --check.
+    kind: contradicts
+    correction: >-
+      Bind rules/chat/distillation-enabled-by-default to src/config/env.ts.
+    node: rules/chat/distillation-enabled-by-default
+read:
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the DEFAULT_CONTEXT_MODEL constant at line 3 and the CONTEXT_MODEL schema entry at line 52
+    evidence: >-
+      export const DEFAULT_CONTEXT_MODEL = "claude-haiku-4-5"; CONTEXT_MODEL: z.string().min(1).default(DEFAULT_CONTEXT_MODEL)
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt: it holds only const envSchema = z.object({ ... }) and loadEnv
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the schema holds no extraction wait or retry bound: the only timeouts are PG_STATEMENT_TIMEOUT_MS, TURN_TIMEOUT_MS and TOOL_TIMEOUT_MS
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no operation, answer or refusal of ingestion; the nearest line is INGEST_MODEL: z.string().min(1).default("claude-sonnet-4-6")
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no search or read operation: const envSchema = z.object({ ... })
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      no enumeration of flags is declared; the file declares only LOG_LEVEL's enum of log levels
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      no summary, entities or model shape is declared; the file holds only the model name CONTEXT_MODEL
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no enumeration of produced, single-chunk, too-long or failed is declared in the file
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no shape of names and node type is declared in the file
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no LLMRun shape is declared; the file holds only INGEST_MODEL and CONTEXT_MODEL defaults
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      no exact or approximate enumeration is declared in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no enumeration v1 to v5 is declared; the only prompt versions are the chat strings CHAT_PROMPT_VERSION default "v4" and CHAT_SUMMARY_PROMPT_VERSION default "v2"
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no search item shape is declared in the file
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file applies no alias admission: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no match strength: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the schema holds no default extraction prompt version; the only prompt version defaults are CHAT_PROMPT_VERSION "v4" and CHAT_SUMMARY_PROMPT_VERSION "v2"
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no node-type catalog: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no 100000-unit threshold or reading order: only the CONTEXT_MODEL name
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no status: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no status: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no summary: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no line limit for a summary: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no entity: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no search item: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file scores no link: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file anchors no fragment: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt text: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt text: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt text: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt text: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no chunk: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no extraction prompt text: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file performs no preliminary reading: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no layer weight: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no search item: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file adds no alias: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no name: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no node: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file branches on no prompt version: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no search item: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no similarity threshold: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file matches no alias: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no set of known extraction prompt versions: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no text matching: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no candidate cap: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ranks nothing: const envSchema = z.object({ ... })
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no proposal: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits or refuses no alias: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no chunk: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file searches nothing: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file admits no alias: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file performs no extraction: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file searches nothing: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file searches nothing: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file makes no preliminary reading: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file searches nothing: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no extraction: const envSchema = z.object({ ... })
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file searches nothing: const envSchema = z.object({ ... })
+looked_past: >-
+  The operational defaults PORT 3000, LOG_LEVEL info, PG_POOL_MIN 2, PG_POOL_MAX 10, PG_STATEMENT_TIMEOUT_MS 10000 and the DATABASE_URL and NEON_AUTH_URL format checks are deployment configuration rather than domain facts, so they are not reported. Also not reported: the OWNER_TZ default and the ANTHROPIC_API_KEY, LOCAL_OPERATOR_TOKEN and unknown-time-zone refusals, which nodes outside this set (rules/chat/owner-time-zone-default, constraints/anthropic-key-required, constraints/local-operator-token-minimum-length, constraints/local-operator-token-needs-explicit-development, constraints/owner-time-zone-must-be-known) already hold and which the trace already binds here.
+candidates_opened:
+  - rules/knowledge-base/default-extraction-model
+  - rules/chat/chat-enabled-by-default
+  - rules/chat/default-chat-prompt-version
+  - rules/chat/default-summary-prompt-version
+  - rules/chat/directed-ingestion-disabled-by-default
+  - rules/chat/distillation-enabled-by-default
+  - rules/chat/message-content-length
+  - rules/chat/model-context-window
+  - rules/chat/tool-failure-continues-turn
+  - rules/chat/tool-result-truncated
+  - rules/chat/turn-model-call-limit
+  - rules/chat/turn-model-default
+  - rules/chat/turn-time-limit
+  - rules/chat/utility-model-default
+  - rules/chat/rolling-summary-refresh
+  - rules/chat/rolling-summary-folds
+  - rules/chat/model-context-rolling-summary
+  - constraints/answers-carry-allowed-origin

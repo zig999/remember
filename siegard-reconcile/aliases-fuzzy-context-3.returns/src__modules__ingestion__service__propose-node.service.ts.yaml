@@ -1,0 +1,257 @@
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      proposeNodeService, which is the propose-node operation. It checks the node type with assertKnownType, calls resolveOrCreateNode, and returns the envelope. The shape of ProposeNodeResult is declared in dto/propose-node.dto.ts, not here.
+    evidence: >-
+      return { ok: true, result }; with result = { node_id: resolved.node_id, resolution: resolved.resolution, aliases_not_admitted: resolved.aliases_not_admitted }
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      The result assembly in proposeNodeService, which carries the not-admitted aliases in the answer. The admission decision and the reason ALIAS_NOT_IN_SOURCE are not in this file; they are produced by resolveOrCreateNode in entity-resolution.service.ts.
+    evidence: >-
+      aliases_not_admitted: resolved.aliases_not_admitted,
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only sequences `assertKnownType({ kind: "node_type", ... })` and `resolveOrCreateNode(client, {...})`. It builds no prompt and presents no document content to a model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file makes no model call and holds no timeout or retry bound. Its only calls are `assertKnownType(...)` and `await resolveOrCreateNode(client, {...})`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file has no read, search or provenance operation. It exports only `proposeNodeService` and `ProposeNodeDeps`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares no flag values; the only declaration is `export interface ProposeNodeDeps { readonly catalog: CatalogSnapshot; }`.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document context shape and does not read one. `RunContext` is imported only for `runCtx.llmRunId`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file holds no status values and records no status. It only imports `McpEnvelope, RunContext` from "./propose.types.js".
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no entity shape with names or a node-type reference. The node-type lookup is `deps.catalog.nodeTypeByName.get(args.node_type)`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no run shape. It reads one field of the imported run context: `llmRunId: runCtx.llmRunId,`.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file declares no match enumeration. It has no search code; `resolution: resolved.resolution` is the node resolution, not a search match.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt version enumeration; nothing in it names a version. The only imports are `PoolClient`, `CatalogSnapshot`, the propose-node DTO types, `assertKnownType`, `resolveOrCreateNode` and the propose types.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search item shape. It exports only `proposeNodeService` and `ProposeNodeDeps`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file passes `aliases: args.aliases,` and `llmRunId: runCtx.llmRunId,` to resolveOrCreateNode. It holds no comparison of an alias against the raw information's content.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity. It holds no search or trigram code.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file computes no match strength. It holds no search or trigram code.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file holds no default prompt version; nothing in it names "v5" or reads a prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file filters no document context entities. The catalog is used only for `deps.catalog.nodeTypeByName.get(args.node_type)`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file names no context model. It holds no "claude-haiku-4-5" literal and no model configuration.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no preliminary reading and no chunk or length threshold. It is a single proposal handler.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file does not touch a run's document context or its status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file records no document context status. It writes nothing but the envelope `{ ok: true, result }`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary and no line cutting.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary and no line count limit.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      Resolution is delegated: `const resolved = await resolveOrCreateNode(client, { nodeTypeId: resolvedType.id, name: args.name, ... })`. The file holds no alias comparison; it returns `resolution: resolved.resolution` as produced by the delegate.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file holds no search item and no similarity.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file holds no graph expansion and no 0.5 decay.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file proposes no fragment and anchors nothing to a chunk. It handles a node proposal only.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It only forwards `aliases: args.aliases,`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and branches on no prompt version.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; there are no "hoje", "ontem" or "amanhã" literals in it.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunk and shows nothing to a model.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no date handling.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      The file holds no preliminary reading and no failure handling. It has no try/catch.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file holds no layer weights and no search code.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file persists no alias. It passes `name: args.name, aliases: args.aliases` to resolveOrCreateNode and returns its result. Adding aliases to a matched node is not done in this file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file holds no normalization. `name: args.name` is passed on unchanged.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file persists no alias. Creation of the node and its canonical alias is delegated: `await resolveOrCreateNode(client, {...})`.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file holds no document context and no prompt version branch.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search item and no match.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no approximate match, no threshold and no length of 5.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file holds no search code and no lexical parse.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt version check. Its only guard is `assertKnownType({ kind: "node_type", name: args.node_type, found: nodeType !== undefined })`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file holds no full-text matching.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file holds no retry and no run status handling.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The file holds no search and no candidate cap of 200.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file holds no ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file holds no similarity computation.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file does not decide admission and does not create the node. It only forwards `name: args.name, aliases: args.aliases` to `resolveOrCreateNode`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      Resolution happens inside `resolveOrCreateNode`. The file only returns `resolution: resolved.resolution`.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file holds no chunk reading or document context. It handles one node proposal and has no chunk reference.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion branch and no admission code. It makes no distinction between directed and run-based proposals.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file holds no preliminary reading or run completion.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file holds no retry or document context.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file holds no search or alias length rule.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file holds no chunk count logic or extraction.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+looked_past: >-
+  The node-type refusal (BUSINESS_UNKNOWN_NODE_TYPE) is delegated to assertKnownType in validation/structural.ts, a file outside the set, and I did not read it.

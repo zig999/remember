@@ -1,0 +1,318 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      the test "presents the content to the model in the user turn, bracketed and labelled as data, and not among the instructions" (line 501)
+    evidence: >-
+      labelledAsDataBefore: /data/i.test(text.slice(0, at)), contentInInstructions: system.includes(INJECTION), expected { contentPresent: true, contentInInstructions: false, labelledAsDataBefore: true, closedAfter: true }
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      the test "makes every model call of an extraction, the preliminary reading included, through a client bounded to five minutes and two retries" (line 638), with FIVE_MINUTES_MS and MAX_RETRIES
+    evidence: >-
+      waitsAtMostFiveMinutes: (call.timeout ?? SDK_DEFAULT_TIMEOUT_MS) <= FIVE_MINUTES_MS, retriedAtMostTwice: (call.maxRetries ?? SDK_DEFAULT_MAX_RETRIES) <= MAX_RETRIES
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls runLlmExtraction(buildPool(world), RUN_ID, pino({ level: "silent" }), CATALOG, { env: ENV, anthropicFactory: factory }) in process. It exercises no operation, answer or refusal of the contract.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search or read operation. Its only subject is runLlmExtraction.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No flag value (uncertain, disputed, low-confidence) appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the shape and does not declare it: import { DocumentContextSchema, type DocumentContext, type DocumentEntity } from "../../../modules/ingestion/dto/llm-run.dto.js". It reads fields from it: expect(world.run.document_context?.model).toBe(CONTEXT_MODEL).
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The values appear only as expected strings (toBe("produced"), "single-chunk", "too-long", "failed"). The field is typed as a bare string: document_context_status: string | null.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the type (type DocumentEntity) and builds fixtures from it: const PERSON_ENTITY: DocumentEntity = { node_type: "Person", names: ["Maria Souza", "M. Souza"] }.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the RunRow type (line 150), a test-double row naming llm_run attributes in part
+    evidence: >-
+      type RunRow = { id: string; model: string; prompt_version: string; started_at: Date; finished_at: Date | null; status: string; attempts: number; input_raw_information_id: string; idempotency_key: string; document_context: DocumentContext | null; document_context_status: string | null; }
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      Neither match value (exact, approximate) appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared. The file holds only a list of inputs for a rule: const BEFORE_V5 = ["v1", "v2", "v3", "v4"]. The scenario fixture is promptVersion: "v5".
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item shape or field appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal and no alias.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search and no similarity.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search and no match strength.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run's prompt version is a fixture: const DEFAULT_SCENARIO: Scenario = { promptVersion: "v5", content: DEFAULT_CONTENT, answer: DEFAULT_ANSWER }. No ingestion that names no version is made.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      the test "records a document context without an entity listed under a node type the catalog does not hold" (line 477)
+    evidence: >-
+      const unknownType: DocumentEntity = { node_type: "Spaceship", names: ["Enterprise"] }; expect(world.run.document_context?.entities).toEqual([PERSON_ENTITY, ORGANIZATION_ENTITY]);
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the test "calls the configured context model for the preliminary reading rather than the run's extraction model" (line 419), with CONTEXT_MODEL passed through ENV
+    evidence: >-
+      expect(reading.model).toBe(CONTEXT_MODEL); expect(world.run.document_context?.model).toBe(CONTEXT_MODEL). The default claude-haiku-4-5 is not exercised.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      the tests at lines 395 to 417 and 521 to 535 (one reading, before the first chunk, over the whole content, at the 100000 UTF-16 code unit limit)
+    evidence: >-
+      expect(readings).toHaveLength(1); expect(firstCall).toBe("reading"); expect(reading.text).toContain(DEFAULT_CONTENT); const CONTENT_LIMIT_UNITS = 100_000; expect(callKinds(world)).toEqual(["chunk", "chunk", "chunk"]) for astral content past the limit in units
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      newWorld always starts the run with document_context: null and document_context_status: null. No test runs an extraction over a run that already holds a context.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      the test "records on a v5 run the status each chunk count, content length and reading outcome calls for, counting the length in UTF-16 code units" (line 750), and the single-chunk and failed tests
+    evidence: >-
+      expect(statuses).toEqual({ oneChunkWithinTheLimit: "single-chunk", oneChunkPastTheLimit: "single-chunk", threeChunksAtTheLimit: "produced", threeChunksOneUnitPastTheLimit: "too-long", threeChunksPastTheLimitInUnitsWithinItInCodePoints: "too-long", threeChunksWhoseReadingFails: "failed" })
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      the tests at lines 453 to 475
+    evidence: >-
+      expect(world.run.document_context?.summary).toBe("l1\nl2\nl3\nl4\nl5") for a 7-line summary
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      the tests "counts an empty line as a line..." and "lets a carriage return end no line..." (lines 461 to 475)
+    evidence: >-
+      expect(world.run.document_context?.summary).toBe("a\n\nb\nc\nd"); expect(world.run.document_context?.summary).toBe("a\r\nb\r\nc\r\nd\r\ne\r")
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal and no resolution.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no link expansion and no hop score.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model double answers CHUNK_REPLY = "done" and proposes no fragment, so no anchoring is observed.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion on the system prompt's wording about other names appears. The system text is read only for INJECTION: system.includes(INJECTION).
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The v1 to v4 tests check only readings, context and status: expected { promptVersion, readings: 0, context: null, status: null }. They do not check the prompt's instructions.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion on "hoje", "ontem" or "amanhã" appears.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not compare the system prompts of v4 and v5.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the tests at lines 797 to 832, together with metadataMissingFromAChunk and tailShownWithTheSecondChunk
+    evidence: >-
+      expect(firstShownInCall).toEqual([0, 1, 2]); const needles = [SOURCE_TYPE, DOCUMENT_DATE, TITLE, RECEIVED_AT_PREFIX]; const TAIL_CODE_POINTS = 200; expect(shown).toEqual({ last200: true, the201st: false })
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion on relative-date instructions appears. RECEIVED_AT_PREFIX is checked only as shown with each chunk.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      the tests at lines 575 to 620
+    evidence: >-
+      expect(read).toEqual([true, true, true]); expect(world.run.status).toBe("completed")
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no layer weight.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no link or fragment search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal and no alias.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no name comparison. The names in DocumentEntity fixtures are compared as given by toEqual.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node creation.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      the tests at lines 537 to 558 and 834 to 853
+    evidence: >-
+      expect(observed).toEqual(expected) where expected.push({ promptVersion, shape, readings: 0, context: null, status: null }) for every v1 to v4 version and for runShapes() oneChunk, threeChunksWithinTheLimit and threeChunksPastTheLimit
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search, alias or word similarity.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs only the versions v1 to v5 (BEFORE_V5 and the v5 fixture). No unknown version is run and no refusal is asserted.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prose search.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never retries a run. No retry operation is called.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search and no candidate cap.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search and no ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias or trigram similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias proposal. Its names fixtures are only document entities.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal or resolution.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node proposal and no ALIAS_NOT_IN_SOURCE reason.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The model double proposes nothing: finalMessage: async () => sdk.messageOf(req.model, CHUNK_REPLY). No node resolves across chunks.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      the test "reads the 3 chunks, completes the run and records status failed with no document context when the preliminary reading of a 3-chunk v5 raw information answers a provider error" (line 601)
+    evidence: >-
+      expect(outcome).toEqual({ chunksRead: 3, runStatus: "completed", contextStatus: "failed", context: null })
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      the test "proposes nothing and writes nothing but the run's own context columns before its first chunk is read" (line 492)
+    evidence: >-
+      const beyondTheRun = written.filter((sql) => !sql.startsWith("UPDATE llm_run")); expect(beyondTheRun).toEqual([]);
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run starts each scenario with document_context: null and is never retried. No second extraction over a run that holds a context is made.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search and no alias.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      the test "makes no preliminary reading and records the document context status single-chunk for a v5 raw information of 1 chunk" (line 719)
+    evidence: >-
+      expect(outcome).toEqual({ readings: 0, status: "single-chunk" })
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search.
+looked_past: >-
+  The file carries no comments, and every domain value its tests assert (100000 UTF-16 code units, 5 lines, 200 code points, five minutes, two retries, the status names) is held by a node in the set, so no finding stands. The tests do not exercise the reuse and retry rules of the set, and that is coverage, which belongs to another judgment.

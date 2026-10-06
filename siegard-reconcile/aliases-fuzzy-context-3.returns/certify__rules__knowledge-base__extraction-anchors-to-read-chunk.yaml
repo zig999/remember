@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: anchors the fragment proposed while reading a chunk to that chunk alone, whether the model names no chunk, a later chunk or two earlier chunks
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context.spec.ts
+        name: resolves a proposal named João Silva made while reading chunk 3 to the knowledge node created while reading chunk 1 and anchors the chunk 3 fragment to chunk 3
+    why: >-
+      The proof covers three things the model can name: no chunk, a later chunk of the same raw
+      information, and two earlier chunks of it. In each case it asserts that the fragment is
+      anchored to the chunk being read and to that chunk only. If the model's choice took over
+      in any of those three cases, the anchoring test would fail. The fact holds "whatever raw
+      chunks the model names", and two cases it covers go untested. First, nothing in the set
+      names the chunk being read together with another chunk. So an extraction that keeps the
+      model's chunks whenever they include the read chunk would pass. Second, nothing names a
+      chunk from a different raw information. Every id the model names belongs to the run's
+      own raw information, so an extraction that keeps chunks from outside that raw information
+      would also pass. The João Silva test checks the anchoring only in passing, on the way to
+      the matching of the entity. Its fragment names no chunk, so it adds nothing beyond the
+      first case of the anchoring test.
+    remainder: testable
+    remainder_why: >-
+      Two fragments, each proposed while reading chunk 2. One names chunk 2 and chunk 3. The
+      other names a chunk of a different raw information. Expected result: each fragment is
+      anchored to chunk 2 alone, [[chunk 2], [chunk 2]].

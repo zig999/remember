@@ -1,0 +1,332 @@
+findings:
+  - file: src/app.ts
+    where: >-
+      line 55, the constant BODY_LIMIT_BYTES, passed as bodyLimit to Fastify() at line 59
+    evidence: >-
+      const BODY_LIMIT_BYTES = 11 * 1024 * 1024;
+      ... bodyLimit: BODY_LIMIT_BYTES,
+    cost: >-
+      The 11 MiB ceiling is applied app-wide here, and the same figure is declared again as POST_INGEST_BODY_LIMIT in src/modules/ingestion/routes/ingestion.routes.ts. The node constraints/request-body-ceiling is bound only to the routes file. If the node's figure changes, --check does not reach this file, and the two copies can drift without anyone knowing which one was decided.
+    kind: contradicts
+    correction: >-
+      The node is bound to the routes file only. A bind that also claims this file would make the declaration here a held home, since code never reads the specification. Alternatively the fact is held once, in one bound file.
+    node: constraints/request-body-ceiling
+  - file: src/app.ts
+    where: >-
+      lines 64-71, the CORS default origins and allowed methods
+    evidence: >-
+      const corsOrigins = env.CORS_ORIGINS ?? [
+          "http://localhost:5173",
+          "http://127.0.0.1:5173",
+        ];
+      ... methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    cost: >-
+      Which browser origins may call the BFF when nothing is configured, and which HTTP methods cross origins, is a rule the code decides and no node holds (a search of the specification for CORS and for 5173 found nothing). The next reader looks for it in the specification and finds nothing. The default origin port is 5173, which the project's CLAUDE.md names as another project's port, so the decision is visible only in this file.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the cross-origin policy a node. Candidate home: contracts/knowledge-base/access, which already holds the answers every request receives.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      lines 82-85, the /_self route inside the authenticated scope
+    evidence: >-
+      scoped.get("/_self", async (request) => ({
+            ok: true,
+            result: { user_id: request.user?.id ?? null },
+          }));
+    cost: >-
+      An authenticated endpoint that answers the owner's identity as user_id, with null when absent, is stated by the code and by no node (a search of the specification for _self found nothing). The access contract names authenticate-owner, route-request and read-health only. A client reading the specification will not know this operation exists or what it answers.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether /_self is an operation and, if so, record it in a contract. Candidate home: contracts/knowledge-base/access.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      lines 108-115, the toolNames list handed to registerIngestMcpTransport
+    evidence: >-
+      "ingest_document",
+              "ingest_directed",
+              "health",
+              "get_ingestion_status",
+              "list_recent_ingestions",
+    cost: >-
+      The MCP tool get_ingestion_status is exposed on the ingest endpoint, and no node names it (a search of the specification for ingestion_status found nothing). The ingestion contract names read-llm-run, which it says both REST and MCP carry, but it does not say this tool is that operation. Anyone looking for the MCP surface in the specification cannot tell whether the tool is specified.
+    kind: unstated
+    correction: >-
+      An analysis would have to record the tool in contracts/knowledge-base/ingestion, either as read-llm-run's MCP spelling or as an operation of its own.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the toolNames array passed to registerIngestMcpTransport, lines 108-115
+    evidence: >-
+      toolNames: [
+                ...INGEST_TOOL_NAMES,
+                "ingest_document",
+                "ingest_directed",
+                "health",
+                "get_ingestion_status",
+                "list_recent_ingestions",
+              ],
+      The list holds no tool that starts an ingestion and returns before it completes. The names INGEST_TOOL_NAMES carries are imported from another file and were not read.
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only composes registrations, for example `registerIngestToolset({ mcp, pool, logger, catalog: ingestionCatalog, env: {...` ; it builds and presents no prompt to a model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file passes `ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY` and `INGEST_MODEL: env.INGEST_MODEL` to the toolset but sets no timeout and no retry count for a model call.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the wiring only, lines 87-117 (registerIngestionRoutes under prefix "/ingest" and registerIngestMcpTransport with the tool names ingest_document, ingest_directed, list_recent_ingestions). No answer, refusal or message of the contract is stated in this file.
+    evidence: >-
+      await registerIngestionRoutes(ingest, {
+      ... { prefix: "/ingest" }
+      ... "ingest_document",
+                "ingest_directed",
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file mounts `registerKnowledgeGraphRoutes(scoped, { pool, logger, catalog })` and `registerQueryRetrievalRoutes(scoped, { pool, logger, catalog })`. It states none of the contract's answers or refusals.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares only the AppDependencies interface and buildApp; no flag value appears.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares only `export interface AppDependencies { readonly env: Env; ...` and no shape of a document context.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      No status value of any document context appears in the file; it only registers routes and toolsets.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No document-entity shape or name appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLMRun shape; it only forwards `pool`, `logger` and `catalog` to registrations.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      No match value (exact or approximate) appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version value appears in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No search-item shape appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file states no alias rule; it only wires registrations such as `registerIngestToolset({`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity computation appears; the file composes registrations only.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      No match strength appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file passes `INGEST_MODEL: env.INGEST_MODEL` but names no default prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file only passes `catalog: ingestionCatalog` along; it filters no entity list.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      The file forwards `CONTEXT_MODEL: env.CONTEXT_MODEL` and states no fallback model (no claude-haiku-4-5).
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No threshold (100000) and no preliminary reading appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file sets no document context status.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file sets no document context status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No line limit for a summary appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      No search item is built in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No score or decay appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No chunk reading appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No layer weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      No search item is built in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No normalization appears in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No prompt-version branch appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      No search item is built in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No similarity threshold (0.6) and no alias length (5) appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No node-layer matching appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version list or check appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      No full-text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No retry logic appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      No candidate cap (200) appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity computation appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file holds no alias admission or node creation; it composes registrations only.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file holds no resolution; it composes registrations only.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file holds no ALIAS_NOT_IN_SOURCE reason and no proposal handling.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction or anchoring.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file holds no directed ingestion logic beyond the tool name `"ingest_directed"`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file holds no retry or extraction.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+looked_past: >-
+  The file's trustProxy setting (`trustProxy: env.NODE_ENV === "production"`), its prefix wiring and its CHAT_INGEST_ENABLED passthrough are deployment and composition choices; I did not report them as domain facts, and I did not report the stack's own port discrepancy between 5173 and 5273 as a separate finding.
+candidates_opened:
+  - constraints/request-body-ceiling
+  - domain/knowledge-base/ingest-tool

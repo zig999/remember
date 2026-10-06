@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-fragment-link-no-match.spec.ts
+    why: >-
+      The link half is exercised. Expansion reaches two link items, one from an exactly matched
+      node and one from a node matched approximately with a similarity. The test would fail if
+      either link item carried a match or a similarity.
+
+      The fragment half is exercised only for a fragment that the fragment layer matched and a
+      supporting chunk also matched. Nothing in the proof surfaces a fragment through the chunk
+      layer alone, so the test never checks that such a fragment carries no match and no
+      similarity. Every link item in the proof is reached by expansion. If a search can answer a
+      link item any other way, the proof does not exercise that path.
+
+      The test also claims more than the rule states. It uses toEqual over the full sorted list
+      of non-node items, so it requires that these three are the only non-node items and that
+      the fragment and its chunk come back as one item. That holds today, but it fails if the
+      search ever legitimately returns another non-node item for this input.
+
+      The test maps null to undefined before comparing, so a match or similarity of null counts
+      as absent.
+    remainder: testable
+    remainder_why: >-
+      One input: a search whose chunk layer matches a raw chunk that supports a fragment the
+      fragment layer itself does not match. One expected result: the fragment item that search
+      answers carries no match and no similarity.

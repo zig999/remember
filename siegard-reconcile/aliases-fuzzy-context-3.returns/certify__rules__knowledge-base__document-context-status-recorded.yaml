@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-recorded
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/preliminary-reading-status-by-prompt-version.spec.ts
+    why: >-
+      The test checks the status-from-shape table directly on produceDocumentContext. It runs
+      under v5, v6 and v10 and observes the status the function writes. Six inputs and their
+      results are covered:
+      - one chunk at 100 units and at 100001 units gives single-chunk;
+      - three chunks at exactly 100000 units gives produced;
+      - three chunks at 100001 ASCII units gives too-long;
+      - three chunks at 100001 UTF-16 units but only 50001 code points gives too-long;
+      - three chunks whose reading throws gives failed.
+
+      The test hands chunkCount and content to the function as arguments. That leaves the fact's
+      subject, "an extraction", unexercised. Nothing in the proof runs an extraction over a raw
+      information. So the test still passes if an extraction under v5 or later stops calling the
+      preliminary reading. It also still passes if an extraction counts something other than the
+      raw information's chunks, or measures something other than the raw information's content.
+
+      Two smaller gaps:
+      - The failed half is only exercised as a reading that throws. A reading that returns an
+        answer that is not a usable document context is not tried, so whether that also counts as
+        a failed reading goes unasserted.
+      - The recorded status is captured by matching the SQL text "SET document_context_status"
+        and reading parameter position 1. That ties the observation to how the write is phrased,
+        not only to the status recorded.
+    remainder: testable
+    remainder_why: >-
+      Run an extraction under a v5-or-later prompt version over a stored raw information and read
+      back the status recorded on its run, once for each shape:
+      - a raw information of one chunk longer than 100000 UTF-16 units gives single-chunk;
+      - several chunks over 100000 units gives too-long;
+      - several chunks within the limit with a reading that fails gives failed;
+      - several chunks within the limit with a reading that yields a context gives produced.

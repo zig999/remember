@@ -1,0 +1,33 @@
+certified:
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-held-versions.spec.ts
+        name: holds each instruction line of the v4 system prompt as a whole line of the v5 system prompt, over a catalog with a link type, a link type rule and an attribute key with valid values
+    why: >-
+      The system prompt is built from a catalog, and this test builds the v4 and v5 prompts from
+      one catalog only (RICH_CATALOG). That catalog has two node types, both with descriptions.
+      It has one link type that is temporal, allows only one current value, requires valid_from
+      and requires valid_to on change. It has one text-typed temporal attribute key, single-current,
+      with two valid values. If v4 emits an instruction only for some other catalog shape and v5
+      drops it, the test still passes. Examples of such shapes are a link type that is not
+      temporal, one that allows several current values, or one that does not require valid_from
+      or valid_to. Others are an attribute key with a non-text value type or with no valid values,
+      a node type without a description, and an empty catalog. Nothing in the test builds any of
+      these, so for them the fact that v5 keeps every v4 instruction is not checked.
+      Separately, the test asserts more than the node states. It requires every non-empty line
+      of v4 to appear verbatim as a whole line of v5, and that includes headings and rendered
+      catalog lines. A v5 that keeps an instruction but rewords or rewraps it fails the test even
+      though the fact still holds.
+      The other three tests in the file do not bear on this fact. One checks the other-names
+      wording from v5 on. One checks the relative-date words from v4 on. The last refuses a
+      version the system does not hold and checks that each held version runs under its own
+      prompt.
+    remainder: testable
+    remainder_why: >-
+      Run the same line-containment comparison of v4 against v5 over more catalogs, one per
+      catalog shape the current test leaves out: a non-temporal link type, a link type allowing
+      several current values, a link type requiring neither valid_from nor valid_to on change, an
+      attribute key of each other value type, an attribute key with no valid values, a node type
+      without a description, and an empty catalog. For each catalog the expected result is that
+      no v4 instruction line is missing from v5.

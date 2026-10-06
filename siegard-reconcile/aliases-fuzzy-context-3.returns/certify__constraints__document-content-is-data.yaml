@@ -1,0 +1,28 @@
+certified:
+  - node: constraints/document-content-is-data
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunk-prompt-document-context-remainders.spec.ts
+        name: presents each chunk's text, each listed entity name and the preliminary reading's content between a data label and a closing delimiter in the user turn and never in the system prompt, for a v5 run, a v4 run, a one-chunk run and a run whose preliminary reading failed
+    why: >-
+      Most of the fact is exercised. In every chunk call, across a v5 run, a v4 run, a one-chunk
+      run and a run whose preliminary reading failed, the test checks the chunk's own text. In the
+      preliminary reading call it checks the raw document content. In every chunk call of the v5
+      run it checks each entity name from the document context. For each of these it asserts the
+      text appears in the user turn, is absent from the system prompt, and sits between a line
+      labelled as data and a closing END line. Two parts go unexercised. First, the summary is
+      part of the document context read from the document. It is shown to every chunk call, but
+      contextProblems checks only the entity names, so nothing asserts the summary is marked apart
+      as data. The second test, "reads the chunks one at a time in index order ...", only checks
+      that the summary is present in each chunk prompt. Second, the last 200 code points of the
+      preceding chunk are document content shown with each later chunk. The test's tails hold only
+      filler characters, and the marking check looks only for the injection string, which never
+      falls inside a tail. So nothing asserts that the predecessor's tail is presented as data
+      rather than as instruction. Either one could go out unmarked, or into the system prompt,
+      and the named test would still pass.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Take a v5 run whose preliminary reading returns a
+      summary carrying an injection string, and whose first chunk ends with an injection string
+      inside its last 200 code points. Every chunk call should show both strings in the user turn
+      only, each between a data label and a closing delimiter, and never in the system prompt.

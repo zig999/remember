@@ -1,0 +1,290 @@
+findings:
+  - file: src/__tests__/unit/query-retrieval/search-service-approximate-node.spec.ts
+    where: >-
+      the TRIGRAM_PATTERN constant (line 32), the PROSE_LAYER_STORES table (lines 274-277) and the describe block "searchKnowledgeService: prose layers stay lexical" (lines 279-288)
+    evidence: >-
+      const TRIGRAM_PATTERN = /similarity|<%|%>|\s%\s/;
+      ...
+      describe("searchKnowledgeService: prose layers stay lexical", () => {
+        it.each(PROSE_LAYER_STORES)(
+          "answers no %s-layer item for text that only a trigram match could reach",
+          ... expect(body.items.filter((item) => item.layer === layer)).toEqual([]);
+    cost: >-
+      The test fixes a business decision: the fragment and chunk layers never match by trigram similarity, and only the node layer does. The nodes in the pack do not state it. prose-matching says only "Portuguese stemming and without regard to accents". node-layer-approximate-match and node-match confine trigram similarity to node aliases, but none of them says the prose layers exclude it. The only place that says "The fragment and chunk layers stay full-text only" is the "why" line of the decision log beside rules/knowledge-base/link-and-fragment-items-carry-no-match. That is a log, not a node. A reader who looks in the specification for what the prose layers match on finds no exclusion. If someone later adds fuzzy matching to those layers, nothing in the specification fails; only this test, which a person may edit, does.
+    kind: unstated
+    correction: >-
+      The analysis would need to give the fact a node: the fragment layer and the chunk layer match query text only through the full-text parse, never through trigram similarity. prose-matching could carry it, or a sibling rule could. Until then the test is the only home of the exclusion.
+    node: rules/knowledge-base/prose-matching
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file exercises searchKnowledgeService only; nothing in it presents document content to a language model. Looked at: import { searchKnowledgeService } from "../../../modules/query-retrieval/service/search.service.js";
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No extraction model call appears in the file. Looked at: function searchFor(store: Store, query: string): Promise<SearchResponse> { return searchKnowledgeService(
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file touches only the search read; it has no intake, proposal or ingestion operation. Looked at: describe("searchKnowledgeService: the node layer's approximate route", () => {
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the search operation's accepted answer is asserted in part: nodeMatchViews (lines 296-305) and the assertions at lines 339-350 on the match and similarity of node items. No refusal of the contract is asserted.
+    evidence: >-
+      expect(nodeMatchViews(body)).toEqual([ { id: "node-approximate", match: "approximate", similarity: APPROXIMATE_SIMILARITY, }, { id: "node-exact", match: "exact", similarity: undefined }, ]);
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration of flags. It only compares the flags array with an empty list: expect(itemsOf(body, "node-approximate").map((item) => item.flags)).toEqual([ [], ]);
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      No document context is declared or used in the file. Looked at: const emptyCatalog: CatalogSnapshot = { nodeTypeByName: new Map(), ...
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      No document context status appears in the file. Looked at: interface Store { readonly exact: readonly NodeHit[]; readonly approximate: readonly NodeHit[];
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No document entity appears in the file. Looked at: interface NodeHit { readonly node_id: string; readonly canonical_name: string;
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run appears in the file. Looked at: function buildClient(store: Store): PoolClient { const standIn = { query: async (sql: string, params: unknown[] = [])
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file does not declare the enumeration. It types the match as an undeclared string and compares it with values: interface NodeMatchView { readonly id: string; readonly match: string | undefined; readonly similarity: number | undefined; }
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file. Looked at: const silentLogger = pino({ level: "silent" });
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file only reads fields of a type declared in another file: import type { SearchItem, SearchResponse } from "../../../modules/query-retrieval/dto/response.dto.js";
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      No alias admission is exercised. Looked at: matched_alias_ids: [],
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      the describe "the match and similarity of a hop-0 knowledge node item" (lines 338-351), assertion on the similarity of the approximate item.
+    evidence: >-
+      it("answers an exactly matched node with the match exact and no similarity, and an approximately matched node with the match approximate and the highest word similarity of its aliases, not its weighted score", ... { id: "node-approximate", match: "approximate", similarity: APPROXIMATE_SIMILARITY, },
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The approximate hit's score is a fixture and no assertion checks it against the similarity. Looked at: function approximateHit(id: string, similarity: number): NodeHit { return { ...nodeHit(id, APPROXIMATE_SCORE), similarity }; }
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version is named in the file. Looked at: const RESULT_LIMIT = 500;
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No document context is involved. Looked at: const emptyCatalog: CatalogSnapshot = {
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      No document context model is named in the file. Looked at: const silentLogger = pino({ level: "silent" });
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No extraction is exercised. Looked at: expand: false,
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      No run or document context status appears. Looked at: interface Store {
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No document context status appears. Looked at: const RECORDED_AT = new Date("2026-06-11T18:30:00Z");
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary is handled. Looked at: fragment_text: "texto",
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No summary is handled. Looked at: excerpt: "texto",
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No node proposal or entity resolution is exercised; the file only searches. Looked at: function searchFor(store: Store, query: string): Promise<SearchResponse> {
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      the describe "the match and similarity of a node matched both exactly and approximately", second it (lines 362-368), and MATCHED_BOTH_WAYS_STORE (lines 320-323).
+    evidence: >-
+      it("answers a knowledge node matched both exactly and approximately with no similarity, though one of its aliases is similar enough for an approximate match", ... itemsOf(body, "node-both").map((item) => item.similarity ?? undefined) ).toEqual([undefined]);
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The search runs without expansion, so no link is reached. Looked at: expand: false, expandDepth: 1,
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction is exercised. Looked at: raw_chunk_id: "chunk-1",
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file. Looked at: const silentLogger = pino({ level: "silent" });
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file. Looked at: const emptyCatalog: CatalogSnapshot = {
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file. Looked at: const RECORDED_AT = new Date("2026-06-11T18:30:00Z");
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file. Looked at: import pino from "pino";
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No extraction is exercised. Looked at: chunk_index: 0,
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file. Looked at: received_at: RECORDED_AT,
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears in the file. Looked at: function respond(store: Store, sql: string, params: readonly unknown[]): Rows {
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The scores are fixtures supplied by the stand-in store, and no weight is applied or asserted. Looked at: const EXACT_SCORE = 0.63; const APPROXIMATE_SCORE = 0.72;
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file never asserts the match or similarity of a link or fragment item. Its node-item assertions filter them out: .filter((item: SearchItem) => item.kind === "node")
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No node proposal is exercised. Looked at: matched_alias_ids: [],
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file does not compare normalized names. Normalization lives behind the stand-in store, and queries are passed as written: const body = await searchFor(store, "Petrobrass");
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No node is created. Looked at: canonical_name: `Name ${id}`,
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No extraction or prompt version appears. Looked at: const NODE_LAYER_CAP = 200;
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      the first describe (lines 220-237) asserts a node-only-approximately-reached item at hop 0, and lines 338-351 assert the match and similarity it carries.
+    evidence: >-
+      ).toEqual([{ kind: "node", id: "node-petrobras", hop: 0 }]);
+      ...
+      { id: "node-approximate", match: "approximate", similarity: APPROXIMATE_SIMILARITY, },
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      the describe "a node matched by both node-layer routes" (lines 239-253) and the exact-wins assertion at lines 353-360. The first describe (lines 220-237) asserts that a node the approximate route alone reaches is returned. The thresholds themselves (5 characters, 0.6) are not asserted.
+    evidence: >-
+      expect(itemsOf(body, "node-both").map((item) => item.match)).toEqual([ "exact", ]);
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      the describe "a search for the correct name of two knowledge nodes" (lines 325-336), asserting the exact match of nodes the alias route reached.
+    evidence: >-
+      ).toEqual([ { id: "node-petrobras", match: "exact" }, { id: "node-petrobras-distribuidora", match: "exact" }, ]);
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file. Looked at: const RESULT_LIMIT = 500;
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file asserts no stemming or accent-insensitivity of prose. It asserts only that the fragment and chunk layers give nothing for trigram-only text, which is the unstated fact filed above: expect(body.items.filter((item) => item.layer === layer)).toEqual([]);
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No run retry appears in the file. Looked at: release: (): void => undefined,
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      the describe "the node layer's candidate cap across both routes" (lines 255-267) and CROWDED_STORE (lines 215-218). It covers the node layer only.
+    evidence: >-
+      expect(body.items).toHaveLength(NODE_LAYER_CAP);
+      ...
+      expect(body.total).toBe(NODE_LAYER_CAP);
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file orders its items itself before comparing them and asserts no ranking. Looked at: .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The similarity is a fixture the stand-in store supplies and is never computed. Looked at: const APPROXIMATE_SIMILARITY = 0.8;
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      No node proposal or alias admission appears. Looked at: matched_alias_ids: [],
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      No node proposal or resolution appears. Looked at: canonical_name: `Name ${id}`,
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      No node proposal or ALIAS_NOT_IN_SOURCE answer appears. Looked at: function nodeHit(id: string, score: number): NodeHit {
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No extraction or document context appears. Looked at: chunk_index: 0,
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      the describe "a search for the correct name of two knowledge nodes" (lines 325-336), with PETROBRAS_PAIR_STORE (lines 307-313).
+    evidence: >-
+      const body = await searchFor(PETROBRAS_PAIR_STORE, "petrobras");
+      ...
+      { id: "node-petrobras", match: "exact" },
+      { id: "node-petrobras-distribuidora", match: "exact" },
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion appears in the file. Looked at: matched_alias_ids: [],
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading or extraction appears. Looked at: function respond(store: Store, sql: string, params: readonly unknown[]): Rows {
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      No query longer than the misspelled name is searched; every approximate query is the bare name. Looked at: const body = await searchFor(store, "Petrobrass");
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      the first describe (lines 220-237) searches "Petrobrass" and asserts the node at hop 0. The match approximate and the similarity are asserted at lines 338-351 and 371-384.
+    evidence: >-
+      const body = await searchFor(store, "Petrobrass");
+      ...
+      ).toEqual([{ kind: "node", id: "node-petrobras", hop: 0 }]);
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No preliminary reading appears. Looked at: fragment_id: `fragment-for-${anchorId}`,
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No run or retry appears. Looked at: release: (): void => undefined,
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The 5-character floor is not exercised. The stand-in store hands the service its approximate candidates directly: const candidates = store.approximate.filter( (hit) => !excluded.has(hit.node_id) );
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      No extraction or chunk count appears. Looked at: chunk_index: 0,
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      No query holding an unmatched term such as "contrato Petrobras" is searched. Looked at: const body = await searchFor(BOTH_ROUTES_STORE, "Petrobras");
+looked_past: >-
+  The test reads the SQL text it receives (word_similarity, plainto_tsquery, FROM node_alias na) to decide which stand-in rows to return; that couples it to the repository's queries and states no domain fact, so it is a code-review matter and not this pass's.

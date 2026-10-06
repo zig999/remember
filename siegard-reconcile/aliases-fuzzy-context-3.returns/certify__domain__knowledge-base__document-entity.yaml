@@ -1,0 +1,25 @@
+certified:
+  - node: domain/knowledge-base/document-entity
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/document-entity-in-extraction.spec.ts
+    why: >-
+      The test exercises most of the entity. Every chunk prompt must carry the entity's node type
+      together with all of its names on one line, for an entity with three names. An entity whose
+      names list is empty, whose names are absent, or whose node type is absent must leave no
+      context recorded. An entity naming a node type that does not exist must be kept out of the
+      recorded context and out of every chunk. Two stated parts of the entity go unexercised.
+      First, the names are declared as strings, but nothing in the test submits a name that is
+      not a string, so the test would still pass if a number or object were accepted as a name.
+      Second, the node type is declared as exactly one reference, but nothing submits an entity
+      carrying more than one node type, so the test would still pass if that were accepted.
+      The test also asserts more than the node states, in two places. For an unknown node type,
+      it requires that only that entity is dropped and its sibling PERSON is still recorded. For a
+      malformed entity, it requires that no context at all is recorded. The node does not state
+      either outcome, or why the two cases differ; the test fixes both as if the node did.
+    remainder: testable
+    remainder_why: >-
+      Two inputs against one expected result. The inputs are a reading whose entity has a
+      non-string name, such as a number, and a reading whose entity carries two node types. The
+      expected result for each is that the entity is refused, with no context recorded holding it
+      and no chunk prompt showing it.

@@ -1,0 +1,364 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds a user prompt only through `userOf`, which maps
+      `selectPromptModule(version).user(USER_ARGS)` blocks to `block.text` and
+      joins them. No assertion checks that document content is marked apart
+      from instructions.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No timeout or retry count appears in the file. The file only selects
+      prompt modules and matches their text.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no operation, answer or refusal of the contract. The only
+      refusal it touches is `expect(select).toThrow(UnknownPromptVersionError)`,
+      which names no error code or HTTP status.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search or read operation. Its imports are
+      `catalog.js` and `prompts/index.js` only.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no flag. Its constants are `HELD_VERSIONS`,
+      `NODE_TYPES`, `USER_ARGS` and the regex tables.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no summary, entities or model shape. `USER_ARGS` holds
+      only `metadata`, `chunkText` and `prevTail`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The values produced, single-chunk, too-long and failed are not declared
+      or asserted anywhere in the file.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no document entity. `NODE_TYPES` holds one catalog row,
+      `name: "Event"`, which is not a document entity.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no run attributes. It touches no `prompt_version`
+      attribute, only `selectPromptModule(version).version`.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No exact or approximate match value appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      The `HELD_VERSIONS` constant, asserted by the first test, which compares
+      the resolved versions and the listed known versions with it.
+    evidence: >-
+      const HELD_VERSIONS: readonly string[] = ["v1", "v2", "v3", "v4", "v5"];
+      expect({ resolved, known }).toEqual({ resolved: expected, known: expected });
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search item shape. It contains no kind, layer, score
+      or hop.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts only that the prompt text asks for other names. It
+      contains no alias admission check against source content.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no similarity computation or assertion.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no match strength computation or assertion.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file always names the version explicitly, as in `systemOf("v5")`. It
+      never exercises an ingestion that names none.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading handling. `NODE_TYPES` is used
+      only to build a snapshot for the system prompt.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no context model. A search for claude-haiku in the file
+      finds nothing.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file tests prompt text only. It has no extraction flow, no chunk
+      count and no 100000 code unit limit.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no run status. It contains no reuse of a document
+      context.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status is recorded or asserted in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no summary handling and no line cut.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no line count rule for a summary. `squash` collapses
+      whitespace only to compare prompt text.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no entity resolution. It matches prompt text only.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item or similarity.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no hop scoring and no 0.5 decay.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no fragment proposal or anchoring. `chunkText` in
+      `USER_ARGS` is only input to the user prompt builder.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      The `OTHER_NAMES_CHECKS` table, evaluated against the v5 system prompt in
+      the test that asks under v5 for every other name.
+    evidence: >-
+      "asks for every other name with each node": /(?:propose_node|\bnode\b)[^.]{0,120}?\b(?:every|all)\s+(?:the\s+)?other\s+names?\b|.../i,
+      "names an acronym as another name": /\bacronyms?\b/i,
+      "says a pronoun alone is not another name": /pronouns?\s+(?:alone|only|by itself|on its own)[^.]{0,120}?\b(?:not|never)\b|.../i,
+      const prompt = systemOf("v5");
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      The `OTHER_NAMES_MARKERS` table, applied to the v1 to v4 system prompts
+      and to the user prompt in the last test, which expects no offenders.
+    evidence: >-
+      const VERSIONS_BEFORE_V5: readonly string[] = ["v1", "v2", "v3", "v4"];
+      parts[`${version} system`] = systemOf(version);
+      parts[`${version} user`] = userOf(version);
+      expect(offenders).toEqual({});
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      The `RELATIVE_DATE_WORDS` pattern, tested against the v4 and v5 system
+      prompts.
+    evidence: >-
+      const RELATIVE_DATE_WORDS = /relative[- ]dates?[^]{0,120}?hoje[^]{0,30}?ontem[^]{0,30}?amanhã/i;
+      const VERSIONS_FROM_V4: readonly string[] = ["v4", "v5"];
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      The test that keeps every instruction line of the v4 system prompt in
+      the v5 system prompt.
+    evidence: >-
+      const missing = v4Lines.filter((line) => !v5Prompt.includes(line));
+      expect(missing).toEqual([]);
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds a user prompt for one chunk with `USER_ARGS`. It asserts
+      nothing about chunk order, the 200 code point tail or the document
+      context.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      The `RESOLVES_AGAINST_DOCUMENT_DATE` and `FALLS_BACK_TO_RECEPTION`
+      patterns, tested against the v4 and v5 system prompts.
+    evidence: >-
+      const RESOLVES_AGAINST_DOCUMENT_DATE = /relative dates?[^]{0,250}?(?:against|from|relative to|using)\s+(?:the\s+)?`?document_date`?/i;
+      const FALLS_BACK_TO_RECEPTION = /`document_date`\s+is\s+(?:...)[^]{0,120}?`received_at`|.../i;
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading and no failure handling.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no layer weights.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no link or fragment search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no resolution of a node proposal.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      `squash` is `text.replace(/\s+/g, " ")`. It compares prompt text only and
+      is not entity name normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no node creation.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts no document context for any version. Its only v1 to v4
+      assertion concerns other names, not a preliminary reading.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no 5 character or 0.6 similarity threshold. It performs no
+      node layer matching.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no node layer matching.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      The refusal test for a version the system does not hold, with the known
+      versions asserted by the first test.
+    evidence: >-
+      const UNHELD_VERSION = "v99";
+      const select = (): PromptModule => selectPromptModule(UNHELD_VERSION);
+      expect(select).toThrow(UnknownPromptVersionError);
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no full-text matching. Its patterns match prompt text
+      with JavaScript regular expressions.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no run retry.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no candidate cap.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no ranking.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no trigram similarity.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions CNPq or alias admission.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions CNPq or later proposal resolution.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions the reason ALIAS_NOT_IN_SOURCE.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no multi-chunk run and no document context.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no directed ingestion.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no extraction run and no provider failure.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no preliminary reading.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no run retry.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no extraction run and no chunk count.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no search.
+looked_past: >-
+  The first test reads the known versions by parsing the refusal message with `/Known versions:\s*([^.]*)\./`, and the regex windows such as `{0,120}` are test heuristics. They couple the test to the wording of the emitted refusal and to the prompt's phrasing. Both are test design rather than a domain fact, so I did not report them.

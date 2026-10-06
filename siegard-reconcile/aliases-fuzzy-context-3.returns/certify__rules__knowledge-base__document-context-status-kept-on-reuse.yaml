@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/retry-reuses-document-context-later-prompt-version.spec.ts
+    why: >-
+      The offered test covers one point of the range "v5 and later". It runs a retried
+      run whose prompt version is set to v6, a later version, with the module lookup
+      mocked to resolve v6 to the v5 module. The run holds a document context with the
+      status "single-chunk". After extraction, the test asserts the status is still
+      "single-chunk". Nothing in the offered proof extracts a run whose prompt version
+      is v5 itself, so the lower bound the node names goes unexercised. Code that kept
+      the status only for versions strictly later than v5 would still pass this test.
+      There is a second gap. The held status "single-chunk" is a value an extraction
+      can itself record. The test therefore cannot tell an extraction that leaves the
+      status alone from one that writes "single-chunk" over it. Whether the fixture
+      document would make such a rewrite produce that same value is decided in
+      retried-run-world.js and run-document-context-fixture.js. The pack did not offer
+      those files and they were not opened. As a result, an extraction that recorded a
+      status anyway is not shown to fail this test.
+    remainder: testable
+    remainder_why: >-
+      Two cases would close it. In each, a run holding a document context is extracted
+      with no preliminary reading, and its status must still equal the held value
+      afterwards. The first run has prompt version v5. The second has a version later
+      than v5. In both, the held status must be one that a preliminary reading of the
+      run's document would not record.

@@ -1,0 +1,330 @@
+findings:
+  - file: src/__tests__/integration/ingestion/run-answers-document-context-routes.spec.ts
+    where: >-
+      getRunAnswer (lines 57-87) and the five assertions at lines 92, 101, 111, 117 and 123, which read fields from the root of the REST body
+    evidence: >-
+      `return res.json() as Record<string, unknown>;` and then `expect(body.document_context_status).toBe("too-long");`, `expect(body.document_context).toEqual(DOCUMENT_CONTEXT);`
+    cost: >-
+      The read-llm-run answer in contracts/knowledge-base/ingestion is stated as "`{ ok: true, result }` carrying the run's identity, ... its document context status and document context when it holds them". This test fixes the run fields at the root of the REST body, with no `result` level. A reader who goes to the contract for the shape of this answer finds an envelope the test never reads through. The two assertions that read `body.document_context ?? null` and `body.document_context_status ?? null` would also pass against an enveloped answer, because the root field would be absent. If the answer is enveloped, the two positive assertions fail and the two absence assertions go on passing, so those two would no longer show that anything was checked.
+    kind: contradicts
+    correction: >-
+      Either the contract's accepted answer for read-llm-run is settled to say whether REST carries the run at the root or inside `result`, or the test reads the body as the contract states it. The route's behaviour is not in this file set and was not judged.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only issues `method: "GET"` against a run and asserts on the answer; it builds no prompt and marks no content as data.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No model call, timeout or retry appears; the pool is the stub `runReadPool({ status: "completed", prompt_version: promptVersion, held })`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises the read-llm-run answer with `url: `/api/v1/ingest/llm-runs/${RUN_ID}`` and `expect(res.statusCode).toBe(200)`. It declares none of the contract's shapes, and it reads the run fields at the root of the body (see the finding).
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or graph read is made; the only request is the GET of `/api/v1/ingest/llm-runs/${RUN_ID}`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No flag is declared or asserted; the assertions are on `document_context_status` and `document_context`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is not declared here; the file only compares the answer with an imported fixture: `expect(body.document_context).toEqual(DOCUMENT_CONTEXT);`
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The values appear only as fixture literals passed along, as in `getRunAnswer({ status: "too-long", context: null }, "v5")`; the enumeration is not declared.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The entity shape is declared in the imported fixture; here it is only read: `const context = body.document_context as { entities: unknown };`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run is shaped by the imported `runReadPool(...)`; this file declares no run attributes, only `interface AuthFixture` and a request helper.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match is declared or asserted anywhere in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The versions are only passed along as plain strings: `getRunAnswer(HOLDS_NONE, "v4")`; the enumeration is not declared.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built or asserted.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or node proposal appears in the file.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity is computed or asserted.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match strength is computed or asserted.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      "v5" and "v4" are passed explicitly, as in `getRunAnswer({ status: "produced", context: DOCUMENT_CONTEXT }, "v5")`; no default is applied.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading or catalog filtering occurs; entities are read back with `expect(context.entities).toEqual(DOCUMENT_CONTEXT.entities);`
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no context model; the model value sits in the imported fixture and is only compared through `toEqual(DOCUMENT_CONTEXT)`.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction or preliminary reading runs; the pool only returns a stored row.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction or reuse is exercised; the run is only read.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The status is supplied by the fixture, not recorded by any code here: `getRunAnswer({ status: "failed", context: null }, "v5")`.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is cut; the whole fixture is compared with `toEqual(DOCUMENT_CONTEXT)`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No line count of a summary is applied or asserted.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution occurs in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built or asserted.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No score or hop is computed.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment is proposed or anchored.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt is built or sent.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt is built or sent.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt is built or sent.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt is built or sent.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is read; the pool answers `if (sql.includes("FROM llm_run")) return [llmRunRow(args)];` from the imported fixture.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt is built or sent.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction runs; the "failed" status is only a fixture literal in `getRunAnswer({ status: "failed", context: null }, "v5")`.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search layer or weight appears.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built or asserted.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias or node proposal appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name is normalized or compared; the fixture's names are only compared by `toEqual`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is created.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The v4 case only reads back a stored row of no status and no context: `getRunAnswer(HOLDS_NONE, "v4")`. No code here decides that a v4 extraction records none.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built or asserted.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or similarity appears.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version is validated; strings are passed along as in `prompt_version: promptVersion`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No text matching occurs.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is made; the only request is the GET at `/api/v1/ingest/llm-runs/${RUN_ID}`.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity is computed.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias appears.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is read and no proposal is made.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction runs; the test "carries no document context for a run that holds none over REST" only reads back a stored row of status "failed" with `context: null`.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading or proposal occurs.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry or extraction occurs.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction occurs; the file only reads a run back.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears.
+looked_past: >-
+  The file's infrastructure fixtures (the `envFixture` pool and timeout values, the RS256 key pair and the stubbed pool) are test scaffolding and not a domain fact, so they are another judgment's.

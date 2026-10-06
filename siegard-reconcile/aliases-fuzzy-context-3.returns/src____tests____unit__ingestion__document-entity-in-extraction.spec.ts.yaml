@@ -1,0 +1,335 @@
+findings:
+  - file: src/__tests__/unit/ingestion/document-entity-in-extraction.spec.ts
+    where: >-
+      MALFORMED_ENTITIES (lines 33-37), EXPECTED.refusedWithNothingRecorded (lines 46-50), and the test title at line 107
+    evidence: >-
+      "an entity whose names list is empty": null,
+      "an entity with no names": null,
+      "an entity with no node type": null,
+      and the title "records no context for an entity with no names, an empty names list or no node type"
+    cost: >-
+      The test asserts that one malformed entity in a preliminary reading leaves the run with no document context at all. That is the whole reading and its other valid entities, not only the malformed one. Nothing in the specification says so. domain/knowledge-base/document-entity makes names required, and its log gives only the reason that an entity with no name gives the model nothing to recognise. rules/knowledge-base/document-context-entity-type-in-catalog drops only the offending entity for an unknown node type and keeps the context. A reader choosing between dropping the entity and discarding the context finds no node that decides it, and this assertion is the only place the choice is written down.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide, in a node, what an extraction records when a preliminary reading lists an entity that breaks the document-entity shape: whether the context is absent or the entity is dropped. It would also have to say which document context status the run then records.
+    node: domain/knowledge-base/document-entity
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts only which entities each chunk prompt carries (`chunkPrompts(world).map((prompt) => carriesEntity(prompt, PERSON))`). It does not assert that the content or context is marked apart from instructions.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No timeout or retry count appears in the file; `extract(world)` is the only call to the extraction.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises the extraction through `extract(world)` and reads `recordedContext(world)`. It states no operation's answer or refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search or read operation; it imports only `DocumentContextSchema` and the extraction world helpers.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      No flag value appears in the file.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for it. It imports `DocumentContextSchema` from llm-run.dto.js and fills a fixture, `const HELD_CONTEXT: DocumentContext = { summary: "Ata do comite.", entities: [PERSON], model: "claude-haiku-4-5" }`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no status value; the held-context fixture uses `{ status: "produced", context: HELD_CONTEXT }` as input only.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      MALFORMED_ENTITIES and EXPECTED.refusedWithNothingRecorded, which assert that an entity with an empty or missing names list is not recorded. The shape itself is declared in llm-run.dto.js, not here.
+    evidence: >-
+      "an entity whose names list is empty": { node_type: "Person", names: [] },
+      "an entity with no names": { node_type: "Person" },
+      "an entity with no node type": { names: ["Maria Souza"] },
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no LLMRun shape. It reads the run's recorded context only through `recordedContext(world)`.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match value appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version is named in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no search item; it observes extraction prompts only.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never proposes a node or an alias. The `names` arrays are the entities of a context, not aliases.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity appears in the file.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      No match strength appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version and no document ingestion.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      observeUnknownNodeType and EXPECTED.entityOfAnUnknownNodeType, which assert that an entity under a node type the catalog does not hold is omitted from the recorded context and from every chunk prompt. The catalog itself is in the world helper.
+    evidence: >-
+      `entities: [PERSON, UNKNOWN_TYPE]` is asserted to give `entityOfAnUnknownNodeType: { recordedEntities: [PERSON], shownToAnyChunk: false }`
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      "claude-haiku-4-5" appears only as the model field of the fixture `HELD_CONTEXT`. It is not asserted as the model a context is produced under.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts neither the one-reading-before-the-first-chunk behavior, the chunk-count condition nor the 100000 limit. `newWorld({ readingAnswer: JSON.stringify(reading) })` supplies the reading's answer as input.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      `observeHeldContext` runs with a held context but asserts only the chunk prompts, never the status afterwards.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts no status value as an outcome. `recordedContext(world)` is read, never a status.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only summary is the one-line `const SUMMARY = "Ata do comite.";`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only summary is the one-line `const SUMMARY = "Ata do comite.";`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node proposal.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No expansion or score appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment; it inspects only the chunk prompts.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not inspect the system prompt's instruction about other names.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version below v5 is exercised in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no relative-date word.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file compares no prompt versions.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      observeHeldContext and EXPECTED.carriedToEveryChunk, which assert that every chunk's prompt carries the run's held document context entity. Chunk order, the source details and the 200-code-point tail are not asserted.
+    evidence: >-
+      `const world = newWorld({ held: { status: "produced", context: HELD_CONTEXT } }); await extract(world); return chunkPrompts(world).map((prompt) => carriesEntity(prompt, PERSON));`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provider failure is simulated. The malformed-entity readings are answered with `JSON.stringify(reading)`, and the file asserts no continued reading of chunks.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No layer or weight appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no node and no alias.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      `carriesEntity` matches with a plain `line.includes(needle)`, with no normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version is set in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search or similarity appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No stemming or accent handling appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no acronym or node proposal; its only names are "Maria Souza", "M. Souza", "Maria" and "Zork Prime".
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no later proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alias or ALIAS_NOT_IN_SOURCE.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts that the context entity reaches every chunk prompt. It makes no proposal and checks no resolution or anchoring.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provider error is simulated and no failed status is asserted.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts no absence of proposals before the first chunk.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      `observeHeldContext` shows the held context reaching every chunk. It performs no retry and does not assert that no second reading is made.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises only the multi-chunk world (`CHUNK_COUNT`) and asserts no single-chunk status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The helper `carriesEntity` treats an entity as shown only when its node type and all its names sit on one prompt line, a layout of the prompt that no node states. It is a way of detecting what the test asserts, not a rule the test states, and it belongs to a test-quality judgment, not to this one.

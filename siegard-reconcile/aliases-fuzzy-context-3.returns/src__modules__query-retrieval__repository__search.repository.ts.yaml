@@ -1,0 +1,291 @@
+findings:
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      The score expressions of searchFragmentLayer, searchNodeAliasLayer (exact node layer) and searchChunkLayer, lines 43, 76 and 161.
+    evidence: >-
+      `(ts_rank_cd(f.text_search, websearch_to_tsquery($1::regconfig, $2)) * $3::float)::float AS score`; `(max(ts_rank_cd(to_tsvector($1::regconfig, na.alias), websearch_to_tsquery($1::regconfig, $2))) * $3::float)::float AS score`; `(ts_rank_cd(rc.text_search, websearch_to_tsquery($1::regconfig, $2)) * $3::float)::float AS score`
+    cost: >-
+      The strength of a fragment-layer, exact node-layer or chunk-layer match is the cover-density text rank, and that choice lives only in these queries. No node says what a match's strength is on those layers. layer-weights says only that strength is weighted, and approximate-match-strength defines it for the approximate node layer alone. The next reader looks in the specification for what ranks one match above another and finds no answer. Swapping the rank function would change every search ordering with no node to disagree with.
+    kind: unstated
+    correction: >-
+      Give the strength of a match on the fragment, exact node and chunk layers a node. rules/knowledge-base/layer-weights is the natural home, or a sibling of approximate-match-strength.
+    node: rules/knowledge-base/layer-weights
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      The ORDER BY ... LIMIT clauses that choose which candidates each layer keeps, in searchFragmentLayer, searchNodeAliasLayer, APPROXIMATE_NODE_ALIAS_SQL and searchChunkLayer, lines 47-48, 83-84, 119-120 and 165-166.
+    evidence: >-
+      `ORDER BY score DESC, f.created_at DESC, f.id ASC LIMIT $4`; `ORDER BY score DESC, kn.canonical_name ASC, kn.id ASC LIMIT $4`; `ORDER BY score DESC, rc.id ASC LIMIT $4`
+    cost: >-
+      search-layer-candidate-cap says a layer keeps at most 200 candidates before ranking. It does not say which ones survive the cut when more match. This file decides it, with tie-breaks that differ by layer: newest fragment first, canonical name ascending, chunk identifier ascending. The set of kept candidates, and so the search total, depends on a rule no node holds. search-ranking orders the final items and does not govern this cut.
+    kind: unstated
+    correction: >-
+      State in a node which candidates a layer keeps when it has more than the cap, tie order included. search-layer-candidate-cap is the node that should hold it.
+    node: rules/knowledge-base/search-layer-candidate-cap
+read:
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, the `similarity` column, line 110.
+    evidence: >-
+      `max(word_similarity(na.alias_norm, norm($1::text))) AS similarity` (no layer weight, unlike the `score` column beside it).
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, the `score` column, line 109.
+    evidence: >-
+      `(max(word_similarity(na.alias_norm, norm($1::text))) * $2::float)::float AS score`
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      The weight multiplications in each layer query, lines 43, 76, 109 and 161, with the constants passed as parameters at lines 53, 89, 129 and 171. The values 1.0, 0.9 and 0.6 are declared in scoring.ts, outside this file.
+    evidence: >-
+      `* $3::float` fed `LAYER_WEIGHT_FRAGMENT`, `LAYER_WEIGHT_NODE` and `LAYER_WEIGHT_CHUNK` respectively
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, where the query text is normalized with norm() and compared to the stored normalized alias, lines 109-117.
+    evidence: >-
+      `word_similarity(na.alias_norm, norm($1::text)) >= $4::real`
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      Only in part. ApproximateNodeAliasHitRow, line 95, extends the hit row with the similarity of an approximate hit, and searchNodeAliasApproximateLayer is a separate function from the exact layer. The item's `match` and `similarity` fields are declared in the dto and set by the service, not here.
+    evidence: >-
+      `export interface ApproximateNodeAliasHitRow extends NodeAliasHitRow { readonly similarity: number; }`
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, lines 105-121, and searchNodeAliasApproximateLayer, which excludes the exact-matched nodes and applies the length and similarity thresholds. The values 5 and 0.6 are declared in scoring.ts, outside this file.
+    evidence: >-
+      `AND kn.id <> ALL($5::uuid[])` `AND char_length(na.alias_norm) >= $3::int` `AND word_similarity(na.alias_norm, norm($1::text)) >= $4::real`, fed `APPROXIMATE_ALIAS_MIN_LENGTH`, `APPROXIMATE_MATCH_MIN_SIMILARITY`, `input.excludedNodeIds`
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      searchNodeAliasLayer, lines 67-93.
+    evidence: >-
+      `WHERE to_tsvector($1::regconfig, na.alias) @@ websearch_to_tsquery($1::regconfig, $2)` over `node_alias na`, grouped by node
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      searchFragmentLayer, searchChunkLayer and the fragment join of listProvenanceForNodes, with the configuration FTS_PROSE_CONFIG. The configuration itself is declared in fts-config.ts, outside this file.
+    evidence: >-
+      `f.text_search @@ websearch_to_tsquery($1::regconfig, $2)`; `rc.text_search @@ websearch_to_tsquery($1::regconfig, $2)`; `f.text_search @@ plainto_tsquery($1::regconfig, na.alias_norm)`
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, lines 109-117.
+    evidence: >-
+      `word_similarity(na.alias_norm, norm($1::text))`, the normalized alias against the normalized query text
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, where the alias is compared with word similarity to the whole normalized query.
+    evidence: >-
+      `word_similarity(na.alias_norm, norm($1::text)) >= $4::real`
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      searchNodeAliasApproximateLayer and APPROXIMATE_NODE_ALIAS_SQL, which return the similarity for the approximate hit.
+    evidence: >-
+      `max(word_similarity(na.alias_norm, norm($1::text))) AS similarity`
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      The alias length filter of APPROXIMATE_NODE_ALIAS_SQL, line 116. The minimum value is declared in scoring.ts.
+    evidence: >-
+      `AND char_length(na.alias_norm) >= $3::int`
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      APPROXIMATE_NODE_ALIAS_SQL, which matches the alias against the whole query without requiring every query term to match.
+    evidence: >-
+      `word_similarity(na.alias_norm, norm($1::text)) >= $4::real`
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file holds only read queries over `information_fragment`, `node_alias`, `raw_chunk`, `knowledge_link` and provenance tables; it builds no model prompt.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file makes no language-model call; its only I/O is `client.query(...)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares no ingestion operation, only `export async function searchFragmentLayer`, `searchNodeAliasLayer`, `searchChunkLayer` and provenance reads.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a repository: it declares no operation answers or refusals, only query functions such as `export async function searchFragmentLayer(`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag enumeration is declared in the file; the row types carry no `flags` field.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      No document context shape appears in the file.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      No document context status appears in the file.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      No document entity appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      No `llm_run` table or LLM run type is touched; the file reads fragment, chunk, node and link tables only.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The exact and approximate values are not declared here. The two layers are separate functions, `searchNodeAliasLayer` and `searchNodeAliasApproximateLayer`, and the enumeration is declared in response.dto.ts.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares row types such as `export interface FragmentHitRow` and `ApproximateNodeAliasHitRow`, not the search item shape, which response.dto.ts declares.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file only reads `node_alias`; it admits no alias.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No document context is handled in the file.
+  - node: rules/knowledge-base/document-context-model
+    held_at: nowhere
+    evidence: >-
+      No model name appears in the file.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      No run or context status is touched in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      No run or context status is touched in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      No summary handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      No summary handling appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposal. `searchNodeAliasLayer` matches search text against aliases, which is a different rule.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The exact hit row `NodeAliasHitRow` declares no similarity field, but whether the item carries one is decided in the service, not this file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file only reads link metadata, with `findLinksMetadata`; it computes no hop score.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      No prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      No prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      No prompt appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file reads chunks only for the search layer and excerpts, not for an extraction.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No prompt appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      `FragmentHitRow` and `LinkMetadataRow` declare no match or similarity field, but whether the items carry one is decided in the service, not this file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only reads aliases and writes nothing.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only reads aliases and writes nothing.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      No run retry appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      Each layer takes the caller's `limit` as `LIMIT $4` (`LIMIT $6` in the approximate query) and the value 200 is not in this file. The total is the service's.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file orders each layer's candidates with `ORDER BY score DESC, ...`. It does not rank the merged search items or group approximately reached ones last.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file admits no alias.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposal.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file admits no alias.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      `searchNodeAliasLayer` returns the exact hits without a match marker. The item's exact marker is set in the service.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file admits no alias.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      No run retry appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+looked_past: >-
+  The file's filters on node status, chunk supersession and fragment acceptance (`kn.status NOT IN ('merged', 'deleted')`, `rc.superseded_at IS NULL`, `f.status = 'accepted'`) match statements of nodes outside this set, such as node-layer-skips-merged-and-deleted, chunk-layer-matches-current-chunks and fragment-layer-matches-accepted-only, which I read only as grep statement lines and did not open, so they are no finding here.

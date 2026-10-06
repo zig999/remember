@@ -1,0 +1,447 @@
+findings:
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      SearchResponse interface, the `query` field (line 55)
+    evidence: >-
+      export interface SearchResponse {
+        readonly query: string;
+        readonly total: number;
+        readonly limit: number;
+        readonly offset: number;
+        readonly items: readonly SearchItem[];
+      }
+    cost: >-
+      The search answer is declared to carry the query text back to the caller.
+      The retrieval contract's `search` answer lists the page of ranked items,
+      their node match and similarity, their supporting fragments and the total
+      before pagination, and does not list the query text. No other node does
+      either: domain/knowledge-base/search-query holds the query as a request
+      value and nothing says it is returned. A client that reads `query` is
+      depending on a decision that lives only in this type, and a reader who
+      checks the specification will not find it.
+    kind: unstated
+    correction: >-
+      Either the retrieval contract's `search` answer gains the query text, by
+      an analysis that decides it, or the field leaves the response.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      ProvenanceFragment interface, the `status` union (line 84)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The node holds five fragment states: proposed, accepted, rejected,
+      superseded and deleted. This file declares four and leaves out
+      `superseded`. The decision log of fragment-status records that this exact
+      omission was already corrected in the node, so the type restates a
+      vocabulary the node rejected. A fragment in `superseded` state would be
+      typed as something it cannot be. fragment-status is not bound to this
+      file, so a change to that enumeration will not reach this union.
+    kind: contradicts
+    correction: >-
+      The union has to carry the five values of the node, `superseded`
+      included. Because the node is not bound to this file, the declaration
+      cannot read it, so the correction is the bind that claims this
+      declaration or a reuse of the type from the file the node is bound to.
+    node: domain/knowledge-base/fragment-status
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      ProvenanceFragment interface (lines 80-86), and SearchProvenanceEntry
+      (lines 31-39) for the fragment's text and confidence
+    evidence: >-
+      export interface ProvenanceFragment {
+        readonly id: string;
+        readonly text: string;
+        readonly confidence: number;
+        readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+        readonly chunks: readonly ProvenanceChunk[];
+      }
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      NodeMatch type (line 6)
+    evidence: >-
+      export type NodeMatch = "exact" | "approximate";
+  - node: domain/knowledge-base/page
+    held_at: >-
+      SearchResponse interface, the `limit` and `offset` fields
+    evidence: >-
+      readonly limit: number;
+        readonly offset: number;
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no `recorded_at` and no record of one fragment backing
+      one assertion. `ProvenanceResponse { readonly fragments: readonly
+      ProvenanceFragment[]; }` only lists fragments with their chunks.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      SearchItem interface (lines 41-52)
+    evidence: >-
+      export interface SearchItem {
+        readonly kind: SearchKind;
+        readonly layer: SearchLayer;
+        readonly id: string;
+        readonly score: number;
+        readonly hop: number;
+        readonly summary: string;
+        readonly flags: readonly AssertionFlag[];
+        readonly match?: NodeMatch;
+        readonly similarity?: number;
+        readonly provenance: readonly SearchProvenanceEntry[];
+      }
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      SearchLayer type (line 4)
+    evidence: >-
+      export type SearchLayer = "fragment" | "node" | "chunk";
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      SourceType union (lines 7-14) and the SOURCE_TYPES set (lines 16-24)
+    evidence: >-
+      export type SourceType =
+        | "pdf"
+        | "email"
+        | "ata"
+        | "chat"
+        | "artigo"
+        | "transcricao"
+        | "outro";
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only declares `readonly total: number;` next to `limit`,
+      `offset` and `items`. It counts nothing and cuts no page.
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares retrieval response types and builds no prompt.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares retrieval response types and makes no model call.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no ingestion operation, answer or refusal. Its only
+      exports are `SearchKind`, `SearchLayer`, `AssertionFlag`, `NodeMatch`,
+      `SourceType`, `toSourceType` and the search and provenance interfaces.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      SearchResponse, SearchItem and SearchProvenanceEntry for the `search`
+      answer, and ProvenanceResponse, ProvenanceFragment, ProvenanceChunk and
+      ProvenanceRawInformation for the three provenance reads
+    evidence: >-
+      export interface ProvenanceChunk {
+        readonly id: string;
+        readonly chunk_index: number;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly excerpt: string;
+        readonly locator: Record<string, unknown> | null;
+        readonly raw_information: ProvenanceRawInformation;
+      }
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      AssertionFlag type (line 5)
+    evidence: >-
+      export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context, summary or model field appears in the file.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status value appears in the file.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document entity or `names` field appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No LLM run, model, prompt version or attempts field appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version value appears in the file.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias admission or proposal.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only declares `readonly similarity?: number;`. It computes no
+      word similarity.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only declares `readonly score: number;`. It computes no
+      strength.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version or default appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context handling appears in the file.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No model name appears in the file.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status handling appears in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary handling appears in the file.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary handling appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in the file.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly similarity?: number;` is declared optional on every item. The
+      file does not bar it for an exactly matched node.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares `readonly hop: number;` and `readonly score: number;`
+      and computes no decay.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      No layer weight (1.0, 0.9, 0.6) appears in the file. It only declares
+      the layer names in `SearchLayer`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly match?: NodeMatch;` is declared optional on every item. The
+      file does not bar it for link and fragment items.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No normalization appears in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only declares `readonly match?: NodeMatch;` and
+      `readonly similarity?: number;` as optional. It does not tie them to
+      hop 0 node items.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No matching or threshold (5 characters, 0.6) appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No matching appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No text matching appears in the file.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry logic appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No cap of 200 candidates appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ordering appears in the file. It only declares `items: readonly
+      SearchItem[]`.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No trigram similarity appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias behavior appears in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No resolution behavior appears in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias behavior appears in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction behavior appears in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the `NodeMatch` value "exact" and performs no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion behavior appears in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction behavior appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search behavior appears in the file.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the `NodeMatch` value "approximate" and the optional
+      `similarity`. It performs no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction behavior appears in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry behavior appears in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No matching behavior appears in the file.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction behavior appears in the file.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No matching behavior appears in the file.
+looked_past: >-
+  SearchItem declares an `id` field that search-item does not list among its attributes, which I read as the identity of the node, link or fragment the item stands for and did not report as a domain fact.
+candidates_opened:
+  - domain/knowledge-base/search-query

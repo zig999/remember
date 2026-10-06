@@ -1,0 +1,321 @@
+findings: []
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises only the query-retrieval search service, through `import { searchKnowledgeService } from "../../../modules/query-retrieval/service/search.service.js";`. It has no extraction prompt or model call.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no model call, timeout or retry. Its only service call is `searchKnowledgeService(buildClient(world), emptyCatalog, {...}, silentLogger)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion operation appears in the file. The only code under test is the search service, behind `function searchOver(world: World): Promise<SearchResponse>`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file calls the service layer directly and never reaches a request or refusal of the search operation. A search query is built as `query: "termo", inEffectOnly: false, includeUncertain: true, expand: true, expandDepth: EXPAND_DEPTH, limit: RESULT_LIMIT, offset: 0`. The file asserts no HTTP status and no error code.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared here. The file only compares one flag value, in `expect(linkItem(body, "link-u").flags).toEqual(["uncertain"]);`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context appears in the file. Its shapes are `Match`, `GraphLink`, `World` and `Rows`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context status appears in the file. Its row builders are `nodeRow`, `linkRow`, `linkMetadataRow`, `provenanceRow`, `nodeHitRow` and `approximateHitRow`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document entity appears in the file. It declares only `interface Match { readonly id: string; readonly score: number; }` and the graph fixtures.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no LLM run. Its provenance rows carry `raw_information_id: "raw-1"` and `created_by_run_id: null` as stub values only.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared here. The file only reads the field, in `match: item.match ?? undefined,`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file. Its only version-like values are fixture strings such as `"colabora"`.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in the response DTO that the file imports: `import type { SearchResponse } from "../../../modules/query-retrieval/dto/response.dto.js";`. This file only reads its fields, for example `expect.objectContaining({ kind: ..., layer: ..., score: expect.any(Number), hop: expect.any(Number), summary: expect.any(String), flags: expect.any(Array), provenance: expect.any(Array) })`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal or alias admission appears in the file. Its stub aliases are `matched_alias_ids: []`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The similarity is a stub input and is never asserted: `similarity: APPROXIMATE_SIMILARITY,` inside `approximateHitRow`. The file computes no word similarity.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The strength is a stub input: `const APPROXIMATE_MATCH_SCORE = 0.72;`, fed to the service as the approximate hit's `score`. The file does not compute or assert it from aliases.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document ingestion or prompt version appears in the file.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes `emptyCatalog: CatalogSnapshot` with empty maps. It builds no document context.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No context model appears in the file.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction or preliminary reading appears in the file.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run or document context status appears in the file.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run or document context status appears in the file.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context summary appears in the file. The only `summary` is the search item's `summary: expect.any(String)`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document context summary appears in the file. The only `summary` is the search item's `summary: expect.any(String)`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in the file. Its alias stub is `if (sql.includes("FROM node_alias na")) { return result(world.matches.map(nodeHitRow)); }`.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts nothing about a node item's similarity. `itemsThatAreNotNodes` filters node items out with `.filter((item) => item.kind !== "node")`.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      The describe block "searchKnowledgeService expansion: decayed score of an expanded link", lines 312-363, the "decayed score of a link reached through its target end" block, lines 389-429, and the approximate-match expansion test, lines 574-595. Each asserts the expected decayed scores.
+    evidence: >-
+      `expect(linkItem(body, linkId).score).toBeCloseTo(expectedScore, 10);` with the cases `"link-1", 0.4`, `"link-2", 0.2` and `"link-3", 0.1` from a matched node scored `FIRST_MATCH_SCORE = 0.8`. Also `expect(scoreByLink).toEqual({ "link-1": 0.4, "link-2": 0.2, "link-3": 0.1, "link-x1": 0.2, "link-x2": 0.1, "link-x3": 0.05, });`. For the approximate node scored 0.72 it asserts `"link-1": 0.36, "link-2": 0.18, "link-3": 0.09`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction or fragment anchoring appears in the file. The stub chunk is only `raw_chunk_id: "chunk-1"` in `provenanceRow`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in the file. It imports only `describe, expect, it` from vitest and the search service.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      No preliminary reading appears in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The layer weights are never applied or asserted. Scores arrive pre-weighted from the stub: `score: m.score,` in `nodeHitRow`, and `score: 0.5,` for the fragment row.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      The describe block "searchKnowledgeService: the items that are neither a knowledge node", lines 619-629, over `MATCHED_AND_EXPANDED_WORLD` and `itemsThatAreNotNodes`.
+    evidence: >-
+      `expect(itemsThatAreNotNodes(body)).toEqual([ { kind: "fragment", id: "fragment-1" }, { kind: "link", id: "link-1" }, { kind: "link", id: "link-x1" }, ]);`. The projection maps `match: item.match ?? undefined, similarity: item.similarity ?? undefined,`, so the expected objects carry no match and no similarity.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node proposal appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no normalization. Its query is the literal `query: "termo"`, and its stub returns `result([{ q: "'termo'" }])`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears in the file.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run or document context appears in the file.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion in the file checks the match or similarity of a hop-0 node item. The only match and similarity reads are the non-node projection in `itemsThatAreNotNodes`, which filters with `.filter((item) => item.kind !== "node")`.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The approximate match is a stub branch: `if (sql.includes("word_similarity")) { return result((world.approximateMatches ?? []).map(approximateHitRow)); }`. The threshold of 0.6 and the minimum alias length of 5 characters appear nowhere in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The exact match is a stub branch: `if (sql.includes("FROM node_alias na")) { return result(world.matches.map(nodeHitRow)); }`. The file performs no lexical parse or match of its own.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no Portuguese stemming or accent folding. The only prose-matching trace is the stub marker `if (sql.includes("websearch_to_tsquery") && sql.includes("AS q")) {`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run retry appears in the file.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file asserts no cap of 200 and no total. It passes `limit: RESULT_LIMIT,` with `const RESULT_LIMIT = 100;` as a request option only.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion in the file checks item order. Its assertions use `Object.fromEntries` or `.sort()`, as in `expect(body.items.map((item) => item.kind).sort())`, and `itemsThatAreNotNodes` re-sorts by id: `.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))`.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no trigram similarity. It has only the constant `const APPROXIMATE_SIMILARITY = 0.8;`, fed in as a stub value.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a node proposal with the alias "CNPq", appear nowhere in the file.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a later proposal naming "CNPq", appear nowhere in the file.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, an alias "Petrobras" proposed in a run, appear nowhere in the file.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a three-chunk document read under v5, appear nowhere in the file.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no scenario that searches "petrobras" or asserts the match "exact". Its only query is `query: "termo"`.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a directed ingestion stating an alias, appear nowhere in the file.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a preliminary reading that fails, appear nowhere in the file.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no scenario that searches "contrato Petrobrass". Its only query is `query: "termo"`.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no scenario that searches "Petrobrass" or asserts the match "approximate" on a hop-0 item. Its approximate fixture is `approximateMatches: [{ id: "node-a", score: APPROXIMATE_MATCH_SCORE }]`, and it asserts only link scores.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a preliminary reading of a three-chunk document, appear nowhere in the file.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a retried run, appear nowhere in the file.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no scenario that searches "CNPJ" against a node whose only alias is "CNPq". Its approximate hits are only the stub `approximateHitRow`.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario's given and when steps, a one-chunk document extracted under v5, appear nowhere in the file.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no scenario that searches "contrato Petrobras". Its only query is `query: "termo"`.
+looked_past: >-
+  The file also asserts search facts held by nodes outside the pack and not in the candidate index, which I attributed and did not report: the hop number of an expanded link, a link reached through either end, a flag uncertain with no other, and an item surfacing only when it holds provenance. No comment or docstring appears in the file.
+candidates_opened:
+  - rules/knowledge-base/expansion-hop

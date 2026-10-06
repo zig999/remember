@@ -1,0 +1,318 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only checks that the held context's text appears in a model call: `return [DOCUMENT_CONTEXT.summary, ...names].every((needle) => call.text.includes(needle));`. It says nothing about the content being marked apart from the instructions.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no timeout and no retry bound. The extraction is only driven: `await extractRun(world);`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only invokes the retry and extraction operations through helpers imported from another file: `await retryRun(world);` and `await extractRun(world);`. It declares no operation, answer or refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search or graph read. Its imports are `DocumentContextStatusSchema`, `DOCUMENT_CONTEXT`, `chunkCalls`, `extractRun`, `failedRunWorld`, `readingCalls` and `retryRun`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no assertion flag. It holds only the retry and extraction tests, for example `it("leaves the document context recorded when a failed run holding one is retried", ...)`.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared elsewhere (`import { DOCUMENT_CONTEXT, type HeldDocumentContext } from "./run-document-context-fixture.js"`). The file only reads fields of it: `DOCUMENT_CONTEXT.entities.flatMap((entity) => entity.names)` and `DOCUMENT_CONTEXT.summary`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is declared in the imported schema, `import { DocumentContextStatusSchema, type DocumentContextStatus } from "../../../modules/ingestion/dto/llm-run.dto.js"`. The file only uses its values: `["produced", "produced"], ["single-chunk", "single-chunk"], ["too-long", "too-long"], ["failed", "failed"]` typed `readonly (readonly [string, HeldStatus])[]`.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is not declared in this file. It only reads `entity.names` in `DOCUMENT_CONTEXT.entities.flatMap((entity) => entity.names)`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no run shape. It reads two fields of a run held in a world declared elsewhere: `world.run["document_context"]` and `world.run["document_context_status"]`.
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node match. It holds only the retry and extraction tests, for example `it("makes a preliminary reading when a retried run whose document context status is failed is extracted again", ...)`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version. Its only imports are the document context status schema, the fixture and the world helpers.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item. The only checks are on run fields and model calls, for example `chunksRead: CHUNKS_IN_THE_RAW_INFORMATION`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no alias.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity and no search.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search strength and no search.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no document ingestion and names no prompt version.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not exercise the entity-type filtering of a preliminary reading. It only reads names from the fixture: `DOCUMENT_CONTEXT.entities.flatMap((entity) => entity.names)`.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never checks the model that produced the context. It has no model name or configuration.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      The test "makes no preliminary reading and shows each chunk the context the run held ..." (the `readings: 0` expectation) and the test "makes a preliminary reading when a retried run whose document context status is failed is extracted again" (the `toHaveLength(1)` expectation). These are test assertions and hold the rule's "when the run holds none" clause by execution. They do not hold the rule's prompt-version, chunk-count or length clauses.
+    evidence: >-
+      `expect({ readings: readingCalls(world).length, chunksRead: chunkCalls(world).length, chunksShownTheHeldContext: chunkCalls(world).map(showsHeldContext), }).toEqual({ readings: 0, chunksRead: CHUNKS_IN_THE_RAW_INFORMATION, chunksShownTheHeldContext: [true, true, true], });` and `expect(readingCalls(world)).toHaveLength(1);`
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      The test "leaves the document context status as it was after a retried run holding a document context is extracted again, whichever status it held" (the loop over `EVERY_HELD_STATUS` and its `toEqual` expectation).
+    evidence: >-
+      `const world = failedRunWorld({ status, context: DOCUMENT_CONTEXT }); await retryRun(world); await extractRun(world); kept[label] = statusOf(world);` and `expect(kept).toEqual({ produced: "produced", "single-chunk": "single-chunk", "too-long": "too-long", failed: "failed", none: null, });`
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      Only the produced clause, in the test "records the status produced when the preliminary reading made for a retried run whose status was failed yields a document context" (the `toBe("produced")` expectation). The single-chunk, too-long and failed clauses are not exercised as records.
+    evidence: >-
+      `const world = failedRunWorld(HOLDS_FAILED_NONE); await retryRun(world); await extractRun(world); expect(world.run["document_context_status"]).toBe("produced");`
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not exercise summary length. It only checks that `DOCUMENT_CONTEXT.summary` appears in a model call: `[DOCUMENT_CONTEXT.summary, ...names].every(...)`.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts no summary lines. It only uses `DOCUMENT_CONTEXT.summary` as text a model call must contain.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no alias.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link expansion and no score.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no fragment anchoring. It counts the chunks read: `chunksRead: CHUNKS_IN_THE_RAW_INFORMATION`.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never inspects the instructions sent to the model, only whether a call's text includes the held context: `call.text.includes(needle)`.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version and never inspects the instructions sent to the model.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no check on the system prompt and no relative-date words.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no check on the system prompt and no version comparison.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      Partially, in the test "makes no preliminary reading and shows each chunk the context the run held ...": the `chunksShownTheHeldContext: [true, true, true]` expectation covers only the clause that each chunk is shown the run's document context. Order, source type, document date, title, reception time and the preceding 200 code points are not checked.
+    evidence: >-
+      `chunksShownTheHeldContext: chunkCalls(world).map(showsHeldContext)` against `chunksShownTheHeldContext: [true, true, true]`
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no relative date and no check on the instructions sent to the model.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never makes a preliminary reading fail within the extraction under test. The failed status is only a held starting state: `const HOLDS_FAILED_NONE: HeldDocumentContext = { status: "failed", context: null };`.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no layer weight and no search.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no alias.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no names. It compares texts only with `call.text.includes(needle)`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node creation and no alias.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version, so the v4-and-earlier case is not exercised. Nothing like `v4` appears in it.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search item.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer and no word similarity.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node layer and no alias.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never names a prompt version, known or not.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no stemmed or accent-insensitive matching. It uses `call.text.includes(needle)`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      The test "leaves the document context status as it was when a failed run is retried, whichever status it held" (the loop over `EVERY_HELD_STATUS` and its `toEqual` expectation).
+    evidence: >-
+      `const world = failedRunWorld(contextHeldWith(status)); await retryRun(world); kept[label] = statusOf(world);` and `expect(kept).toEqual({ produced: "produced", "single-chunk": "single-chunk", "too-long": "too-long", failed: "failed", none: null, });`
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search candidates and no cap.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ranking and no search.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no trigram similarity and no alias.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no acronym, no alias and no node proposal.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no alias.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no alias.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal and no fragment anchoring. It only counts the chunks read, with `const CHUNKS_IN_THE_RAW_INFORMATION = 3;`.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion and no alias.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never makes the preliminary reading answer a provider error within the extraction under test. It only starts from a held failed status: `const HOLDS_FAILED_NONE: HeldDocumentContext = { status: "failed", context: null };`.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no proposals and no knowledge held while reading. It only counts readings and chunk calls.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      The test "makes no preliminary reading and shows each chunk the context the run held when a retried run holding a document context is extracted again".
+    evidence: >-
+      `const world = failedRunWorld(HOLDS_PRODUCED); await retryRun(world); await extractRun(world);` followed by `readings: 0` and `chunksShownTheHeldContext: [true, true, true]`.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search and no alias.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never makes a run over a single chunk. Its raw information always has `const CHUNKS_IN_THE_RAW_INFORMATION = 3;`, and `single-chunk` appears only as a held starting status.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+looked_past: >-
+  The test asserts that a retry leaves the run's document context itself recorded (`expect(world.run["document_context"]).toEqual(DOCUMENT_CONTEXT);`). The only nodes that say a retried run keeps its context are the scenario retried-run-reuses-context and the decision log of retry-keeps-document-context-status, and no rule states it, so I report that as a gap in the rules and not as a finding against this file.

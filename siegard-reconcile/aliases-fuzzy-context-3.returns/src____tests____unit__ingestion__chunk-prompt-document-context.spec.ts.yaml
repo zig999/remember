@@ -1,0 +1,320 @@
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      isMarkedAsData() (lines 510-518) and the second it() (lines 599-622), which asserts that the document content, each chunk's text and the context shown with each chunk are labelled as data and kept out of the system prompt.
+    evidence: >-
+      DATA_LABEL.test(holding) &&
+      !call.system.includes(needle)
+      ... expect(presentations).toEqual(allTrue(presentations));
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only timing construct is the fake model's yield, `setTimeout(resolve, 0);` in tick(). No five-minute wait and no retry count is stated or asserted.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes values along: `input: { node_type: "Person", name: "João Silva" }`, `NodeProposalSchema = z.object({ node_id: z.string(), resolution: z.string() })`. It declares no operation, answer or refusal of the contract.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search, provenance or graph-read operation appears. The only reads are of the ingestion fake: `const NodeProposalSchema = z.object({`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions the flags uncertain, disputed or low-confidence. It names only `DATA_LABEL` and `DOCUMENT_CONTEXT_MENTION` as detectors.
+  - node: domain/knowledge-base/document-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is imported, not declared: `DocumentContextSchema, type DocumentContext, type DocumentEntity` from "../../../modules/ingestion/dto/llm-run.dto.js". The file only parses and serialises values: `DocumentContextSchema.parse(JSON.parse(value))`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The status is a bare string in the row type, not an enumeration: `document_context_status: string | null;`. No test asserts a status value.
+  - node: domain/knowledge-base/document-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is imported and only instantiated: `const DIRECTOR: DocumentEntity = { node_type: "Person", names: ["João Silva", "o Diretor"], };`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      The RunRow interface (lines 94-106), the test's row type for the llm_run table. It names the run's attributes: model, prompt_version, status, attempts, started_at, finished_at, idempotency_key, document_context, document_context_status and the raw information reference.
+    evidence: >-
+      interface RunRow { id: string; model: string; prompt_version: string; started_at: Date; finished_at: Date | null; status: string; attempts: number; input_raw_information_id: string; idempotency_key: string; document_context: DocumentContext | null; document_context_status: string | null; }
+  - node: domain/knowledge-base/node-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions the exact or approximate match. The nearest construct is the stub `[/MAX\(similarity/, () => EMPTY_RESULT],`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Versions appear only as plain strings handed to the run: `promptVersion: string;` and `{ promptVersion: "v4" }`. No enumeration is declared.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built or read in the file. The nearest construct is `function chunkPrompts(world: World): string[]`, which reads model prompts.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal carries an alias: `input: { node_type: "Person", name: "João Silva" },`. The fake's insertAlias() only records what it is given: `norm: normOf(String(params[1])),`.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The similarity query is stubbed to return nothing: `[/MAX\(similarity/, () => EMPTY_RESULT],`. No value is computed or asserted.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: >-
+      nowhere
+    evidence: >-
+      `[/MAX\(similarity/, () => EMPTY_RESULT],` is the only trace, and it yields no strength.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Every run names its version explicitly: `const BASE_SCENARIO: Scenario = { promptVersion: "v5", ...`. No ingestion that names no version is exercised.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog holds both entity types the reading lists: `nodeTypes: [ { id: NODE_TYPE_PERSON_ID, name: "Person" }, { id: NODE_TYPE_ORGANIZATION_ID, name: "Organization" }, ]`. No entity under a type the catalog lacks is tried.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      A context model is configured, `const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", CONTEXT_MODEL } as const;`, but ModelCall records no model and no test asserts which model the reading used.
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: >-
+      The first it() (lines 575-597), over BASE_SCENARIO (v5, three chunks) with newWorld() starting the run with no context. It asserts that every chunk prompt carries the summary and the entities. The 100000-unit ceiling is not exercised.
+    evidence: >-
+      document_context: null, ... missingFromAChunk: missingFromChunks(world, [ ...CONTEXT_NEEDLES, ...METADATA_NEEDLES, ]), ... missingFromAChunk: [],
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: >-
+      nowhere
+    evidence: >-
+      Every run starts with no context and no status: `document_context: null, document_context_status: null,`. No run that already holds a context is run again.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The third it() sets up the single-chunk, v4 and failed-reading shapes but asserts only `{ chunksRead: 1, showsContext: false }`. The status that updateRun() stores is never asserted, and no too-long run is exercised.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The summary is one line: `const SUMMARY = \`Ata do comite financeiro. ${SUMMARY_INJECTION}\`;`. No summary longer than 5 lines is fed in.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: >-
+      nowhere
+    evidence: >-
+      The same single-line `SUMMARY` is the only summary. No line counting or newline handling is asserted.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      The fake findExactNode() (lines 255-265) and the fourth it() (lines 647-667), where a second proposal named João Silva resolves to the node the first created.
+    evidence: >-
+      alias.norm === normOf(String(name)) && ... node.typeId === typeId ... { node_id: "node-1", resolution: "matched_existing" },
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node search item exists in the file. The only similarity construct is the stub `[/MAX\(similarity/, () => EMPTY_RESULT],`.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hop or score is computed or asserted. The file never mentions a link score.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      The fifth it() (lines 669-675), over ANCHORING_SCRIPT, where the model names no chunk, a later chunk or two earlier chunks. The fourth it() also asserts chunk 3 as the anchor.
+    evidence: >-
+      expect(anchors).toEqual([[CHUNK_IDS[0]], [CHUNK_IDS[1]], [CHUNK_IDS[2]]]);
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The system text is recorded (`system: systemTextOf(req.system),`) but used only in `!call.system.includes(needle)`. Nothing asserts that the prompt asks for other names.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: >-
+      nowhere
+    evidence: >-
+      The v4 shape asserts only `"a v4 run of three chunks": { chunksRead: 3, showsContext: false },`. The instructions' wording about other names is not inspected.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions "hoje", "ontem" or "amanhã". The system prompt is not asserted.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: >-
+      nowhere
+    evidence: >-
+      No test compares the v4 and v5 system prompts. `system` is read only by `!call.system.includes(needle)`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      The first it() (lines 575-597), with TAIL_CODE_POINTS, METADATA_NEEDLES and the in-flight counter. It asserts the read order, one model call at a time, the source metadata and the last 200 code points of the previous chunk.
+    evidence: >-
+      const TAIL_CODE_POINTS = 200; ... readOrder: [0, 1, 2], largestNumberOfModelCallsInFlight: 1, ... tailsOfTheSecondAndThirdChunk: [SHOWN_EXACTLY, SHOWN_EXACTLY],
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never asks the model to resolve a relative date. The nearest construct, `const RECEIVED_AT = "2026-10-05T12:00:00Z";`, is only a fixture shown in the prompt.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: >-
+      The third it() (lines 624-645), in the shape where the preliminary reading throws and the three chunks are still read.
+    evidence: >-
+      "a v5 run of three chunks whose preliminary reading failed": { readingError: new Error("provider unavailable"), }, ... "a v5 run of three chunks whose preliminary reading failed": { chunksRead: 3, showsContext: false, },
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a layer or a weight. It names only the model-call routes in `const ROUTES: readonly Route[]`.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragments in the file are inputs to `propose_fragment`, never search items. The nearest construct is `function fragmentCall(id: string, chunkIds?: readonly string[]): ToolUseCall`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The second proposal resolves as matched_existing, but no alias is proposed and the aliases the node holds afterwards are never asserted: `expect(observed).toEqual({ nodesCreated: ["João Silva"], ...`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      normOf() (lines 188-195), the test double's stand-in for the database's norm(). The fake's findExactNode() and insertAlias() use it.
+    evidence: >-
+      return text .normalize("NFD") .replace(/\p{M}/gu, "") .replace(/\s+/g, " ") .trim() .toLowerCase();
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      The fourth it() (lines 647-667), for the canonical-alias half only. The second proposal can resolve to node-1 only if the first recorded its name as an alias. No admitted-alias half is exercised.
+    evidence: >-
+      nodesCreated: ["João Silva"], nodeProposals: [ { node_id: "node-1", resolution: "created_new" }, { node_id: "node-1", resolution: "matched_existing" }, ],
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: >-
+      The third it() (lines 624-645), in the v4 shape. It asserts that no chunk prompt shows a document context. The absence of a recorded status is not asserted.
+    evidence: >-
+      "a v4 run of three chunks": { promptVersion: "v4" }, ... "a v4 run of three chunks": { chunksRead: 3, showsContext: false },
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search item is built. `[/MAX\(similarity/, () => EMPTY_RESULT],` is a stub, with no match or similarity asserted.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      The word-similarity query is stubbed to nothing: `[/MAX\(similarity/, () => EMPTY_RESULT],`. No 5-character or 0.6 threshold appears.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no lexical query over aliases. Its only alias lookup is the ingestion-side double `findExactNode`, with no query text parse.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only known versions are used (`promptVersion: "v5"`, `{ promptVersion: "v4" }`). No unknown version is refused or asserted.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      nowhere
+    evidence: >-
+      No stemming or accent-insensitive prose match is exercised. The fixtures are accent-free: `"A pauta seguiu para o orcamento."`.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is run. Every run goes through `runExtraction()` once, from `status: "running"`.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search runs, and there is no candidate cap or total. The file never mentions the 200-candidate cap.
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ranking or ordering of search items appears. The only ordering asserted is the chunk read order, `readOrder: [0, 1, 2],`.
+  - node: rules/knowledge-base/word-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      Word similarity is stubbed to nothing: `[/MAX\(similarity/, () => EMPTY_RESULT],`. No trigram computation appears in the file.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias such as "CNPq" is proposed or admitted. The only proposals are `{ node_type: "Person", name: "João Silva" }`.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fixture holds no node with an admitted acronym alias. The resolution asserted is by the proposed name, `{ node_id: "node-1", resolution: "matched_existing" }`.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions ALIAS_NOT_IN_SOURCE and no proposal carries an alias.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: >-
+      The fourth it() (lines 647-667) over SCENARIO_TEXTS and SCENARIO_SCRIPT. It reproduces the scenario: a João Silva proposal made while reading chunk 3 resolves to the node created at chunk 1, and the chunk 3 fragment is anchored to chunk 3.
+    evidence: >-
+      nodeProposals: [ { node_id: "node-1", resolution: "created_new" }, { node_id: "node-1", resolution: "matched_existing" }, ], fragmentAnchors: [[CHUNK_IDS[2]]],
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search by name is run. The file never mentions "Petrobras".
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion is run. The only entry point is `runLlmExtraction(`.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: >-
+      The third it() (lines 624-645), in the failed-reading shape, for the first outcome only (the three chunks are read). The completed run, the failed status and the absent context are not asserted.
+    evidence: >-
+      readingError: new Error("provider unavailable"), ... { chunksRead: 3, showsContext: false, },
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search query is run. The file never mentions "Petrobrass".
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search query is run and no match or similarity is asserted. The only trace is the stub `[/MAX\(similarity/, () => EMPTY_RESULT],`.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never asserts that the store holds nothing before the first chunk is read. The toolCalls and nodes the store records are asserted only after the whole run.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is run and no run starts holding a context: `document_context: null,` in newWorld().
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search by an alias such as "CNPJ" is run. The file never mentions "CNPq".
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: >-
+      The third it() (lines 624-645), in the single-chunk shape, for the no-context outcome only. The single-chunk status the run records is not asserted.
+    evidence: >-
+      "a v5 run of one chunk": { texts: DEFAULT_TEXTS.slice(0, 1) }, ... "a v5 run of one chunk": { chunksRead: 1, showsContext: false },
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search query is run. The file never mentions "contrato Petrobras".
+looked_past: >-
+  The fake database picks its answers by regular expressions over the production SQL text (for example `/na\.alias_norm = norm/` and `/count\(\*\)::text AS n FROM raw_chunk/`), and the data and context detectors rely on the prompt's wording (`/\bdata\b/i`, `/document context/i`), which is test-suite construction rather than a domain fact and so another judgment's.

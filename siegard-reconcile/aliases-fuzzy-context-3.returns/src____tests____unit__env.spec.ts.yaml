@@ -1,0 +1,350 @@
+findings:
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      line 28, in the test "parses a valid environment"
+    evidence: >-
+      expect(env.NEON_AUTH_JWKS_TTL_S).toBe(600);
+    cost: >-
+      The 600-second life of the cached signing-key set is a value the test pins as the expected default. No node in the specification states it. The next reader will look for it in the specification and find nothing, so the test and the loader become the place where this decision lives.
+    kind: unstated
+    correction: >-
+      An analysis would need to give this default a node. The constraints under specification/constraints/ that cover authentication, such as every-operation-requires-owner-authentication, are the likely home.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      lines 29-30, in the test "parses a valid environment"
+    evidence: >-
+      expect(env.PG_POOL_MIN).toBe(2);
+          expect(env.PG_POOL_MAX).toBe(10);
+    cost: >-
+      The minimum of 2 and maximum of 10 store connections are values the test pins as the expected defaults. A search of the specification root for "pool" finds no node holding them. They live only in code and test, where a reader who looks in the specification will not find them.
+    kind: unstated
+    correction: >-
+      An analysis would need to give these defaults a node.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      line 31, in the test "parses a valid environment"
+    evidence: >-
+      expect(env.PG_STATEMENT_TIMEOUT_MS).toBe(10_000);
+    cost: >-
+      The 10 000 ms store-statement limit is a value the test pins. The constraint that an operation whose statement times out answers that a backing service is unavailable names the behaviour but gives no duration. The value therefore lives only in code and test.
+    kind: unstated
+    correction: >-
+      An analysis would need to give the statement time limit a node, or add it to the node that governs the time-out answer.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      lines 46-51, in the test "throws EnvValidationError when DATABASE_URL is missing"
+    evidence: >-
+      it("throws EnvValidationError when DATABASE_URL is missing", () => {
+          // TC-01: missing required var crashes with a clear message.
+          const { DATABASE_URL: _unused, ...rest } = baseEnv;
+          void _unused;
+          expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
+    cost: >-
+      The test states that the system refuses to start without a store connection string. Only the Anthropic key has such a startup constraint (anthropic-key-required), and the owner-time-zone and local-operator-token constraints cover those settings. No node holds this refusal, so it exists only as a test and a loader branch.
+    kind: unstated
+    correction: >-
+      An analysis would need to add a startup constraint for the store connection string, next to anthropic-key-required.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      lines 53-58, in the test "throws when DATABASE_URL has an unsupported scheme"
+    evidence: >-
+      expect(() => loadEnv({ ...baseEnv, DATABASE_URL: "mysql://host/db" })).toThrowError(
+            EnvValidationError
+          );
+    cost: >-
+      The test states a refusal rule, namely that the connection string must use a postgres or postgresql scheme. A search of the specification found no node holding it, so the format guard is decided only in code and test.
+    kind: unstated
+    correction: >-
+      An analysis would need to give the connection-string format a node, together with the missing-value refusal above.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      lines 60-64, in the test "throws when NEON_AUTH_URL is missing"
+    evidence: >-
+      it("throws when NEON_AUTH_URL is missing", () => {
+          const { NEON_AUTH_URL: _unused, ...rest } = baseEnv;
+          void _unused;
+          expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
+    cost: >-
+      The test states that the system does not start without the auth provider address. No node holds this startup refusal, so only code and test decide it.
+    kind: unstated
+    correction: >-
+      An analysis would need to add a startup constraint for the auth provider address.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      lines 101-107, in the test "produces a human-readable, multi-line message"
+    evidence: >-
+      expect(err.message).toMatch(/Invalid backend environment configuration/);
+    cost: >-
+      The text the system prints at a failed start is pinned here as an assertion. No node holds this message or the rule that it names every failing variable. An operator or test relying on the wording has nowhere in the specification to check it.
+    kind: unstated
+    correction: >-
+      An analysis would need to give the startup refusal message a node, or add it to the startup constraints.
+  - file: src/__tests__/unit/env.spec.ts
+    where: >-
+      line 211, in the test "applies the v2 defaults (chat.back.md v2.0.0 §8)"
+    evidence: >-
+      expect(env.CHAT_SUMMARY_AFTER_TURNS).toBe(20);
+    cost: >-
+      The default of 20 turns before a rolling summary starts is pinned as a business value. No node states it. rules/chat/rolling-summary-refold-when-older-messages gives the trigger as owner-written messages older than the recent window, with no turn count. The value lives only in code and test.
+    kind: unstated
+    correction: >-
+      An analysis would need to give the turn threshold a node, or reconcile it with the node that sets the refold trigger.
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only exercises loadEnv, for example `loadEnv(baseEnv)`. It states nothing about how document content is presented to the model.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No test or assertion in the file concerns an extraction's model-call time or retry count. The only timeouts asserted are TURN_TIMEOUT_MS and TOOL_TIMEOUT_MS, which are chat settings.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file never calls an ingestion operation. It exercises only `loadEnv(...)` and `EnvValidationError`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file never calls a retrieval operation. It exercises only `loadEnv(...)`.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the flags uncertain, disputed and low-confidence. Its only declaration is `const baseEnv = { NODE_ENV: "test", ... } satisfies NodeJS.ProcessEnv;`.
+  - node: domain/knowledge-base/document-context
+    held_at: nowhere
+    evidence: >-
+      The file declares no document-context shape and only reads `env.CONTEXT_MODEL`.
+  - node: domain/knowledge-base/document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration of produced, single-chunk, too-long or failed. Its only declaration is `const baseEnv = { ... } satisfies NodeJS.ProcessEnv;`.
+  - node: domain/knowledge-base/document-entity
+    held_at: nowhere
+    evidence: >-
+      The file declares no document-entity shape. Its only declaration is `const baseEnv = { ... }`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLM run shape. Its only declaration is `const baseEnv = { ... }`.
+  - node: domain/knowledge-base/node-match
+    held_at: nowhere
+    evidence: >-
+      The file declares no exact or approximate enumeration. Its only declaration is `const baseEnv = { ... }`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file declares no extraction prompt-version enumeration. `expect(env.CHAT_PROMPT_VERSION).toBe("v4");` concerns the chat prompt version, which is a different enumeration.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search-item shape. Its only declaration is `const baseEnv = { ... }`.
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: nowhere
+    evidence: >-
+      The file contains no alias admission. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/approximate-match-similarity
+    held_at: nowhere
+    evidence: >-
+      The file contains no search or similarity. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/approximate-match-strength
+    held_at: nowhere
+    evidence: >-
+      The file contains no search or similarity. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The nearest assertion is `expect(env.CHAT_PROMPT_VERSION).toBe("v4");`, which is the chat default governed by rules/chat/default-chat-prompt-version. The v5 default of a document ingestion is not asserted.
+  - node: rules/knowledge-base/document-context-entity-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file never builds a document context or reads a preliminary-reading entity list.
+  - node: rules/knowledge-base/document-context-model
+    held_at: >-
+      the two assertions of the describe "loadEnv context model setting", lines 322-334
+    evidence: >-
+      expect(env.CONTEXT_MODEL).toBe("claude-haiku-4-5");
+      and
+      const env = loadEnv({ ...baseEnv, CONTEXT_MODEL: "claude-context-test-model" });
+      expect(env.CONTEXT_MODEL).toBe("claude-context-test-model");
+  - node: rules/knowledge-base/document-context-read-first
+    held_at: nowhere
+    evidence: >-
+      The file never runs an extraction or counts chunks. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/document-context-status-kept-on-reuse
+    held_at: nowhere
+    evidence: >-
+      The file never runs an extraction or reuses a run. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/document-context-status-recorded
+    held_at: nowhere
+    evidence: >-
+      The file never records a run status. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/document-context-summary-cut-to-five-lines
+    held_at: nowhere
+    evidence: >-
+      The file handles no preliminary-reading summary. The word "summary" appears only in the CHAT_SUMMARY_* env assertions.
+  - node: rules/knowledge-base/document-context-summary-lines
+    held_at: nowhere
+    evidence: >-
+      The file handles no preliminary-reading summary. The word "summary" appears only in the CHAT_SUMMARY_* env assertions.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file contains no node resolution. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/exact-node-item-carries-no-similarity
+    held_at: nowhere
+    evidence: >-
+      The file contains no search items. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file contains no graph expansion or score. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file never runs an extraction or anchors a fragment. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-asks-for-other-names
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt text. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-before-v5-asks-for-no-other-names
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt text. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-prompt-names-relative-date-words
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt text. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-prompt-v5-keeps-v4
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt text. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file never reads chunks. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt text. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/failed-preliminary-reading-continues
+    held_at: nowhere
+    evidence: >-
+      The file never makes a preliminary reading. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      The file contains no search layers or weights. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/link-and-fragment-items-carry-no-match
+    held_at: nowhere
+    evidence: >-
+      The file contains no search items. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file contains no node proposals or aliases. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file normalizes no names. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file contains no node creation. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/no-document-context-before-v5
+    held_at: nowhere
+    evidence: >-
+      The file never runs an extraction under any prompt version. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/node-item-shows-match
+    held_at: nowhere
+    evidence: >-
+      The file contains no search items. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/node-layer-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file contains no search. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file contains no search. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file asserts no refusal of an unknown extraction prompt version. `loadEnv({ ...baseEnv, CHAT_PROMPT_VERSION: "v2" })` is accepted, and it concerns the chat prompt version.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file contains no text matching. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/retry-keeps-document-context-status
+    held_at: nowhere
+    evidence: >-
+      The file never retries a run. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/search-layer-candidate-cap
+    held_at: nowhere
+    evidence: >-
+      The file contains no search. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file contains no search or ranking. It only contains `loadEnv(...)` calls.
+  - node: rules/knowledge-base/word-similarity
+    held_at: nowhere
+    evidence: >-
+      The file computes no similarity. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise the scenario of a node proposal with an acronym alias. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise the scenario of a later proposal resolving through an alias. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise the scenario of an alias not admitted. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/context-links-later-mention
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise the scenario of a document context linking a later mention. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/correct-name-matches-exactly
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a search scenario. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a directed ingestion scenario. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/failed-context-reading-keeps-extracting
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a failed preliminary reading. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/misspelled-name-inside-longer-query
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a search scenario. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/misspelled-name-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a search scenario. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/preliminary-reading-proposes-nothing
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a preliminary reading. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/retried-run-reuses-context
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a retried run. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/short-alias-never-matches-approximately
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a search scenario. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/single-chunk-document-has-no-context
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise an extraction over a single chunk. It only contains `loadEnv(...)` calls.
+  - node: scenarios/knowledge-base/unmatched-term-leaves-approximate-match
+    held_at: nowhere
+    evidence: >-
+      The file does not exercise a search scenario. It only contains `loadEnv(...)` calls.
+looked_past: >-
+  The file's comments cite TC-, BR- and chat.back.md identifiers and restate facts that nodes outside this set hold (anthropic-key-required, local-operator-token-needs-explicit-development, default-chat-prompt-version and its lineage). Which of them restate and which contradict depends on code in src/config/env.ts, which is outside this file set, so I do not report them. The other assertions state values that nodes outside the set hold: the chat defaults, the owner time zone, the 16-character token floor, and the chat-enabled and directed-ingestion-disabled defaults.
