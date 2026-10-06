@@ -1,38 +1,11 @@
- ## How Siegard reports to a person
+## How Siegard reports to a person
 
-  This governs one message only: the last message of a Siegard skill's invocation, where it
-  stops and hands control to a person — its report, or a stop that ends the run early. It never
-  governs an intermediate message: progress notes, reasoning, what is being read or run next
-  stay short and plain, and carry none of what follows.
+The final message of a Siegard skill is written in formal Brazilian Portuguese (pt-BR),
+explanatory enough for a reader who has never seen Siegard: for every outcome, say what happened,
+what it means, and what each choice leads to. Everything else about that message — its opening,
+its order, which terms are explained and how, what is quoted verbatim, and what is recommended —
+is the framework's (SPEC-006 as shipped in its rules), not this file's.
 
-  In that final message:
-
-  - **Write in formal Brazilian Portuguese (pt-BR), explanatory enough for a reader who has
-    never seen Siegard.** For every outcome, say what happened, what it means, and what the
-    person can do next and what each choice leads to.
-  - **Explain every Siegard term the first time the message uses it**: what it is, and why it
-    matters here. The term itself stays in English exactly as the framework spells it — a
-    field, a flag, a command, a skill, an agent, a class, an enumerated value, a file or
-    directory name — with the explanation beside it, never a translation in its place.
-  - **Explain every stop as a stop.** Say what stopped it, why the skill does not go past it,
-    and every door the message hands over, each with what taking it does. Never soften a stop
-    into a suggestion.
-  - **Keep everything the skill's report requires, in the order the skill states it.**
-    Explanation is added to an item; it never replaces, merges, drops or reorders one.
-  - **Quote verbatim what a skill says to quote verbatim**, and explain after the quote:
-    validator output, receipts, run excerpts, the evidence of a finding, and every invocation
-    ready to paste. A pasted invocation is never translated, reworded or completed beyond its
-    slots.
-  - **The explanation adds no fact.** Explain only what the outputs and records on disk state.
-    Where they do not say why, say that they do not; never supply a reason.
-  - **The explanation decides nothing.** Where a skill hands two doors without choosing,
-    explain both and choose neither. A finding is explained by its evidence and its cost, never
-    given a severity, a verdict or a recommendation.
-  - **This does not reach files or spawned contexts.** Every file a skill writes — nodes,
-    plans, records, the decision log, commit messages — keeps the language and form its
-    contract requires. A spawned agent's return is never a final message: it keeps the shape
-    its contract requires and carries no explanation.
-	
 # CLAUDE.md — Remember
 
 ## Project
