@@ -5,3 +5,4 @@ Delivered task/close-testable-remainders/document-context-status-kept-on-reuse i
 Delivered task/close-testable-remainders/document-context-status-recorded in 24908ec: proof only over the standing implementation, build and suite green on the first run.
 Delivered task/close-testable-remainders/extraction-anchors-to-read-chunk in f331433: proof only over the standing implementation, build and suite green on the first run.
 Delivered task/close-testable-remainders/extraction-asks-for-other-names in d7d4e26: proof only over the standing implementation, build and suite green on the first run.
+Delivered task/close-testable-remainders/extraction-model-call-bounded in 81224d0: proof only over the standing implementation, build and suite green on the first run; the test author recorded one contested item.
