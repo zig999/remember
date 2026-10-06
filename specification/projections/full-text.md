@@ -22036,6 +22036,30 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-read-warns-attribute-without-provenance
+---
+type: policy
+statement: A node read logs a warning for each attribute of the node that is not deleted and has no provenance.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-read-warns-attribute-without-provenance.log
+---
+entries:
+- field: statement
+  unstated: The material says a graph read shows an attribute without provenance with an empty list, and says nothing of whether the read reports such an attribute as an anomaly or which attributes it reports.
+  decided: A node read logs a warning for each attribute that is not deleted and has no provenance; deleted attributes are not reported.
+  why: The delivered read already warns only for attributes outside the deleted state, and an attribute without provenance is the anomaly the provenance requirement exists to prevent, so a read that shows one silently would hide it.
+---
+
 === rules/knowledge-base/node-surfaces-only-with-accepted-mention
 ---
 type: policy
