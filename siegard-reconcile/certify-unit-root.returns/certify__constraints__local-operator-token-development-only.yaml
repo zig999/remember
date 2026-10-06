@@ -1,0 +1,40 @@
+certified:
+  - node: constraints/local-operator-token-development-only
+    state: partial
+    tests:
+      - file: src/__tests__/unit/auth.spec.ts
+        name: accepts the configured token as `local-operator` WITHOUT touching JWKS
+      - file: src/__tests__/unit/auth.spec.ts
+        name: does NOT bypass for a non-matching token (falls through to JWKS)
+      - file: src/__tests__/unit/auth.spec.ts
+        name: is DISABLED outside development even with a matching token
+      - file: src/__tests__/unit/auth.spec.ts
+        name: is DISABLED when no LOCAL_OPERATOR_TOKEN is configured
+    why: >-
+      Three parts of the fact are exercised. In development, the configured token admits the
+      owner without the signing keys ever being consulted. A different token does not admit
+      anyone. The configured token is refused when the environment is production.
+
+      The word "only" is not exercised over anything other than production. The one other case
+      without development ("is DISABLED when no LOCAL_OPERATOR_TOKEN is configured") also has no
+      token configured. That means it changes two inputs at once and cannot isolate the
+      environment gate. A gate rewritten as "not production" would still pass every test in the
+      set, while admitting the token under a test environment or an unset one.
+
+      The comparison is checked only against a token of a different length (26 characters
+      against 31). A check that compared lengths alone would still pass.
+
+      The constant-time property of the comparison is not asserted anywhere. Replacing it with
+      plain equality leaves every test green.
+    remainder: untestable
+    remainder_why: >-
+      Part of what is missing can be closed by tests:
+      - The configured token, presented under a test environment and under an unset
+        environment, should be refused with no owner attached.
+      - A token of the same length as the configured one, differing in content, should be
+        refused in development.
+
+      The constant-time part of the comparison is a property of how long the comparison takes,
+      and no finite functional assertion decides it. A test that observes which internal
+      comparison routine was called would only bind the shape of the code, not the behavior. So
+      no test can decide this node whole.

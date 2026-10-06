@@ -1,0 +1,37 @@
+certified:
+  - node: constraints/unreachable-store-answers-unavailable
+    state: partial
+    tests:
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: maps a pg ECONNREFUSED error to 503 SYSTEM_SERVICE_UNAVAILABLE
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: maps a pg statement-timeout (57014) to 503
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: recognises ECONNREFUSED / ETIMEDOUT / ENOTFOUND / ECONNRESET
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: recognises pg SQLSTATEs 57P03 and 57014
+    why: >-
+      Only two cases are checked end to end through the answer, both at the
+      `classify` mapping. A refused connection (ECONNREFUSED) and a statement
+      timeout (57014) are each shown to answer 503 SYSTEM_SERVICE_UNAVAILABLE
+      rather than SYSTEM_INTERNAL_ERROR. The other ways the store can be
+      unreachable (ETIMEDOUT, ENOTFOUND, ECONNRESET, 57P03) are checked only
+      against the `isPgUnavailable` predicate, never against the answer.
+      Those predicate tests pin how the code is built, not the fact. If
+      `classify` stopped asking the predicate and special-cased ECONNREFUSED
+      and 57014, every test here would still pass while a DNS failure or a
+      reset connection answered as an internal failure. Nothing in the set
+      runs an operation either. No REST route and no MCP tool whose store
+      access fails is shown to reach the operator as "a backing service is
+      unavailable". The fact covers every operation in the system, but the
+      proof stops at one function. It does not show that the MCP transport's
+      error rendering gives the same answer for these errors.
+    remainder: testable
+    remainder_why: >-
+      For each unreachable-store cause (connection refused, connect timeout,
+      host not found, connection reset, server not accepting connections
+      57P03) and for statement timeout 57014: an operation whose store
+      access throws that error, called through the REST route and through
+      the MCP tool. The expected result on each is an answer naming
+      SYSTEM_SERVICE_UNAVAILABLE (503 over REST, isError carrying that code
+      over MCP) and never SYSTEM_INTERNAL_ERROR.

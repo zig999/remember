@@ -1,0 +1,26 @@
+certified:
+  - node: constraints/internal-failure-withholds-cause
+    state: partial
+    tests:
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: maps a generic Error to 500 SYSTEM_INTERNAL_ERROR without leaking the message
+      - file: src/__tests__/unit/error-handler.spec.ts
+        name: treats string non-errors as 500
+    why: >-
+      For a thrown Error, the fact is exercised: the first test asserts the fixed message
+      "Internal server error." and checks that the cause's text does not appear in the
+      serialized envelope. The second test throws a non-Error cause (the string "oh no"). It
+      asserts only the status and code, never the message, and never that "oh no" is absent.
+      So the suite never checks that a thrown value other than an Error is withheld. If the
+      handler echoed such a value it would still pass. The node's scope is system, but both
+      tests call only `classify`, which is the REST global handler's mapping. Nothing in the
+      offered proof fails an operation reached through an MCP tool endpoint. Nothing checks
+      that the content rendered there carries the fixed message rather than the cause. So
+      every unexpected failure outside the REST error path goes unexercised.
+    remainder: testable
+    remainder_why: >-
+      Two single-input assertions would close it. First, pass `classify` a thrown non-Error
+      value such as the string "oh no", and expect the envelope message to be exactly the
+      fixed text with "oh no" absent from the serialized envelope. Second, make an MCP tool
+      call whose handler throws an Error with a distinctive message, and expect the error
+      content to carry the fixed message and not that text.

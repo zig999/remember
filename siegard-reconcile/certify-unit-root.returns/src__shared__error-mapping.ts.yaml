@@ -1,0 +1,47 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` registry, the `RESOURCE_ALREADY_EXISTS` entry (line 85)
+    evidence: >-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      The registry fixes HTTP 409 for a code that no node of the specification names. I grepped the whole specification root, including the projections, for `RESOURCE_ALREADY_EXISTS` and found nothing. The status is a decision that lives only in this table. A reader who looks in the contracts for what the system answers when something already exists will not find it.
+    kind: unstated
+    correction: >-
+      Either a contract gives the code a scenario that states its status, or the entry leaves the registry if nothing emits it. The sibling codes already sit in `contracts/knowledge-base/*` and `contracts/chat/conversations`. This is a gap for the specification to close, not something the code can fix.
+
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` registry, the `BUSINESS_CHAT_INGEST_DISABLED` entry (line 128)
+    evidence: >-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      The registry fixes HTTP 503 for a chat-ingest refusal that no node names. I grepped the whole specification root for `CHAT_INGEST_DISABLED` and `CHAT_INGEST` and found nothing. `BUSINESS_CHAT_DISABLED` has a scenario in `contracts/chat/conversations`, but this sibling code has none. The next reader will look for the refusal in the chat contract and not find it.
+    kind: unstated
+    correction: >-
+      The chat contract, or the node that holds chat ingestion, would need a scenario stating when this code is answered and with which status. This is a gap for the specification to close, not something the code can fix.
+
+read:
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      `internalError()`, lines 183-185. It takes no argument, so no cause can reach the answer, and it renders a fixed message under `SYSTEM_INTERNAL_ERROR`.
+    evidence: >-
+      export function internalError(): MappedError {
+        return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
+      }
+  - node: constraints/mcp-failure-is-tool-error
+    held_at: >-
+      `toMcpToolResult()`, lines 209-214, and the `McpToolErrorResult` interface, which fixes `isError: true` and a text content block.
+    evidence: >-
+      return {
+          content: [{ type: "text", text: JSON.stringify(envelope.error) }],
+          isError: true,
+        };
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      `isPgUnavailable()` with its SQLSTATE and errno sets (lines 39-60), and `serviceUnavailableError()` (lines 176-181). Together they classify a connection failure or a statement timeout as unavailable and answer `SYSTEM_SERVICE_UNAVAILABLE`.
+    evidence: >-
+      "57014", // query_canceled (statement timeout) ... "ECONNREFUSED", ... return renderErrorEnvelope("SYSTEM_SERVICE_UNAVAILABLE", "A backing service is temporarily unavailable.");
+
+looked_past: >-
+  I saw the header comments, which describe module history and name the "error-handler" and "error-envelope" consumers. I also saw a doc comment that says MCP transports speak "JSON-RPC over HTTP 200", which is stale against the SDK kernel. I reported none of this because it is prose that states no node's fact. It is a matter for the comment route.

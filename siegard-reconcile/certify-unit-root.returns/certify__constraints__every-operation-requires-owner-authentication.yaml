@@ -1,0 +1,65 @@
+certified:
+  - node: constraints/every-operation-requires-owner-authentication
+    state: partial
+    tests:
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects with AUTH_UNAUTHORIZED when no header is present
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects with AUTH_UNAUTHORIZED when the header is malformed
+      - file: src/__tests__/unit/auth.spec.ts
+        name: accepts a valid, signed token and attaches the user to the request
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects with AUTH_TOKEN_EXPIRED when the JWT has expired
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects with AUTH_TOKEN_INVALID when the JWT signature does not match
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects with AUTH_TOKEN_INVALID when the JWT is structurally broken
+      - file: src/__tests__/unit/auth.spec.ts
+        name: rejects when the `sub` claim is missing
+      - file: src/__tests__/unit/auth.spec.ts
+        name: is DISABLED outside development even with a matching token
+    why: >-
+      The tests exercise the token check alone. They call buildNeonAuth's preHandler
+      directly with a stub request. They show that the check refuses a missing or
+      malformed bearer, a token that has expired, a token whose signing key the
+      provider's key set does not hold, a token that is structurally broken, and a
+      token that carries no subject. They also show that it accepts a valid token
+      that has not expired.
+
+      What is not exercised is the claim that every operation reached over the
+      network goes through that check. No test in the offered proof sends a request
+      to any REST route or to the MCP routes /api/v1/mcp/{ingest,query,curation}.
+      So a route registered without the preHandler would leave every one of these
+      tests passing. Nothing shows that the operation does not run when
+      authentication fails, either. The tests only observe that the preHandler
+      rejects. They never observe that the handler behind it has no effect.
+
+      "Names the owner" is exercised only as "names some subject". The accepting
+      test lets "user-123" through, and nothing submits a token that is validly
+      signed and not expired but names someone other than the owner. The node does
+      not say whether, in a single-owner system, any subject the provider signed
+      counts as the owner. A reader should settle that, not this audit.
+
+      Two tests are not a sign of missed coverage. "AuthError carries statusCode=401
+      and a typed code" asserts what a constructor returns for literal inputs, so it
+      cannot fail if the fact stops holding. The extractBearer and buildJwksUrl tests
+      check internal helpers, so they tie down the shape of the code rather than the
+      fact.
+
+      The DEV-ONLY local operator tests go beyond the fact. "accepts the configured
+      token as `local-operator` WITHOUT touching JWKS" asserts that a bearer token
+      the auth provider never signed is accepted in development. The node has no
+      such carve-out, so that test contradicts the fact as stated rather than
+      proving it. Whether the node or the bypass is what needs to change is for a
+      person to decide.
+    remainder: testable
+    remainder_why: >-
+      The test would build the application with every route registered. It would
+      list the routes Fastify registered, including the three MCP endpoints. For
+      each route it would send one request with no Authorization header, one with a
+      token that has expired, and one with a token whose signing key the provider's
+      key set does not hold. Each request should get a 401 AUTH_* response, and the
+      route's handler should run no effect, observed through a stubbed service.
+      Once the node decides what "names the owner" means, one more case would close
+      the rest: a validly signed token naming a different subject, against the
+      result the node decides for it.

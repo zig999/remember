@@ -1,0 +1,53 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      the header comment, lines 1-15 (the first paragraph restates the gate, and the "Implements BR-01 of knowledge-graph.back.md" citation sits in the same block)
+    evidence: >-
+      // Implements BR-01 of knowledge-graph.back.md and the corresponding ingestion
+      // requirement: every request that reaches a protected route must carry
+      // `Authorization: Bearer <jwt>`. We verify the signature against Neon Auth's
+      // JWKS, ... and refuse to dispatch the route on any failure.
+    cost: >-
+      The owner-authentication gate is written a second time as prose, and it cites a rule identifier from a document outside the specification. A reader who follows that citation is sent away from the node that holds the fact. When the node moves, nothing reaches this comment.
+    kind: restates
+    correction: >-
+      Remove the comment block. The preHandler in this file holds the fact in code: `extractBearer`, `jwtVerify(token, jwks)` and the `AuthError` throws. The trace records the link to the node.
+    node: constraints/every-operation-requires-owner-authentication
+  - file: src/middleware/auth.ts
+    where: >-
+      the docstring of extractBearer, lines 156-160
+    evidence: >-
+      * header is absent / malformed. Spec compliance: the scheme MUST be `Bearer`
+      * (case-insensitive) and a single non-empty token MUST follow.
+    cost: >-
+      The access contract's refusal for an absent or non-Bearer header is restated as prose beside the regex that enforces it. The two can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement. The regex `/^Bearer\s+(\S+)\s*$/i` and the `null` return hold the fact in this file.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: >-
+      buildJwksUrl, lines 73-83
+    evidence: >-
+      return new URL(`${base}/.well-known/jwks.json`);
+    cost: >-
+      The location the auth provider's signing keys are fetched from is decided only here. The docstring calls it "part of the spec's trust boundary", but no node states it, so a reader looking in the specification will not find where the owner's token is verified against.
+    kind: unstated
+    correction: >-
+      Analysis should give the key-set location a home. It could be a statement in the owner-authentication constraint, or in the access contract's authenticate-owner operation, that the signed token is verified against the key set the auth provider serves at its `/.well-known/jwks.json` under `NEON_AUTH_URL`.
+    node: constraints/every-operation-requires-owner-authentication
+read:
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      the preHandler returned by buildNeonAuth, lines 113-152, with extractBearer (lines 161-166)
+    evidence: >-
+      `if (token === null) { throw new AuthError("AUTH_UNAUTHORIZED", ...)`; `const verified = await jwtVerify(token, jwks);` mapped through `mapJoseError` (expired gives AUTH_TOKEN_EXPIRED); `if (typeof sub !== "string" || sub.length === 0) { throw new AuthError("AUTH_TOKEN_INVALID", "JWT missing required `sub` claim.")`
+  - node: constraints/local-operator-token-development-only
+    held_at: >-
+      the localOperatorToken derivation (lines 105-110), the comparison in the preHandler (line 123), and constantTimeEqual (lines 168-173)
+    evidence: >-
+      `env.NODE_ENV === "development" && typeof env.LOCAL_OPERATOR_TOKEN === "string" && env.LOCAL_OPERATOR_TOKEN.length > 0 ? env.LOCAL_OPERATOR_TOKEN : null`; `if (localOperatorToken !== null && constantTimeEqual(token, localOperatorToken))`; `return timingSafeEqual(ab, bb);`
+looked_past: >-
+  The JWKS cache lifetime and cooldown (`cacheMaxAge`, `cooldownDuration: 30_000`) are a client's tuning of its own requests, so they are no finding. The error codes and messages (AUTH_UNAUTHORIZED, AUTH_TOKEN_EXPIRED, AUTH_TOKEN_INVALID, "local-operator") match the access contract's authenticate-owner answers, so they are no finding either. The `AuthError` and `mapJoseError` docstrings restate the access contract the same way as the two `restates` findings above, and the error handler that renders the 401 envelope is in another file.
+candidates_opened:
+  - contracts/knowledge-base/access

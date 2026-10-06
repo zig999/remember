@@ -1,0 +1,28 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: >-
+      the comment above the final return of classify(), line 134
+    evidence: >-
+      // 6. Anything else — generic 500. We do NOT leak the underlying message.
+    cost: >-
+      The comment states, in prose, the fact the node holds: an unexpected failure answers a fixed message and never the cause. The code already holds that fact, in `return internalError();` here and in the `internalError()` body in src/shared/error-mapping.ts (`renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.")`). The comment is a second home outside behavior. If the rule changes, the comment keeps saying the old one and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the node already binds this file.
+    node: constraints/internal-failure-withholds-cause
+read:
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      classify(), the final `return internalError();` (line 135). Also the 5xx branch of the Fastify HTTP error handling (lines 119-131), which sets the message to a fixed "Internal server error." for any status of 500 or above. The `cause_message` is only logged and never reaches the envelope.
+    evidence: >-
+      return internalError();
+      message: isServerError ? "Internal server error." : err.message,
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      classify(), the `isPgUnavailable(err)` branch (lines 113-115), which returns `serviceUnavailableError()`. This branch comes before the Fastify HTTP error branch and the generic fallthrough, so an unreachable store or a statement timeout never reaches `internalError()`.
+    evidence: >-
+      if (isPgUnavailable(err)) {
+        return serviceUnavailableError();
+      }
+looked_past: >-
+  Three things belong to other judgments. The comment "Surfaces `statusCode = 400`" above the Fastify validation branch is stale, because the code answers 422. Contract knowledge-base/access answers a framework 503 with "Internal server error." (which the code matches), while its own log records "Every SYSTEM_SERVICE_UNAVAILABLE answers 'A backing service is temporarily unavailable.'" (a tension inside the specification). The code also carries a back-compat re-export and comments about the error-mapping refactor, which is code-review material.

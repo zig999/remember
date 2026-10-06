@@ -1,0 +1,25 @@
+certified:
+  - node: constraints/mcp-failure-is-tool-error
+    state: partial
+    tests:
+      - file: src/__tests__/unit/mcp-stdio.spec.ts
+        name: an unknown tool name yields isError=true and a NOT_FOUND envelope
+    why: >-
+      The suite tests one failure: a call to a tool name that is not registered. For that call it
+      asserts isError=true, that content[0].text parses as JSON, that code is NOT_FOUND and that
+      message names the tool. It never asserts details, so the fact could lose details from the
+      JSON text and this test would still pass. It also never tests an operation that a reached
+      handler refuses or fails. Every handler in the fixture returns ok:true. No handler returns
+      an error envelope with code, message and details. No handler throws. So the suite never
+      checks how a refused or failed operation, as opposed to a missing tool, is turned into a
+      tool error. The file's own comment says that mapping is covered by the knowledge-graph MCP
+      suite. That suite is not in the offered proof, and the comment is not evidence. The success
+      test ("list_node_types returns isError=false and a JSON-parseable OK payload") tests the
+      path that succeeds and does not bear on the fact.
+    remainder: testable
+    remainder_why: >-
+      Through buildConfiguredMcpServer, one handler returns ok:false with an error carrying a
+      known code, message and non-empty details, and a second handler throws. Each call should
+      answer isError=true. In the first case, content[0].text should parse to the same code,
+      message and details. In the second, it should parse to a code and a message, plus details
+      if the fact's mapping requires them.
