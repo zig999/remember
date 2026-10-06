@@ -4,3 +4,4 @@ Planned in 902b16b: /plan-work proof increment wrote 1 epic and 9 tasks; domain/
 Delivered task/close-testable-remainders/document-context-status-kept-on-reuse in 7476a8b: proof only over the standing implementation, build and suite green on the first run.
 Delivered task/close-testable-remainders/document-context-status-recorded in 24908ec: proof only over the standing implementation, build and suite green on the first run.
 Delivered task/close-testable-remainders/extraction-anchors-to-read-chunk in f331433: proof only over the standing implementation, build and suite green on the first run.
+Delivered task/close-testable-remainders/extraction-asks-for-other-names in d7d4e26: proof only over the standing implementation, build and suite green on the first run.
