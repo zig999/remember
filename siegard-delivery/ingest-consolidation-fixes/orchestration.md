@@ -10,3 +10,4 @@ Invoked /review-change over the three tasks, review name ingest-consolidation-fi
 Three conformance returns came back inside code fences and the fold refused them; they were delegated again with the format fixed.
 The proof of the description task claimed constraints/chat-directed-ingestion-description-matches-mcp, which the trace binds to no file, so the staging refused it and that claim was left out; the record says so.
 Step 5 (close what the review left testable) was not taken: both certifications came back partial with a remainder that names the real PostgreSQL schema, the project's suite has no such harness, and a test against the database is a database action CLAUDE.md puts behind the owner's approval.
+Measured the run with telemetry.py over the window starting 2026-10-07T13:36:08Z; report at siegard-telemetry/20261007T141518Z.
