@@ -4,3 +4,6 @@ Stopped before the binding step: the consumed contracts bff-entity-reads and bff
 /siegard-telemetry measure run over the window opened at 2026-10-07T20:33:25Z.
 Resumed at HEAD 238ddb5 after the person supplied the wire facts and adopted the backend session's edit-entity proposal; /plan-work was invoked again over the whole scope and wrote 4 epics and 21 tasks, derived plan.json, and recorded 28 decided facts in the specification logs, each disclosed by its log entry.
 The person decided two facts in the run: the decided-fact route was authorised for every new silence, and a deleted node shows its own alert; the person also chose that the review judges each effect against the node as loaded.
+/implement-task invoked over task/knowledge-base-client/listing-reads: the implementer wrote src/features/entities (types, keys, request wrapper, transforms, listing hooks); the typecheck passed and the lint step failed with 351 parsing errors.
+Stopped: the project's eslint.config.js declares no TypeScript parser, so lint cannot parse any .ts or .tsx file of the repository, including files this delivery did not write, and typescript-eslint is not among the packages the standard authorizes; the written source and the red run stand uncommitted for a person.
+/siegard-telemetry measure run over the window opened at 2026-10-07T22:31:37Z.
