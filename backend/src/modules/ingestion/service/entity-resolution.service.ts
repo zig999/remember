@@ -205,6 +205,7 @@ async function findExactMatch(
       WHERE na.alias_norm = norm($1::text)
         AND kn.node_type_id = $2
         AND kn.status = 'active'
+      ORDER BY na.created_at ASC NULLS LAST, na.node_id ASC
       LIMIT 1`,
     [args.name, args.nodeTypeId]
   );
