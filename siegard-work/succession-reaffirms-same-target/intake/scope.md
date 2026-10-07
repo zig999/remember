@@ -1,0 +1,8 @@
+The human's words: "comite e deliver-scope acima", the corrective /plan-work the /analyse handoff proposed.
+Corrective increment named by the human.
+The wrong behavior, as the human described it: a link or attribute proposal with change hint succession that meets a current assertion with the same target or value is taken, for a type that does not allow multiple current assertions, as a dispute that records a twin assertion, and for a type that allows multiple current assertions as a new assertion, and both end in the system error "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." with no concurrent transaction, the held assertion intact.
+It was found by a rehearsal that called the delivered code against the real schema on an ephemeral branch, inside a rolled-back transaction.
+By the specification as it now stands (rules/knowledge-base/reaffirmation-consolidates and the scenarios same-target-succession-re-affirms and same-target-succession-re-affirms-multi-current) it must re-affirm: add its provenance, record no new assertion, leave the validity start the assertion holds.
+Not in scope: the database and its indexes, a proposal with a different target or value (still a dispute, scenario different-target-without-signal-is-disputed), and a proposal with change hint correction (still correction-replaces).
+Existing tests that assert the old behavior (a succession with the same target not consolidating, for example 'does NOT consolidate when change_hint=succession even on a multi-current link') belong to the correction.
+The file the wrong behavior lives in: backend/src/modules/ingestion/service/graph-consolidation.service.ts

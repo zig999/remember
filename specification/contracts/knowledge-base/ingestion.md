@@ -120,7 +120,7 @@ answers:
     answer: 'error code BUSINESS_UNKNOWN_NODE_TYPE naming the node type, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id015
 - operation: propose-link
-  accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome consolidated, accepted, superseded_previous with the superseded link''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
+  accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome: consolidated, when the proposal is taken as a re-affirmation, with the identity of the link it re-affirms; accepted; superseded_previous with the superseded link''s identity; or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
   - *id003
   - *id004
@@ -164,7 +164,7 @@ answers:
     answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope knowledge_link in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id015
 - operation: propose-attribute
-  accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome consolidated, accepted, superseded_previous with the superseded attribute''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
+  accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome: consolidated, when the proposal is taken as a re-affirmation, with the identity of the attribute it re-affirms; accepted; superseded_previous with the superseded attribute''s identity; or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
   - *id003
   - *id004

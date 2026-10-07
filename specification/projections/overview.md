@@ -91,4 +91,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-312 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+313 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.

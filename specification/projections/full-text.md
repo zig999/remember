@@ -1961,7 +1961,7 @@ answers:
     answer: 'error code BUSINESS_UNKNOWN_NODE_TYPE naming the node type, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id015
 - operation: propose-link
-  accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome consolidated, accepted, superseded_previous with the superseded link''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
+  accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome: consolidated, when the proposal is taken as a re-affirmation, with the identity of the link it re-affirms; accepted; superseded_previous with the superseded link''s identity; or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
   - *id003
   - *id004
@@ -2005,7 +2005,7 @@ answers:
     answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope knowledge_link in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
   - *id015
 - operation: propose-attribute
-  accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome consolidated, accepted, superseded_previous with the superseded attribute''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
+  accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome: consolidated, when the proposal is taken as a re-affirmation, with the identity of the attribute it re-affirms; accepted; superseded_previous with the superseded attribute''s identity; or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
   - *id003
   - *id004
@@ -2168,6 +2168,10 @@ entries:
 - field: answers
   unstated: No node said in what order ingest-directed's accepted answer carries its summary, its completed run and its report. The contract only listed them, in the order run, report, summary.
   found: '/home/siegfriedneto/projects/eternal/siegard-work/ingest-consolidation-fixes/intake/scope.md, item (3): "the result envelope: the order is run, report, summary, and the chat truncates tool results at 8000 characters so the summary is lost. Expected: summary first."'
+- field: answers
+  unstated: The propose-link and propose-attribute answers list consolidated among the outcomes and carry the link's or the attribute's identity, but no node says that a proposal taken as a re-affirmation answers consolidated, or which assertion's identity that answer carries when no new assertion is recorded.
+  decided: A link or attribute proposal taken as a re-affirmation answers outcome consolidated carrying the identity of the current link or attribute it re-affirms, whatever its change hint.
+  why: A re-affirmation records no new assertion and only adds provenance to the one it meets, so the re-affirmed assertion is the only one whose identity the answer can carry.
 ---
 
 === contracts/knowledge-base/retrieval
