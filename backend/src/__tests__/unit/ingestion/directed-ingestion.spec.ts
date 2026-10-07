@@ -1022,3 +1022,81 @@ describe("directed-ingestion / orchestrator", () => {
     expect(linkArgs[0].valid_from_basis).toBe("stated");
   });
 });
+
+describe("directed-ingestion / result field order", () => {
+  async function ingestFragments(count: number) {
+    const proposeFragment = vi.fn(async () => ({
+      ok: true as const,
+      result: { fragment_id: FRAG_ALICE_ID, status: "proposed" as const },
+    }));
+    const proposeNode = vi.fn(async () => ({
+      ok: true as const,
+      result: { node_id: ALICE_NODE_ID, resolution: "created_new" as const },
+    }));
+    const { pool } = buildPool();
+    const input: DirectedIngestionInput = {
+      fragments: Array.from({ length: count }, (_, i) => ({
+        ref: `fragment-reference-number-${i}`,
+        text: `Fragment text ${i}.`,
+      })),
+      nodes: [{ ref: "n1", node_type: "Person", name: "Alice" }],
+    };
+    return directedIngestionService(input, {
+      pool,
+      logger,
+      catalog: buildTestCatalog(),
+      ingestRaw: buildIngestRaw(),
+      proposeFragment,
+      proposeNode,
+      proposeAttribute: vi.fn(),
+      proposeLink: vi.fn(),
+      verifyNodePin: async () => ({ kind: "ok" }),
+    });
+  }
+
+  function serializedResultKeys(envelope: unknown): string[] {
+    const parsed = JSON.parse(JSON.stringify(envelope)) as {
+      result: Record<string, unknown>;
+    };
+    return Object.keys(parsed.result);
+  }
+
+  it("serializes the summary before the run", async () => {
+    const envelope = await ingestFragments(1);
+
+    const keys = serializedResultKeys(envelope);
+
+    expect(keys.indexOf("summary")).toBeGreaterThanOrEqual(0);
+    expect(keys.indexOf("summary")).toBeLessThan(keys.indexOf("run"));
+  });
+
+  it("serializes the summary before the report", async () => {
+    const envelope = await ingestFragments(1);
+
+    const keys = serializedResultKeys(envelope);
+
+    expect(keys.indexOf("summary")).toBeGreaterThanOrEqual(0);
+    expect(keys.indexOf("summary")).toBeLessThan(keys.indexOf("report"));
+  });
+
+  it("serializes the completed run before the report", async () => {
+    const envelope = await ingestFragments(1);
+
+    const keys = serializedResultKeys(envelope);
+
+    expect(keys.indexOf("run")).toBeGreaterThanOrEqual(0);
+    expect(keys.indexOf("run")).toBeLessThan(keys.indexOf("report"));
+  });
+
+  it("keeps the whole summary in the first 8000 characters of a result longer than 8000", async () => {
+    const envelope = await ingestFragments(200);
+    expect(envelope.ok).toBe(true);
+    if (!envelope.ok) return;
+
+    const serialized = JSON.stringify(envelope);
+    const cut = serialized.slice(0, 8000);
+
+    expect(serialized.length).toBeGreaterThan(8000);
+    expect(cut).toContain(JSON.stringify(envelope.result.summary));
+  });
+});
