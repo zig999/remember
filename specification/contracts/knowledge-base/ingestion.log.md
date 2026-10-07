@@ -76,4 +76,7 @@ entries:
   unstated: The material lets an extraction go on when its preliminary reading fails, while run-extraction and ingest-document answered a failed run whenever the language model provider failed; a provider error during the preliminary reading was decided both ways.
   decided: The provider-failure refusal of run-extraction and ingest-document applies only when the provider fails while a chunk is read.
   why: The material states that a failed preliminary reading never fails the extraction, so that failure cannot also answer a failed run.
+- field: answers
+  unstated: No node said in what order ingest-directed's accepted answer carries its summary, its completed run and its report. The contract only listed them, in the order run, report, summary.
+  found: '/home/siegfriedneto/projects/eternal/siegard-work/ingest-consolidation-fixes/intake/scope.md, item (3): "the result envelope: the order is run, report, summary, and the chat truncates tool results at 8000 characters so the summary is lost. Expected: summary first."'
 ---

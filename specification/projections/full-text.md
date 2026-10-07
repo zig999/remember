@@ -33,6 +33,28 @@ scope: chat
 
 None.
 
+=== constraints/chat-directed-ingestion-description-matches-mcp
+---
+statement: The description of directed ingestion offered to the chat assistant is the same text that the MCP ingest endpoint lists for that tool.
+scope: chat
+---
+
+## Description
+
+This governs only whether the chat assistant and the MCP ingest endpoint describe directed ingestion with the same text.
+It does not decide what that text says.
+It does not decide when the assistant may call directed ingestion, which rules/chat/assistant-writes-only-on-owner-request decides.
+It does not decide whether the chat offers the tool at all, which constraints/chat-toolset decides.
+
+=== constraints/chat-directed-ingestion-description-matches-mcp.log
+---
+entries:
+- field: statement
+  unstated: No node says whether the description of directed ingestion offered to the chat assistant is the same text that the MCP ingest endpoint lists for that tool, or a wording of its own.
+  decided: The chat assistant is offered the same description text that the MCP ingest endpoint lists for directed ingestion.
+  why: Both surfaces offer one operation, ingest-directed, to a model that decides when to call it from that description. A separate chat wording would let the two surfaces tell a model different things about when to write, and correcting one would not correct the other.
+---
+
 === constraints/chat-reads-are-consistent
 ---
 statement: Each conversation usage read and each history built for a turn sees one consistent state of its conversation.
@@ -2028,7 +2050,7 @@ answers:
   - when: The extraction fails for a cause no other refusal names.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run, reported completed even where closing it failed, with its affected nodes, an empty list where they cannot be read, one report entry per item with its reference, kind and status, a link''s reference being its source reference, its link type and its target reference joined by "->", and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, a summary counting the items by kind and status, placed before the completed run and the report so that a result cut to the tool-result length limit still carries it whole, then the completed run, reported completed even where closing it failed, with its affected nodes, an empty list where they cannot be read, and then the report, one entry per item with its reference, kind and status, a link''s reference being its source reference, its link type and its target reference joined by "->"; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
   refusals:
   - rule: rules/knowledge-base/directed-requires-fragment-and-node
     answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
@@ -2143,6 +2165,9 @@ entries:
   unstated: The material lets an extraction go on when its preliminary reading fails, while run-extraction and ingest-document answered a failed run whenever the language model provider failed; a provider error during the preliminary reading was decided both ways.
   decided: The provider-failure refusal of run-extraction and ingest-document applies only when the provider fails while a chunk is read.
   why: The material states that a failed preliminary reading never fails the extraction, so that failure cannot also answer a failed run.
+- field: answers
+  unstated: No node said in what order ingest-directed's accepted answer carries its summary, its completed run and its report. The contract only listed them, in the order run, report, summary.
+  found: '/home/siegfriedneto/projects/eternal/siegard-work/ingest-consolidation-fixes/intake/scope.md, item (3): "the result envelope: the order is run, report, summary, and the chat truncates tool results at 8000 characters so the summary is lost. Expected: summary first."'
 ---
 
 === contracts/knowledge-base/retrieval
@@ -19695,6 +19720,31 @@ entries:
   unstated: The material has a refused or failed proposal always recorded as a tool call, while the code keeps none when recording that tool call itself fails.
   decided: A refused or failed proposal whose tool call cannot be recorded is the one exception to being recorded.
   why: The owner holds the code as the truth, and the handler logs the failed recording and answers the original refusal.
+---
+
+=== rules/knowledge-base/exact-alias-earliest-alias-wins
+---
+type: invariant
+statement: A node proposal whose name equals an alias of more than one active knowledge node of its node type resolves as matched-existing to the one whose matching alias was created earliest, an alias with no recorded creation time counting as created after every alias that has one, and equal creation times going to the lowest knowledge node identity.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+- domain/knowledge-base/node-resolution
+---
+
+## Description
+
+Which knowledge node a node proposal resolves to when its name equals an alias held by several active knowledge nodes of its node type.
+Whether a proposal resolves by exact alias at all is decided by rules/knowledge-base/exact-alias-resolves.
+
+=== rules/knowledge-base/exact-alias-earliest-alias-wins.log
+---
+entries:
+- field: statement
+  unstated: No node says which knowledge node a proposal resolves to when its name equals an alias of several active knowledge nodes of its node type, and node-alias declares created_at as optional, so nothing says where an alias with no creation time falls in an earliest-first order.
+  decided: The node whose matching alias was created earliest wins. An alias with no recorded creation time counts as created after every alias that has one. Equal creation times, including two aliases that both have none, go to the lowest knowledge node identity.
+  why: The intake scope (item 2) asks for a deterministic tie-break of oldest alias first, then node identity. Putting an alias with no creation time last follows the search-ranking rule, where an item that was never recorded falls after every recorded item with the same score. It is also the order an ascending sort on creation time and then node identity gives, so a node with a known creation time is never passed over for one whose age is unknown.
 ---
 
 === rules/knowledge-base/exact-alias-resolves
