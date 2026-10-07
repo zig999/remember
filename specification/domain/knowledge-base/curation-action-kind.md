@@ -8,6 +8,7 @@ values:
 - reject-item
 - correct-item
 - compliance-delete
+- edit-entity
 ---
 
 ## Description

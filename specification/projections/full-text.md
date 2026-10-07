@@ -166,6 +166,36 @@ entries:
   why: The owner decided it is trusted record data; it is not text read from the document.
 ---
 
+=== constraints/entity-edit-is-atomic
+---
+statement: An entity edit's raw information, raw chunk, information fragment, LLM run, new and superseded attributes, provenance and curation action take effect together or not at all.
+scope: knowledge-base
+fitness: the entity edit write operation runs inside one database transaction
+---
+
+## Description
+
+None.
+
+=== constraints/entity-editing-is-not-a-language-model-tool
+---
+statement: No tool surface of the language model exposes entity editing, which is published over REST alone.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/entity-editing-is-not-a-language-model-tool.log
+---
+entries:
+- field: statement
+  unstated: The material names no such thing.
+  decided: No tool surface of the language model exposes entity editing, which is published over REST alone.
+  why: The material names the form as the only client and the language model acts only through proposals.
+---
+
 === constraints/every-operation-requires-owner-authentication
 ---
 statement: Every operation reached over the network authenticates the owner before it runs, by a bearer token the auth provider signed, that has not expired and that names the owner.
@@ -1194,6 +1224,118 @@ entries:
   why: A notice changes what the owner learns, while a control label, a heading or a placeholder keeps the control doing what it did.
 ---
 
+=== contracts/entity-workspace/bff-entity-edit
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/entity-editing
+operations:
+- edit-entity
+---
+
+## Description
+
+The write the entity workspace makes of the knowledge base: one edit carrying every change the owner reviewed, under one reason.
+
+=== contracts/entity-workspace/bff-entity-edit.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: api
+  why: The screen consumes the write under its own name and the context map reads that dependency from this contract.
+---
+
+=== contracts/entity-workspace/bff-entity-reads
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/retrieval
+operations:
+- list-node-types
+- list-nodes
+- read-node
+- list-attribute-keys
+---
+
+## Description
+
+The reads the entity workspace makes of the knowledge base: the node types, the nodes, one node with its attributes and the catalog's attribute keys with their closed values.
+
+=== contracts/entity-workspace/bff-entity-reads.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: api
+  why: The screen consumes the knowledge base reads under their own names and the context map reads that dependency from this contract.
+---
+
+=== contracts/entity-workspace/entity-screen
+---
+type: api
+direction: published
+operations:
+- show-entity-list
+- show-entity-form
+- show-review
+- save-edit
+answers:
+- operation: show-entity-list
+  accepted: the nodes the knowledge base lists, each with its name, type and status, narrowed by the name prefix and node type the owner gave
+  refusals:
+  - when: The listing is being fetched.
+    answer: a loading indication in place of the list
+  - when: The listing fails.
+    answer: an alert saying the nodes could not be loaded, with the action to try again
+  - when: The listing holds no node.
+    answer: a statement that no node was found
+- operation: show-entity-form
+  accepted: the node's name, type and status above one group of fields per attribute key of its type, each field holding the node's current value, its help text and, for a key the catalog closes, its allowed values
+  refusals:
+  - rule: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    answer: the node's attributes with no form and no field
+  - rule: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    answer: the key's values with no field and a pointer to the curation workspace
+  - when: The node or the catalog is being fetched.
+    answer: a loading indication in place of the form
+  - when: No knowledge node is held at the identity in the address.
+    answer: an alert saying the node was not found
+  - when: The node or the catalog fails to load for any other cause.
+    answer: an alert saying the form could not be loaded, with the action to try again
+- operation: show-review
+  accepted: each changed field once, with its previous value beside its new value, the effect its change will have, the validity it states and a field for the reason
+  refusals:
+  - rule: rules/entity-workspace/review-needs-a-changed-field
+    answer: no review is offered
+  - rule: rules/entity-workspace/review-requires-a-trimmed-reason
+    answer: the save is not offered until the reason holds a character
+  - rule: rules/entity-workspace/validity-start-precedes-the-end
+    answer: a message on the validity end field and no save
+- operation: save-edit
+  accepted: a notice that the edit is recorded with an undo that lasts five seconds, then the form reloaded from the values now current
+  refusals:
+  - rule: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    answer: an alert saying the node changed since the form was opened, with every typed value kept
+  - when: The knowledge base refuses the edit for any other cause.
+    answer: an alert carrying the refusal's message, with every typed value kept
+  - when: The knowledge base cannot be reached.
+    answer: an alert saying the edit could not be sent, with every typed value kept
+---
+
+## Description
+
+The screen where the owner edits the attributes of one knowledge node.
+
+=== contracts/entity-workspace/entity-screen.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: api
+  why: The material describes a screen, which the other workspaces state as a published api whose answers are what the owner sees.
+---
+
 === contracts/graph-explorer/bff-graph-view
 ---
 type: api
@@ -1836,6 +1978,75 @@ entries:
   unstated: The standing rule limits every curation action's reason to 1000 characters, while the material's curation requests accept a reason of any length; the two decide differently for a rejection whose reason holds 1500 characters.
   decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
   why: The audit record carries one reason whichever operation wrote it, and a malformed field of these requests is answered that way.
+---
+
+=== contracts/knowledge-base/entity-editing
+---
+type: api
+direction: published
+operations:
+- edit-entity
+answers:
+- operation: edit-entity
+  accepted: 'HTTP 200 carrying, with no envelope, `{ node_id, action_id, applied }`, `applied` listing one `{ attribute_key, effect, item_id, predecessor_id }` per change in the order given, `item_id` and `predecessor_id` null where the effect has none'
+  refusals:
+  - rule: rules/knowledge-base/entity-edit-reason-length
+    answer: &format 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details: { issues: [{ path, message }] }`, each path joined by ".", HTTP 422 over REST'
+  - rule: rules/knowledge-base/entity-edit-value-matches-the-kind
+    answer: *format
+  - rule: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    answer: *format
+  - when: A field is missing, null where it may not be, of the wrong type, outside its closed set, or not a well-formed identifier or `YYYY-MM-DD` date.
+    answer: *format
+  - when: No knowledge node is held at the requested identity.
+    answer: 'error code RESOURCE_NOT_FOUND naming the node, HTTP 404 over REST'
+  - rule: rules/knowledge-base/entity-edit-names-an-active-node
+    answer: 'error code BUSINESS_NODE_NOT_ACTIVE naming the node and its current status, HTTP 409 over REST'
+  - rule: rules/knowledge-base/attribute-key-for-node-type
+    answer: 'error code BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key and the node type, HTTP 422 over REST'
+  - rule: rules/knowledge-base/attribute-value-parses
+    answer: 'error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the value type and the value, HTTP 422 over REST'
+  - rule: rules/knowledge-base/attribute-value-in-allowed-values
+    answer: 'error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the attribute key, the value and the allowed values, HTTP 422 over REST'
+  - rule: rules/knowledge-base/stable-key-change-states-no-validity
+    answer: &incoherent 'error code BUSINESS_TEMPORAL_INCOHERENT, HTTP 422 over REST'
+  - rule: rules/knowledge-base/validity-start-before-end
+    answer: *incoherent
+  - rule: rules/knowledge-base/entity-edit-names-a-live-attribute
+    answer: &conflict 'error code BUSINESS_ENTITY_EDIT_CONFLICT naming the attribute key and, where it has one, the item, HTTP 409 over REST'
+  - rule: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    answer: *conflict
+  - when: Another operation changed an attribute the edit names first.
+    answer: *conflict
+  - rule: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    answer: 'error code BUSINESS_ENTITY_EDIT_DISPUTED naming the attribute key and the item, HTTP 409 over REST'
+  - rule: rules/knowledge-base/entity-edit-changes-something
+    answer: 'error code BUSINESS_ENTITY_EDIT_NO_CHANGES, HTTP 422 over REST'
+  - when: A uniqueness guard of the store refuses the write.
+    answer: *incoherent
+  - &unavailable
+    when: The store is unreachable or a statement times out.
+    answer: 'error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable.", HTTP 503 over REST'
+  - &internal
+    when: The operation fails for any other cause.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause, HTTP 500 over REST'
+---
+
+## Description
+
+The owner's surface for editing the attributes of a knowledge node: one edit carrying every change the owner made to the node, under one reason.
+
+=== contracts/knowledge-base/entity-editing.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: api
+  why: The form needs one synchronous surface that takes the whole edit and answers it, accepted or refused.
+- field: answers
+  unstated: The material says an edit is refused on conflict without naming the codes or statuses of any refusal.
+  decided: HTTP 409 for BUSINESS_NODE_NOT_ACTIVE, BUSINESS_ENTITY_EDIT_CONFLICT and BUSINESS_ENTITY_EDIT_DISPUTED, HTTP 422 for BUSINESS_ENTITY_EDIT_NO_CHANGES and the validation codes the curation surface already uses
+  why: A conflict is a state of the store that the owner can retry and so takes 409 as the curation surface does for a lost race, while a request that is wrong in itself takes 422.
 ---
 
 === contracts/knowledge-base/ingestion
@@ -3699,6 +3910,107 @@ The queue item the owner is looking at, named by its review queue kind and an id
 
 It lets the address, the list and the decision panel agree on which item is open.
 
+=== domain/entity-workspace/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The entity workspace holds the screen where the owner picks a knowledge node and edits its attributes in a form drawn from the catalog.
+
+## Responsibility
+
+It lets the owner see what an edit will change before it is saved, and keeps every edit a new value of the knowledge base rather than an overwrite.
+
+=== domain/entity-workspace/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say how the entity workspace weighs against the contexts around it.
+  decided: supporting
+  why: It adds a screen over knowledge the knowledge base already holds, as the curation workspace does.
+---
+
+=== domain/entity-workspace/attribute-field
+---
+type: value-object
+attributes:
+- name: attribute_key
+  type: string
+  required: true
+- name: item_id
+  type: string
+- name: started_with
+  type: string
+- name: value
+  type: string
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
+---
+
+## Description
+
+One value the owner can edit on the form: the key it belongs to, the current attribute it started from, the value it started with and the value and validity it holds now.
+
+## Responsibility
+
+It lets the form tell what the owner changed from what the node already held.
+
+=== domain/entity-workspace/attribute-field.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: value-object
+  why: A field is what the owner types and is interchangeable with another holding the same values.
+---
+
+=== domain/entity-workspace/entity-edit-session
+---
+type: aggregate-root
+attributes:
+- name: node_id
+  type: string
+  required: true
+- name: fields
+  type: attribute-field
+  many: true
+- name: reason
+  type: string
+- name: reviewing
+  type: boolean
+  required: true
+- name: undo_deadline
+  type: datetime
+operations:
+- open-entity
+- change-field
+- review-changes
+- confirm-save
+- undo-save
+- discard-changes
+---
+
+## Description
+
+One sitting of the owner at the entity form, from opening a knowledge node to saving or discarding the edit.
+
+## Responsibility
+
+It holds what the owner typed until the edit is sent, so that nothing reaches the knowledge base before the owner has reviewed it.
+
+=== domain/entity-workspace/entity-edit-session.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: aggregate-root
+  why: The typed values, the reason and the undo deadline change together within one sitting, as a curation session holds its own.
+---
+
 === domain/graph-explorer/_context
 ---
 strategic: supporting
@@ -4244,6 +4556,39 @@ One value the catalog allows for an attribute key, with the label it is shown by
 
 It closes the values an attribute of that key may take.
 
+=== domain/knowledge-base/applied-change
+---
+type: value-object
+attributes:
+- name: attribute_key
+  type: string
+  required: true
+- name: effect
+  type: edit-effect
+  required: true
+- name: item_id
+  type: string
+- name: predecessor_id
+  type: string
+---
+
+## Description
+
+How one change of an entity edit was recorded: its effect, the attribute it recorded and the attribute it superseded or rejected.
+
+## Responsibility
+
+It tells the owner what each change of an edit did.
+
+=== domain/knowledge-base/applied-change.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: value-object
+  why: The answer to an edit reports each change by value and holds nothing the knowledge base keeps under an identity of its own.
+---
+
 === domain/knowledge-base/assertion-correction
 ---
 type: value-object
@@ -4343,6 +4688,68 @@ The state a knowledge link or a node attribute is in.
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/attribute-change
+---
+type: value-object
+attributes:
+- name: attribute_key
+  type: string
+  required: true
+- name: kind
+  type: attribute-change-kind
+  required: true
+- name: value
+  type: string
+- name: item_id
+  type: string
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
+---
+
+## Description
+
+One change the owner asks for to one attribute key of an entity: the value put in place or the removal, the current attribute it replaces or removes, and the validity it states.
+
+## Responsibility
+
+It carries one field of the entity form to the knowledge base.
+
+=== domain/knowledge-base/attribute-change-kind
+---
+type: enumeration
+values:
+- set
+- remove
+---
+
+## Description
+
+What a change to one attribute of an entity asks for: a value put in place, or the attribute's current value taken away.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/attribute-change-kind.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: enumeration
+  why: The form needs to tell a value put in place from a value taken away, and nothing else.
+---
+
+=== domain/knowledge-base/attribute-change.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: value-object
+  why: A change is a field of the form, which the knowledge base has no identity for, so it is carried as values.
+---
 
 === domain/knowledge-base/attribute-key
 ---
@@ -4614,6 +5021,7 @@ values:
 - reject-item
 - correct-item
 - compliance-delete
+- edit-entity
 ---
 
 ## Description
@@ -4623,6 +5031,15 @@ The kinds of action a curation action records.
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/curation-action-kind.log
+---
+entries:
+- field: values
+  unstated: The material records one curation action per edit without naming its kind.
+  decided: edit-entity added as the eighth value
+  why: No kind of the seven describes an edit of several attributes under one reason.
+---
 
 === domain/knowledge-base/curation-action.log
 ---
@@ -4998,6 +5415,35 @@ entries:
   why: An entity listed with no name gives the model nothing to recognise in a chunk.
 ---
 
+=== domain/knowledge-base/edit-effect
+---
+type: enumeration
+values:
+- first-value
+- addition
+- succession
+- correction
+- removal
+- unchanged
+---
+
+## Description
+
+How one change of an entity edit was recorded.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/edit-effect.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: enumeration
+  why: 'The owner is told per change how it was recorded, and the material names six ways: first value, addition, succession, correction, removal and no change.'
+---
+
 === domain/knowledge-base/effective-status
 ---
 type: enumeration
@@ -5017,6 +5463,40 @@ The status a knowledge link or node attribute is read with on a given day: its s
 ## Responsibility
 
 It lets an ended assertion read as inactive without that state ever being stored.
+
+=== domain/knowledge-base/entity-edit
+---
+type: value-object
+attributes:
+- name: reason
+  type: string
+  required: true
+- name: changes
+  type: attribute-change
+  required: true
+  many: true
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: '1'
+---
+
+## Description
+
+The owner's edit of one knowledge node's attributes in one saving, and why.
+
+## Responsibility
+
+It carries every change the owner made to an entity's attributes, so that they are recorded together under one reason.
+
+=== domain/knowledge-base/entity-edit.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: value-object
+  why: An edit is recorded through the note, the attributes and the curation action it produces and has no identity of its own, as a directed ingestion has none.
+---
 
 === domain/knowledge-base/entity-match-decision
 ---
@@ -5465,6 +5945,32 @@ entries:
   unstated: The material holds link type rules without saying which record owns them.
   decided: entity inside the link-type aggregate
   why: A rule is looked up by its link type and has no meaning apart from it.
+---
+
+=== domain/knowledge-base/live-assertion-status
+---
+type: enumeration
+values:
+- active
+- uncertain
+- disputed
+---
+
+## Description
+
+The statuses of a knowledge link or node attribute that is still held: one neither superseded nor deleted.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/live-assertion-status.log
+---
+entries:
+- field: type
+  unstated: The material names no such thing.
+  decided: enumeration
+  why: Four rules of the entity edit decide the same set of statuses, and a set several rules decide is an element they name.
 ---
 
 === domain/knowledge-base/llm-run
@@ -14209,6 +14715,316 @@ constrains:
 
 None.
 
+=== rules/entity-workspace/a-changed-stable-field-offers-no-validity
+---
+type: invariant
+statement: "A changed field of a key that is not temporal MUST offer no validity start and no validity end."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+---
+type: invariant
+statement: "A changed field of a temporal key MUST offer a validity start and an optional validity end."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+---
+type: invariant
+statement: "A field of a key that has allowed values MUST offer only those values, by their labels and in their order."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-conflict-keeps-the-typed-values
+---
+type: invariant
+statement: "A conflict answer MUST leave every typed value in the form and tell the owner that the node changed since the form was opened."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-conflict-keeps-the-typed-values.log
+---
+entries:
+- field: statement
+  unstated: The material refuses a conflict without saying what the form keeps.
+  decided: Every typed value stays.
+  why: The owner typed values the refusal says nothing against, and losing them would make a conflict cost the whole edit.
+---
+
+=== rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+---
+type: invariant
+statement: "A key whose attribute is disputed MUST show its values without a field and point the owner to the curation workspace."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-field-accepts-only-its-value-type
+---
+type: invariant
+statement: "A field MUST accept only a value that reads as its key's value type."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+---
+type: invariant
+statement: "A key that allows multiple current values MUST show one field for each current attribute the node holds of it and let the owner add and remove fields."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-saved-edit-reloads-the-entity
+---
+type: invariant
+statement: "A saved edit MUST reload the knowledge node so that the form starts again from the values now current."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/a-saved-edit-reloads-the-entity.log
+---
+entries:
+- field: statement
+  unstated: The material does not say what the form shows after a saved edit.
+  decided: The node is reloaded and the form starts again from the values now current.
+  why: The values current after a succession differ from those the form started with, and a second edit made from the old ones would conflict.
+---
+
+=== rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+---
+type: invariant
+statement: "A validity start the owner has not stated MUST show as today and MUST be sent empty."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+---
+type: invariant
+statement: "An attribute of the node whose key the catalog no longer holds for its type MUST show its value without a field."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/fields-start-from-the-current-values
+---
+type: invariant
+statement: "Every field MUST start with the value of the node's current attribute of its key, and empty where the node holds none."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/review-lists-each-changed-field-once
+---
+type: invariant
+statement: "The review MUST list each changed field once, with the value it started with beside the value it now holds."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/review-needs-a-changed-field
+---
+type: invariant
+statement: "The form MUST NOT offer the review while no field differs from the value it started with."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/review-requires-a-trimmed-reason
+---
+type: invariant
+statement: "The review MUST require a reason of between 1 and 1000 characters once trimmed and MUST send it trimmed."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/review-states-the-effect-of-each-change
+---
+type: policy
+statement: "The review MUST state for each changed field the effect its change will have, as a first value, an addition, a succession, a correction or a removal."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+- domain/knowledge-base/edit-effect
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/save-sends-one-change-per-changed-field
+---
+type: policy
+statement: "The save MUST send one change per changed field, a set change carrying the value, the validity and the attribute the field started from, or a remove change where the owner emptied or removed a field that started with a value."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+- domain/knowledge-base/attribute-change
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/saving-waits-for-undo
+---
+type: invariant
+statement: "The edit MUST be sent only after five seconds without an undo, and an undo MUST send nothing and leave the form as it was."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/saving-waits-for-undo.log
+---
+entries:
+- field: statement
+  unstated: The material asks for an undo after saving, and the knowledge base has no operation that reverts an edit.
+  decided: The edit is sent after five seconds without an undo and an undo sends nothing.
+  why: An undo after sending would be a second edit restoring the values, which the material does not ask for, and the curation workspace already undoes by not yet sending.
+---
+
+=== rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+---
+type: invariant
+statement: "The form MUST hold one group of fields for every attribute key the catalog holds for the node's type, in the order the catalog lists them."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+---
+type: invariant
+statement: "The form MUST be offered only for a knowledge node whose status is active, and any other node MUST show its attributes without a form."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/the-form-is-offered-only-for-an-active-node.log
+---
+entries:
+- field: statement
+  unstated: The material does not say what the screen shows for a node that is not active.
+  decided: Its attributes without a form.
+  why: The knowledge base refuses an edit of such a node and the owner should not be offered a form that always fails.
+---
+
+=== rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+---
+type: invariant
+statement: "The screen MUST list the knowledge nodes the knowledge base lists, narrowed by a name prefix and a node type, and open the one the owner picks."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+None.
+
+=== rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type.log
+---
+entries:
+- field: statement
+  unstated: The material edits an entity named by the owner without saying how the owner finds it.
+  decided: A listing narrowed by name prefix and node type that opens the node picked.
+  why: The knowledge base already lists nodes by exactly those two narrowings.
+---
+
+=== rules/entity-workspace/validity-start-precedes-the-end
+---
+type: invariant
+statement: "When the owner gives both a validity start and a validity end the start MUST be strictly earlier than the end, and the message MUST show on the end field."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+None.
+
 === rules/graph-explorer/a-change-saves-only-with-a-conversation-and-nodes
 ---
 type: invariant
@@ -17489,15 +18305,26 @@ None.
 === rules/knowledge-base/attribute-key-for-node-type
 ---
 type: invariant
-statement: An attribute proposal MUST name an attribute key the catalog holds for the node type of its knowledge node.
+statement: An attribute proposal or a change of an entity edit MUST name an attribute key the catalog holds for the node type of its knowledge node.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/attribute-key
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/entity-edit
 ---
 
 ## Description
 
 None.
+
+=== rules/knowledge-base/attribute-key-for-node-type.log
+---
+entries:
+- field: statement
+  unstated: The material makes the form offer only the keys of the node type without saying the knowledge base refuses another.
+  decided: A change of an entity edit is held to the same catalog check as an attribute proposal.
+  why: A request that does not come from the form must be refused the same way, and the condition is the same one.
+---
 
 === rules/knowledge-base/attribute-key-history
 ---
@@ -17648,27 +18475,38 @@ None.
 === rules/knowledge-base/attribute-value-in-allowed-values
 ---
 type: invariant
-statement: An attribute proposal or an attribute correction for a key that has allowed values MUST carry one of them exactly as written.
+statement: An attribute proposal, an attribute correction or a set change for a key that has allowed values MUST carry one of them exactly as written.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/attribute-key
 - domain/knowledge-base/corrected-values
+- domain/knowledge-base/attribute-change
 ---
 
 ## Description
 
 None.
 
+=== rules/knowledge-base/attribute-value-in-allowed-values.log
+---
+entries:
+- field: statement
+  unstated: The material makes a closed key a selection without saying the knowledge base also refuses a value outside it.
+  decided: A set change carries one of the allowed values exactly as written.
+  why: The knowledge base is the authority on a closed key whatever the form offered.
+---
+
 === rules/knowledge-base/attribute-value-parses
 ---
 type: invariant
-statement: 'An attribute proposal''s value and an attribute correction''s value MUST read as its key''s value type: a real calendar date written as year-month-day for date, digits with an optional leading minus and an optional decimal part for number, exactly true or false for bool, and any text for text.'
+statement: 'An attribute proposal''s value, an attribute correction''s value and a set change''s value MUST read as its key''s value type: a real calendar date written as year-month-day for date, digits with an optional leading minus and an optional decimal part for number, exactly true or false for bool, and any text for text.'
 expression: 'date: ^\d{4}-\d{2}-\d{2}$ naming an existing day; number: ^-?\d+(\.\d+)?$ and finite; bool: ^(true|false)$; text: any'
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/attribute-key
 - domain/knowledge-base/value-type
 - domain/knowledge-base/corrected-values
+- domain/knowledge-base/attribute-change
 ---
 
 ## Description
@@ -17682,6 +18520,10 @@ entries:
   unstated: The material leaves to the runtime's date parser whether a well-formed but impossible date such as 2024-02-30 is refused.
   decided: Only a real calendar date is a date value.
   why: A date attribute names a day, and no such day exists.
+- field: statement
+  unstated: The material does not say whether the set change value follows the format rule of a proposal and a correction.
+  decided: The set change value is held to the same formats.
+  why: One definition of how a value reads for its type serves every way an attribute value arrives.
 ---
 
 === rules/knowledge-base/audit-filter-checks-order
@@ -19624,6 +20466,488 @@ type: invariant
 statement: The catalog link types that require a validity end on change are exactly reports_to, part_of and located_in.
 constrains:
 - domain/knowledge-base/link-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-addition
+---
+type: policy
+statement: "A set change that names no attribute and states a value no active or uncertain attribute of its key holds, made to a key that allows multiple current values of which the edited node holds an attribute with a live status, is recorded as a new active attribute beside the others with the effect addition and closes none."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/live-assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-addition.log
+---
+entries:
+- field: statement
+  unstated: The material adds a value to a multi-valued key and treats an equal value as no change without saying which wins for a value the key already holds.
+  decided: An addition is recorded only for a value no active or uncertain attribute of the key holds.
+  why: A value already held is the unchanged case, and recording it again would duplicate it.
+---
+
+=== rules/knowledge-base/entity-edit-adds-no-second-current-value
+---
+type: policy
+statement: "A set change that names no attribute MUST NOT be made to a key that does not allow multiple current values while the edited node holds an attribute of that key with a live status."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/live-assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-adds-no-second-current-value.log
+---
+entries:
+- field: statement
+  unstated: The material does not say what happens to a set change that names no attribute for a key that already holds one.
+  decided: Refused as a conflict.
+  why: The form names the attribute it started from, so a change naming none for a held key was made from a form opened before that value existed.
+---
+
+=== rules/knowledge-base/entity-edit-changes-something
+---
+type: invariant
+statement: "An entity edit MUST record at least one change with an effect other than unchanged."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/applied-change
+- domain/knowledge-base/edit-effect
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-changes-something.log
+---
+entries:
+- field: statement
+  unstated: The material does not say what an edit of unchanged values does.
+  decided: Refused when no change has an effect other than unchanged.
+  why: A correction that changes nothing is already refused, and a note recorded for no change would be provenance for nothing.
+---
+
+=== rules/knowledge-base/entity-edit-correction
+---
+type: policy
+statement: "A set change that names a current attribute of a key that is not temporal and states a value other than its own supersedes it and is recorded as a new active attribute that names it as the one it supersedes, with the effect correction."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-first-value
+---
+type: invariant
+statement: "A set change that names no attribute, made to a key of which the edited node holds no attribute with a live status, is recorded as a new active attribute with the effect first-value."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/live-assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+---
+type: invariant
+statement: "An entity edit MUST NOT change an attribute whose status is disputed."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-leaves-disputes-to-curation.log
+---
+entries:
+- field: statement
+  unstated: The material blocks a disputed field in the form without saying what the knowledge base does with an edit that names one.
+  decided: The edit is refused as disputed.
+  why: A dispute is resolved by preferring a side, and an edit that supersedes one side would settle it without the evidence the owner saw.
+---
+
+=== rules/knowledge-base/entity-edit-names-a-live-attribute
+---
+type: invariant
+statement: "A change that names an attribute MUST name one of the edited node's attributes of the change's key whose status is a live status."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/live-assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-names-an-active-node
+---
+type: invariant
+statement: "An entity edit MUST name a knowledge node whose status is active."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-names-an-active-node.log
+---
+entries:
+- field: statement
+  unstated: The material does not say which node statuses may be edited.
+  decided: Only active.
+  why: A node under review or merged is not yet the node it will become, so editing it would write to the wrong entity.
+---
+
+=== rules/knowledge-base/entity-edit-new-attribute-state
+---
+type: policy
+statement: "An entity edit records every new attribute as active at confidence 1.0 under the LLM run it opened."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+- domain/knowledge-base/llm-run
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-new-attribute-state.log
+---
+entries:
+- field: statement
+  unstated: The material does not say the confidence or the run of an attribute the owner types.
+  decided: Active at confidence 1.0 under the edit run.
+  why: The owner stated the value directly, as a directed ingestion does at confidence 1.0.
+---
+
+=== rules/knowledge-base/entity-edit-note
+---
+type: policy
+statement: "An accepted entity edit records one raw information, one raw chunk holding all of its content and one accepted information fragment anchored to that chunk whose text is the edit's reason."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/raw-chunk
+- domain/knowledge-base/information-fragment
+- domain/knowledge-base/fragment-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-note-content
+---
+type: invariant
+statement: "The raw information an entity edit records holds as its content the edit's reason, the moment of the edit and a nonce of its own."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-note-source
+---
+type: policy
+statement: "The raw information an entity edit records has source type other and records in its metadata that it is an operator note and the identity of the edited knowledge node."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/source-type
+- domain/knowledge-base/knowledge-node
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-note-source.log
+---
+entries:
+- field: statement
+  unstated: The material asks for a raw information of manual origin without saying which source type holds it.
+  decided: Source type other, with the metadata recording an operator note and the edited node.
+  why: Source type is a closed set stored as an enumeration, and a directed ingestion already marks its origin in metadata instead of widening it.
+---
+
+=== rules/knowledge-base/entity-edit-provenance
+---
+type: policy
+statement: "An entity edit's new attribute holds the provenance of the entity edit's information fragment and, when it is a correction, every provenance of the attribute it supersedes."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+- domain/knowledge-base/information-fragment
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-provenance.log
+---
+entries:
+- field: statement
+  unstated: The material points every new attribute at the note without saying what a correction keeps of the superseded one.
+  decided: A correction also holds every provenance of the attribute it supersedes.
+  why: A correction in the curation surface keeps the superseded item provenance and adds the one it cites.
+---
+
+=== rules/knowledge-base/entity-edit-reason-length
+---
+type: invariant
+statement: "An entity edit's reason MUST hold between 1 and 1000 characters once trimmed."
+constrains:
+- domain/knowledge-base/entity-edit
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-reason-length.log
+---
+entries:
+- field: statement
+  unstated: The material requires a reason without bounding it.
+  decided: Between 1 and 1000 characters once trimmed.
+  why: The reason is recorded as a curation action reason, which holds at most 1000 characters, and a blank one is refused as in every other curation request.
+---
+
+=== rules/knowledge-base/entity-edit-records-curation-action
+---
+type: policy
+statement: "An accepted entity edit records one curation action of kind edit-entity on target kind node at the edited node's identity, with its reason as the reason and its applied changes as the payload."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/applied-change
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-removal
+---
+type: policy
+statement: "A remove change rejects the attribute it names, marking it deleted and stamping its supersession time, with the effect removal."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-removal-names-an-attribute
+---
+type: invariant
+statement: "A remove change MUST name an attribute."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-change-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-run
+---
+type: policy
+statement: "An entity edit opens an LLM run of model operator and prompt version operator-edit-v1, which it completes without calling a language model."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/llm-run
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-run.log
+---
+entries:
+- field: statement
+  unstated: The material does not say which LLM run the note and the new attributes are recorded under.
+  decided: Model operator and prompt version operator-edit-v1.
+  why: An information fragment and a new attribute need a run, and the directed ingestion names its own model and version for the same reason.
+---
+
+=== rules/knowledge-base/entity-edit-start-defaults-to-today
+---
+type: policy
+statement: "A set change to a temporal key that states no validity start is recorded with today as its start and the basis received."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/valid-from-basis
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-start-defaults-to-today.log
+---
+entries:
+- field: statement
+  unstated: The material defaults the start to today for keys that require one without saying what a temporal key that does not require one gets.
+  decided: Today with the basis received for every temporal key.
+  why: The owner decided the start defaults to today when none is stated, and email, phone and website are temporal.
+---
+
+=== rules/knowledge-base/entity-edit-stated-start-is-stated
+---
+type: invariant
+statement: "A set change's stated validity start is recorded with the basis stated."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/valid-from-basis
+- domain/knowledge-base/node-attribute
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-succession
+---
+type: policy
+statement: "A set change that names a current attribute of a temporal key and states a value other than its own supersedes it and is recorded as a new active attribute that names it as the one it supersedes, with the effect succession."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-succession-closes-the-previous
+---
+type: policy
+statement: "An entity edit's succession gives the attribute it supersedes a validity end at the new attribute's validity start, and leaves it no validity end when that start falls on or before the superseded attribute's start."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-succession.log
+---
+entries:
+- field: statement
+  unstated: The material makes a temporal key change by succession without saying whether a multi-valued key edited in place does too.
+  decided: A multi-valued temporal key edited in place is a succession like any other.
+  why: The owner decided the effect follows the key being temporal, and email and phone are temporal.
+---
+
+=== rules/knowledge-base/entity-edit-unchanged-records-nothing
+---
+type: policy
+statement: "A set change whose value equals the value of the attribute it names, or, naming none, of an attribute of a key that allows multiple current values whose status is active or uncertain, is reported with the effect unchanged and records nothing."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-edit-unchanged-records-nothing.log
+---
+entries:
+- field: statement
+  unstated: The material says an equal value writes nothing and also that reaffirming does not duplicate, which differ about provenance.
+  decided: An equal value is reported unchanged and records nothing, not even provenance.
+  why: The owner who types a value already held asserts nothing new, and adding the note as provenance would claim a source for a fact the note never stated.
+---
+
+=== rules/knowledge-base/entity-edit-value-matches-the-kind
+---
+type: invariant
+statement: "A change MUST state a value exactly when its kind is set."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-change-kind
 ---
 
 ## Description
@@ -23267,6 +24591,28 @@ entries:
   why: The owner decided the source's behavior is the truth, and a chunker that splits on a line the node denies is a different chunker.
 ---
 
+=== rules/knowledge-base/stable-key-change-states-no-validity
+---
+type: invariant
+statement: "A change to an attribute key that is not temporal MUST state no validity start and no validity end."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/stable-key-change-states-no-validity.log
+---
+entries:
+- field: statement
+  unstated: The material gives a key that is not temporal no validity without saying what a change stating one does.
+  decided: Refused as temporally incoherent.
+  why: An attribute of a key that is not temporal holds no validity, and stating one would make a correction pass as a change in the world.
+---
+
 === rules/knowledge-base/start-requiring-attribute-keys
 ---
 type: invariant
@@ -23792,16 +25138,26 @@ entries:
 === rules/knowledge-base/validity-start-before-end
 ---
 type: invariant
-statement: A proposal, an adjusted period or a correction that states both a validity start and a validity end MUST state the start strictly before the end.
+statement: A proposal, an adjusted period, a correction or a change of an entity edit that states both a validity start and a validity end MUST state the start strictly before the end.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/adjusted-period
 - domain/knowledge-base/corrected-values
+- domain/knowledge-base/attribute-change
 ---
 
 ## Description
 
 None.
+
+=== rules/knowledge-base/validity-start-before-end.log
+---
+entries:
+- field: statement
+  unstated: The material asks the form to require a start before the end without saying the knowledge base refuses the reverse.
+  decided: A change of an entity edit is held to it as a proposal and a correction are.
+  why: A request not coming from the form must be refused the same way.
+---
 
 === rules/knowledge-base/word-similarity
 ---
@@ -24285,6 +25641,81 @@ then:
 
 An item someone else already resolved stays gone.
 
+=== scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+---
+subject: rules/entity-workspace/a-conflict-keeps-the-typed-values
+given:
+- "the owner changed the status of a project and another operation superseded its current status after the form was opened"
+when:
+- "the knowledge base answers the edit with a conflict"
+then:
+- "the form still holds the status the owner typed"
+- "an alert says the node changed since the form was opened"
+---
+
+## Description
+
+A conflict never costs the owner what they typed.
+
+=== scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/entity-workspace/a-conflict-keeps-the-typed-values
+  why: A worked case shows the form after a conflict.
+---
+
+=== scenarios/entity-workspace/an-unstated-start-is-sent-empty
+---
+subject: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+given:
+- "the owner changed the deadline of a project and gave no validity start"
+when:
+- "the owner confirms the review"
+then:
+- "the validity start shows as today in the review"
+- "the change is sent with no validity start"
+---
+
+## Description
+
+The knowledge base, not the form, records today with the basis received.
+
+=== scenarios/entity-workspace/an-unstated-start-is-sent-empty.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+  why: A worked case separates what the form shows from what it sends.
+---
+
+=== scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+---
+subject: rules/entity-workspace/saving-waits-for-undo
+given:
+- "the owner confirmed the review of an edit that changes one field"
+when:
+- "the owner undoes the edit three seconds later"
+then:
+- "no edit is sent to the knowledge base"
+- "the form still holds the owner's typed values"
+---
+
+## Description
+
+An undo inside the five seconds leaves the knowledge base as it was.
+
+=== scenarios/entity-workspace/undo-within-five-seconds-sends-nothing.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/entity-workspace/saving-waits-for-undo
+  why: A worked case shows what an undo leaves behind.
+---
+
 === scenarios/graph-explorer/a-deleted-source-offers-no-retry
 ---
 subject: rules/graph-explorer/an-origin-failure-is-an-alert-with-a-retry-unless-deleted
@@ -24472,6 +25903,31 @@ involves:
 
 None.
 
+=== scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+---
+subject: rules/knowledge-base/entity-edit-succession-closes-the-previous
+given:
+- "a project holds an active status starting on 2026-10-01 with no validity end"
+when:
+- "the owner edits the project, setting a set change that names that status with another status and states a validity start of 2026-09-01"
+then:
+- "the earlier status is superseded and is given no validity end"
+- "the new status starts on 2026-09-01 with the basis stated"
+---
+
+## Description
+
+A start on or before the earlier start leaves no period to close.
+
+=== scenarios/knowledge-base/backdated-start-supersedes-without-an-end.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/knowledge-base/entity-edit-succession-closes-the-previous
+  why: The owner keeps the rule that a closing date on or before the earlier start gives no end, which a worked case makes visible.
+---
+
 === scenarios/knowledge-base/context-links-later-mention
 ---
 subject: rules/knowledge-base/document-context-read-first
@@ -24549,6 +26005,31 @@ involves:
 
 None.
 
+=== scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+---
+subject: rules/knowledge-base/entity-edit-names-a-live-attribute
+given:
+- "a project's deadline attribute was superseded after the owner opened the form"
+when:
+- "the owner saves an edit whose set change names that superseded attribute"
+then:
+- "the edit is refused as a conflict"
+- "nothing of the edit is recorded"
+---
+
+## Description
+
+A form opened before another change cannot overwrite what that change recorded.
+
+=== scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/knowledge-base/entity-edit-names-a-live-attribute
+  why: The owner requires a conflict when the current value changed since the form loaded.
+---
+
 === scenarios/knowledge-base/email-without-blank-line-is-one-block
 ---
 subject: rules/knowledge-base/email-quote-blocks
@@ -24567,6 +26048,32 @@ involves:
 ## Description
 
 None.
+
+=== scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+---
+subject: rules/knowledge-base/entity-edit-removal
+given:
+- "a person holds two active email attributes"
+when:
+- "the owner edits the person, setting a remove change that names one of them"
+then:
+- "that email is marked deleted"
+- "the other email stays active"
+- "the change is reported with the effect removal"
+---
+
+## Description
+
+A remove change reaches only the attribute it names.
+
+=== scenarios/knowledge-base/emptying-one-email-rejects-only-that-email.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/knowledge-base/entity-edit-removal
+  why: The owner decides removal for a multi-valued key, where two values share one key.
+---
 
 === scenarios/knowledge-base/failed-context-reading-keeps-extracting
 ---
@@ -24887,6 +26394,32 @@ then:
 
 None.
 
+=== scenarios/knowledge-base/stable-key-edit-is-a-correction
+---
+subject: rules/knowledge-base/entity-edit-correction
+given:
+- "an organization holds an active cnpj attribute with no validity"
+when:
+- "the owner edits the organization, setting a set change that names that attribute with another cnpj"
+then:
+- "the earlier attribute is superseded and keeps no validity end"
+- "a new active attribute holds the other cnpj and names the earlier one as the one it supersedes"
+- "the change is reported with the effect correction"
+---
+
+## Description
+
+A key that is not temporal changes by correction, never by pretending the world changed.
+
+=== scenarios/knowledge-base/stable-key-edit-is-a-correction.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/knowledge-base/entity-edit-correction
+  why: The owner states that a key that is not temporal changes by correction without a validity end.
+---
+
 === scenarios/knowledge-base/stop-words-only-query
 ---
 subject: rules/knowledge-base/search-query-must-parse
@@ -24919,6 +26452,33 @@ then:
 ## Description
 
 None.
+
+=== scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+---
+subject: rules/knowledge-base/entity-edit-start-defaults-to-today
+given:
+- "a project holds an active deadline of 2026-11-30 starting on 2026-03-01"
+- "today is 2026-10-07"
+when:
+- "the owner edits the project, setting a set change that names that attribute with the value 2026-12-15 and states no validity start"
+then:
+- "the new deadline starts on 2026-10-07 with the basis received"
+- "the earlier deadline is superseded with a validity end of 2026-10-07"
+- "the change is reported with the effect succession"
+---
+
+## Description
+
+An unstated start is today, and today is also where the earlier value ends.
+
+=== scenarios/knowledge-base/temporal-edit-without-a-date-starts-today.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing.
+  decided: rules/knowledge-base/entity-edit-start-defaults-to-today
+  why: The owner gives today as the default and as the closing date, and a worked case settles which dates follow.
+---
 
 === scenarios/knowledge-base/unmatched-term-leaves-approximate-match
 ---

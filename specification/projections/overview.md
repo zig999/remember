@@ -10,9 +10,10 @@ Derived by spec.py from the specification files; never edited.
 | chat | supporting | 17 | 131 | 1 | 0 |
 | chat-workspace | supporting | 6 | 126 | 2 | 4 |
 | curation-workspace | supporting | 10 | 218 | 3 | 9 |
+| entity-workspace | supporting | 2 | 21 | 3 | 3 |
 | graph-explorer | supporting | 10 | 170 | 3 | 4 |
 | ingest-workspace | supporting | 3 | 58 | 3 | 4 |
-| knowledge-base | core | 79 | 427 | 5 | 28 |
+| knowledge-base | core | 85 | 452 | 6 | 33 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
@@ -27,6 +28,7 @@ Derived by spec.py from the specification files; never edited.
 - chat-workspace/chat-session — 0 entity(ies) inside, 9 attribute(s) on the root
 - chat/conversation — 3 entity(ies) inside, 5 attribute(s) on the root
 - curation-workspace/curation-session — 0 entity(ies) inside, 8 attribute(s) on the root
+- entity-workspace/entity-edit-session — 0 entity(ies) inside, 5 attribute(s) on the root
 - graph-explorer/graph-pane — 0 entity(ies) inside, 13 attribute(s) on the root
 - graph-explorer/node-detail — 0 entity(ies) inside, 5 attribute(s) on the root
 - ingest-workspace/ingest-session — 0 entity(ies) inside, 8 attribute(s) on the root
@@ -63,6 +65,8 @@ Derived by spec.py from the specification files; never edited.
 - curation-transports-answer-alike (knowledge-base)
 - curation-write-failure-logged (knowledge-base)
 - document-content-is-data (knowledge-base)
+- entity-edit-is-atomic (knowledge-base)
+- entity-editing-is-not-a-language-model-tool (knowledge-base)
 - every-operation-requires-owner-authentication (system)
 - expected-refusals-not-logged-as-errors (system)
 - extraction-acts-only-through-proposals (knowledge-base)
@@ -91,4 +95,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-313 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+360 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.

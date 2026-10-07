@@ -1,0 +1,15 @@
+---
+type: policy
+statement: "A set change that names a current attribute of a key that is not temporal and states a value other than its own supersedes it and is recorded as a new active attribute that names it as the one it supersedes, with the effect correction."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
