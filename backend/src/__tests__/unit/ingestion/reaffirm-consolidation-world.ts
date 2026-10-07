@@ -10,6 +10,7 @@ export interface HeldProvenance {
 export interface Write {
   readonly table: "knowledge_link" | "node_attribute";
   readonly kind: "insert" | "update";
+  readonly values: Readonly<Record<string, unknown>>;
 }
 
 export interface WorldSeed {
@@ -42,6 +43,13 @@ const SAVEPOINT_CONTROL = /^(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT) 
 const WRITE_STATEMENT = /^(INSERT INTO|UPDATE) (knowledge_link|node_attribute)\b/;
 const SELECTED_TABLE = /FROM (\w+)/;
 const EMPTY: Answer = { rows: [], rowCount: 0 };
+const INSERT_SHAPE = /^INSERT INTO \w+ \(([^)]*)\) VALUES \((.*)\) RETURNING/;
+const UPDATE_SHAPE = /^UPDATE \w+ SET (.*) WHERE /;
+const ASSIGNMENT_BOUNDARY = /,\s*(?=\w+\s*=)/;
+const ASSIGNMENT = /^(\w+)\s*=\s*(.*)$/;
+const LIST_SEPARATOR = /\s*,\s*/;
+const PLACEHOLDER = /^\$(\d+)/;
+const LITERAL = /^'([^']*)'/;
 const UNIQUE_VIOLATION = "23505";
 const LINK_PROVENANCE_INDEX = "provenance_link_fragment_uq";
 const ATTRIBUTE_PROVENANCE_INDEX = "provenance_attr_fragment_uq";
@@ -109,12 +117,52 @@ function storeProvenance(
   return EMPTY;
 }
 
-function recordWrite(state: State, sql: string): Answer {
+function resolveToken(token: string, params: readonly unknown[]): unknown {
+  const placeholder = PLACEHOLDER.exec(token);
+  if (placeholder !== null) return params[Number(placeholder[1]) - 1];
+  const literal = LITERAL.exec(token);
+  return literal === null ? token : literal[1];
+}
+
+function insertedValues(
+  sql: string,
+  params: readonly unknown[]
+): Record<string, unknown> {
+  const shape = INSERT_SHAPE.exec(sql);
+  const columns = (shape?.[1] ?? "").split(LIST_SEPARATOR);
+  const tokens = (shape?.[2] ?? "").split(LIST_SEPARATOR);
+  return Object.fromEntries(
+    columns.map((column, at) => [column, resolveToken(tokens[at] ?? "", params)])
+  );
+}
+
+function updatedValues(
+  sql: string,
+  params: readonly unknown[]
+): Record<string, unknown> {
+  const assignments = (UPDATE_SHAPE.exec(sql)?.[1] ?? "").split(
+    ASSIGNMENT_BOUNDARY
+  );
+  const pairs = assignments
+    .map((assignment) => ASSIGNMENT.exec(assignment))
+    .filter((pair): pair is RegExpExecArray => pair !== null);
+  return Object.fromEntries(
+    pairs.map((pair) => [pair[1] ?? "", resolveToken(pair[2] ?? "", params)])
+  );
+}
+
+function recordWrite(
+  state: State,
+  sql: string,
+  params: readonly unknown[]
+): Answer {
   const match = WRITE_STATEMENT.exec(sql);
   if (match === null) throw new Error(`unexpected statement: ${sql}`);
   const table = match[2] === "knowledge_link" ? "knowledge_link" : "node_attribute";
   const kind = match[1] === "UPDATE" ? "update" : "insert";
-  state.writes.push({ table, kind });
+  const values =
+    kind === "insert" ? insertedValues(sql, params) : updatedValues(sql, params);
+  state.writes.push({ table, kind, values });
   if (kind === "update") return EMPTY;
   return { rows: [{ id: `inserted-${table}-${state.writes.length}` }], rowCount: 1 };
 }
@@ -132,7 +180,7 @@ function answer(
     return storeProvenance(state, sql, params);
   }
   if (sql.startsWith("UPDATE information_fragment")) return EMPTY;
-  return recordWrite(state, sql);
+  return recordWrite(state, sql, params);
 }
 
 export function buildWorld(seed: WorldSeed = {}): World {

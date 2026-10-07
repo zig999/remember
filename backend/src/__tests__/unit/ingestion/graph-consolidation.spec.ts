@@ -396,6 +396,18 @@ function buildClient(cfg: MockConfig = {}) {
   return { client, state };
 }
 
+function landingOf(
+  result: { readonly outcome: string; readonly link_id?: string | null },
+  state: MockState
+): Record<string, unknown> {
+  return {
+    outcome: result.outcome,
+    link_id: result.link_id,
+    new_links: state.inserts.knowledge_link.length,
+    provenance_targets: state.inserts.provenance.map((p) => p.target_id),
+  };
+}
+
 const baseLinkArgs = (overrides: Partial<{
   source_node_id: string;
   target_node_id: string;
@@ -648,49 +660,36 @@ describe("TC-011 — multi-current link re-affirmation with divergent valid_from
     expect(state.updates.length).toBe(0);
   });
 
-  // Counterpart: a multi-current proposal with change_hint='succession' is
-  // semantically odd (succession does not apply to multi-current types per
-  // §6.5) and must NOT be treated as a silent re-affirmation. The fix only
-  // relaxes branch (a) for `change_hint === 'none'` — any change signal
-  // keeps the original branching.
-  it("does NOT consolidate when change_hint='succession' even on a multi-current link", async () => {
+  it("re-affirms the held link: consolidated with its identity, no new link, provenance added to it, when change_hint='succession' repeats its target on a multi-current link type", async () => {
     const catalog = buildCatalog();
-    const { client } = buildClient({
+    const { client, state } = buildClient({
       vigentLink: {
         id: EXISTING_LINK_ID,
         target_node_id: TARGET_NODE_A,
         valid_from: "2026-06-13",
         status: "active",
       },
-      fragmentText: "neutral text without succession markers",
     });
 
-    let envelope: Awaited<ReturnType<typeof proposeLinkService>> | null = null;
-    let thrown: unknown = null;
-    try {
-      envelope = await proposeLinkService(
-        client,
-        baseLinkArgs({
-          link_type: "participates_in",
-          target_node_id: TARGET_NODE_A,
-          valid_from: "2026-06-14",
-          valid_from_basis: "received",
-          change_hint: "succession",
-        }),
-        runCtx,
-        { catalog, now: () => new Date("2026-06-14T12:00:00Z") }
-      );
-    } catch (err) {
-      thrown = err;
-    }
-    // Either an envelope with a non-consolidated outcome OR a thrown
-    // ValidationFailure is acceptable — what matters is that we did NOT
-    // silently consolidate (which would hide the change signal).
-    if (envelope !== null && envelope.ok) {
-      expect(envelope.result.outcome).not.toBe("consolidated");
-    } else {
-      expect(thrown).not.toBeNull();
-    }
+    const envelope = await proposeLinkService(
+      client,
+      baseLinkArgs({
+        link_type: "participates_in",
+        target_node_id: TARGET_NODE_A,
+        change_hint: "succession",
+      }),
+      runCtx,
+      { catalog, now: () => new Date("2026-06-14T12:00:00Z") }
+    );
+
+    expect(envelope.ok).toBe(true);
+    if (!envelope.ok) return;
+    expect(landingOf(envelope.result, state)).toEqual({
+      outcome: "consolidated",
+      link_id: EXISTING_LINK_ID,
+      new_links: 0,
+      provenance_targets: [EXISTING_LINK_ID],
+    });
   });
 
   it("functional link with the same target and a different valid_from consolidates on the held link", async () => {

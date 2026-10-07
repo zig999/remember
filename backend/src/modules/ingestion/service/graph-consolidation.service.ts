@@ -341,7 +341,7 @@ async function consolidateLinkOnce(
   if (vigent !== null) {
     const sameTarget = vigent.target_node_id === args.target_node_id;
 
-    if (sameTarget && args.change_hint === "none") {
+    if (sameTarget && args.change_hint !== "correction") {
       await insertLinkProvenance(client, vigent.id, args.fragment_ids);
       return { outcome: "consolidated", link_id: vigent.id };
     }
@@ -525,7 +525,7 @@ async function consolidateAttributeOnce(
   if (vigent !== null) {
     const sameValue = vigent.value === args.value;
 
-    if (sameValue && args.change_hint === "none") {
+    if (sameValue && args.change_hint !== "correction") {
       await insertAttributeProvenance(client, vigent.id, args.fragment_ids);
       return { outcome: "consolidated", attribute_id: vigent.id };
     }
