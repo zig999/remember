@@ -672,6 +672,7 @@ interface Observation {
 
 interface Dispute {
   readonly held_statuses: unknown[];
+  readonly marked_disputed: unknown[];
   readonly recorded_statuses: unknown[];
   readonly recorded_supersedes: unknown[];
 }
@@ -872,81 +873,148 @@ describe("re-affirmation by a proposal with change hint none or succession", () 
   });
 });
 
+interface Taken {
+  readonly outcome: string;
+  readonly on_held: boolean;
+  readonly held_statuses: unknown[];
+  readonly new_assertions: number;
+}
+
+const REAFFIRMED_ON_HELD: Taken = {
+  outcome: "consolidated",
+  on_held: true,
+  held_statuses: [],
+  new_assertions: 0,
+};
+const CORRECTED: Taken = {
+  outcome: "accepted",
+  on_held: false,
+  held_statuses: ["superseded"],
+  new_assertions: 1,
+};
+const SUCCEEDED: Taken = {
+  outcome: "superseded_previous",
+  on_held: false,
+  held_statuses: ["superseded"],
+  new_assertions: 1,
+};
+const DISPUTE_TAKEN: Taken = {
+  outcome: "disputed",
+  on_held: false,
+  held_statuses: ["disputed"],
+  new_assertions: 1,
+};
+const NEW_ASSERTION: Taken = {
+  outcome: "accepted",
+  on_held: false,
+  held_statuses: [],
+  new_assertions: 1,
+};
+
 interface Precedence {
   readonly name: string;
   readonly subjects: readonly Subject[];
   readonly held: boolean;
   readonly proposal: Proposal;
-  readonly branch: string;
+  readonly taken: Taken;
 }
 
 const PRECEDENCE: readonly Precedence[] = [
   {
-    name: "re-affirmation before succession",
+    name: "re-affirmation before succession by hint",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("succession", false, NEUTRAL_TEXTS),
-    branch: "consolidated:",
+    taken: REAFFIRMED_ON_HELD,
+  },
+  {
+    name: "re-affirmation before succession by signal",
+    subjects: ONE_CURRENT_SUBJECTS,
+    held: true,
+    proposal: proposing("none", false, SUCCESSION_TEXTS),
+    taken: REAFFIRMED_ON_HELD,
   },
   {
     name: "re-affirmation before new assertion",
     subjects: MANY_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("none", false, NEUTRAL_TEXTS),
-    branch: "consolidated:",
+    taken: REAFFIRMED_ON_HELD,
   },
   {
     name: "correction before succession",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("correction", true, SUCCESSION_TEXTS),
-    branch: "accepted:superseded",
+    taken: CORRECTED,
   },
   {
     name: "correction before dispute",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("correction", true, NEUTRAL_TEXTS),
-    branch: "accepted:superseded",
+    taken: CORRECTED,
+  },
+  {
+    name: "correction before new assertion on a type allowing multiple current assertions",
+    subjects: MANY_CURRENT_SUBJECTS,
+    held: true,
+    proposal: proposing("correction", false, NEUTRAL_TEXTS),
+    taken: CORRECTED,
   },
   {
     name: "succession by signal before dispute",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("none", true, SUCCESSION_TEXTS),
-    branch: "superseded_previous:superseded",
+    taken: SUCCEEDED,
   },
   {
     name: "succession by hint before dispute",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("succession", true, NEUTRAL_TEXTS),
-    branch: "superseded_previous:superseded",
+    taken: SUCCEEDED,
   },
   {
     name: "dispute before new assertion",
     subjects: ONE_CURRENT_SUBJECTS,
     held: true,
     proposal: proposing("none", true, NEUTRAL_TEXTS),
-    branch: "disputed:disputed",
+    taken: DISPUTE_TAKEN,
   },
   {
     name: "new assertion when no assertion is current",
     subjects: SUBJECTS,
     held: false,
     proposal: proposing("none", true, NEUTRAL_TEXTS),
-    branch: "accepted:",
+    taken: NEW_ASSERTION,
   },
 ];
+
+async function takenOf(
+  subject: Subject,
+  held: HeldRow | null,
+  proposal: Proposal
+): Promise<Taken> {
+  const world = buildWorld(seedOf(subject, held));
+  const landed = await subject.propose(world, proposal);
+  return {
+    outcome: landed.outcome,
+    on_held: landed.id === subject.heldId,
+    held_statuses: assignedStatuses(world, subject.table),
+    new_assertions: writesTo(world, subject.table, "insert").length,
+  };
+}
 
 async function precedenceBroken(): Promise<string[]> {
   const broken: string[] = [];
   for (const row of PRECEDENCE) {
     for (const subject of row.subjects) {
       const held = row.held ? subject.held : null;
-      const branch = await branchOf(subject, held, row.proposal);
-      if (branch !== row.branch) {
-        broken.push(`${row.name}, ${subject.name}: ${branch}`);
+      const taken = await takenOf(subject, held, row.proposal);
+      if (!isDeepStrictEqual(taken, row.taken)) {
+        broken.push(`${row.name}, ${subject.name}: ${JSON.stringify(taken)}`);
       }
     }
   }
@@ -1008,16 +1076,22 @@ function disputeOf(world: World, table: Write["table"]): Dispute {
   const rows = recorded(world, table);
   return {
     held_statuses: assignedStatuses(world, table),
+    marked_disputed: writesTo(world, table, "update")
+      .filter((w) => w.values["status"] === "disputed")
+      .map((w) => w.addressed),
     recorded_statuses: rows.map((row) => row["status"]),
     recorded_supersedes: rows.map((row) => row[supersedes]),
   };
 }
 
-const DISPUTED: Dispute = {
-  held_statuses: ["disputed"],
-  recorded_statuses: ["disputed"],
-  recorded_supersedes: [null],
-};
+function disputedOn(heldId: string): Dispute {
+  return {
+    held_statuses: ["disputed"],
+    marked_disputed: [heldId],
+    recorded_statuses: ["disputed"],
+    recorded_supersedes: [null],
+  };
+}
 
 async function disputedLink(): Promise<World> {
   const world = buildWorld({ links: [HELD_LINK] });
@@ -1064,10 +1138,17 @@ describe("scenario of a proposal for another target without a signal of successi
 
     expect({
       ...disputeOf(world, "knowledge_link"),
+      recorded_sources: recorded(world, "knowledge_link").map(
+        (row) => row["source_node_id"]
+      ),
       recorded_targets: recorded(world, "knowledge_link").map(
         (row) => row["target_node_id"]
       ),
-    }).toEqual({ ...DISPUTED, recorded_targets: [TARGET_NODE_A] });
+    }).toEqual({
+      ...disputedOn(HELD_LINK_ID),
+      recorded_sources: [SOURCE_NODE],
+      recorded_targets: [TARGET_NODE_A],
+    });
   });
 });
 
@@ -1076,7 +1157,10 @@ describe("a proposal for a type allowing one current assertion that meets the cu
     const link = disputeOf(await disputedLink(), "knowledge_link");
     const attribute = disputeOf(await disputedAttribute(), "node_attribute");
 
-    expect({ link, attribute }).toEqual({ link: DISPUTED, attribute: DISPUTED });
+    expect({ link, attribute }).toEqual({
+      link: disputedOn(HELD_LINK_ID),
+      attribute: disputedOn(HELD_ATTRIBUTE_ID),
+    });
   });
 });
 

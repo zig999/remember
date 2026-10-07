@@ -11,6 +11,7 @@ export interface Write {
   readonly table: "knowledge_link" | "node_attribute";
   readonly kind: "insert" | "update";
   readonly values: Readonly<Record<string, unknown>>;
+  readonly addressed: unknown;
 }
 
 export interface WorldSeed {
@@ -45,6 +46,7 @@ const SELECTED_TABLE = /FROM (\w+)/;
 const EMPTY: Answer = { rows: [], rowCount: 0 };
 const INSERT_SHAPE = /^INSERT INTO \w+ \(([^)]*)\) VALUES \((.*)\) RETURNING/;
 const UPDATE_SHAPE = /^UPDATE \w+ SET (.*) WHERE /;
+const ADDRESSED_IDENTITY = /WHERE id\s*=\s*(\$\d+)/;
 const ASSIGNMENT_BOUNDARY = /,\s*(?=\w+\s*=)/;
 const ASSIGNMENT = /^(\w+)\s*=\s*(.*)$/;
 const LIST_SEPARATOR = /\s*,\s*/;
@@ -162,7 +164,11 @@ function recordWrite(
   const kind = match[1] === "UPDATE" ? "update" : "insert";
   const values =
     kind === "insert" ? insertedValues(sql, params) : updatedValues(sql, params);
-  state.writes.push({ table, kind, values });
+  const addressed =
+    kind === "update"
+      ? resolveToken(ADDRESSED_IDENTITY.exec(sql)?.[1] ?? "", params)
+      : null;
+  state.writes.push({ table, kind, values, addressed });
   if (kind === "update") return EMPTY;
   return { rows: [{ id: `inserted-${table}-${state.writes.length}` }], rowCount: 1 };
 }

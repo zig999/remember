@@ -7,3 +7,5 @@ Two existing tests that asserted the old behavior were rewritten whole by the te
 The deliverable set is now empty; the next step is /review-change over the one task.
 Invoked /review-change over task reaffirm-same-target-succession with the four files of its records; the registry's five steps passed in run/succession-reaffirms-same-target, so the failures pass did not run.
 The review recorded 21 findings (1 conformance, 20 standard), 12 of 14 criteria covered and 2 partial, and 5 of 8 certifications covered with 3 partial carrying a testable remainder; committed as the review commit.
+Invoked /implement-task as the proof-only re-delivery over the task, closing the three testable remainders of the review (conflict-disputes, consolidation-precedence, different-target-without-signal-is-disputed); the second input of the precedence remainder was left untested with the reason named, because no node the task implements states what a correction meeting nothing current answers.
+The suite run suite-2 passed, the proof was rewritten whole and the delivery derived; committed as the prove commit.
