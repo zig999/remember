@@ -1,0 +1,62 @@
+findings:
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      the test "closes vigent and inserts a new chained row when functional + different target + textual succession signal", lines 766-771
+    evidence: >-
+      expect(state.updates[0]!.sql).toContain("ELSE superseded_at");
+      with the preceding comment "succession closes the VALIDITY axis only — the close must guard superseded_at conditionally (intra-day fallback), never set it unconditionally."
+    cost: >-
+      A succession that closes an assertion at the new start leaves its supersession time empty. The test pins that, and the only place it is stated is this assertion. The nearest nodes say that a succession "closes that assertion as superseded", that a correction "supersedes it, leaving its validity end as it was", and that as-of reads show only assertions "without a supersession time". None of them says whether an ordinary succession stamps a supersession time. The next reader will look in the specification, find no answer, and may take the stamp to belong to every supersession.
+    kind: unstated
+    correction: >-
+      The analysis gives rules/knowledge-base/succession-closes-previous, or a sibling node, the statement of what a succession stamps. That means a validity end and no supersession time, except under succession-before-previous-start, where no validity end can be given.
+    node: rules/knowledge-base/succession-closes-previous
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the re-affirmation tests at lines 530-558, 626-661 and 695-724, and the succession-hint test at lines 663-693
+    evidence: >-
+      expect(envelope.result.outcome).toBe("consolidated"); expect(envelope.result.link_id).toBe(EXISTING_LINK_ID); expect(state.inserts.knowledge_link.length).toBe(0); expect(state.inserts.provenance[0]!.target_id).toBe(EXISTING_LINK_ID); with valid_from "2026-06-14" proposed against a held "2026-06-13"
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the multi-current succession-hint test (lines 663-693), which expects consolidated where a succession would otherwise apply. The functional different-target tests at lines 733-780, 866-904 and 914-954 show the later steps. The correction test (line 914) runs the precedence only as far as its own branch.
+    evidence: >-
+      change_hint: "succession" on a held target yields { outcome: "consolidated", link_id: EXISTING_LINK_ID, new_links: 0 }; a different target with change_hint "none" and neutral text yields expect(envelope.result.outcome).toBe("disputed")
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the functional versus multi-current fixtures. A functional link or attribute key (leads, deadline) is met on its node and type alone, and a multi-current one (participates_in) on its target. The mock's vigentLink and vigentAttr select that single current row.
+    evidence: >-
+      allows_multiple_current: false, // functional ... allows_multiple_current: true, // multi-valued; the test "functional link with the same target and a different valid_from consolidates on the held link"
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      the provenance assertions in every branch, the BR-18 invariant suite at lines 1193-1282, and the re-affirmation tests
+    evidence: >-
+      expect(state.inserts.provenance.length).toBeGreaterThanOrEqual(1); expect(state.inserts.provenance[0]!.target_id).toBe(EXISTING_LINK_ID);
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      the tests "flags both old and new row as disputed and surfaces conflicting_link_id" (lines 869-904) and "disputed — divergent value, same overlapping period, no signal" (lines 1105-1133)
+    evidence: >-
+      expect(state.updates[0]!.sql).toContain("'disputed'"); expect(state.inserts.knowledge_link[0]!.status).toBe("disputed"); expect(state.inserts.knowledge_link[0]!.supersedes_link_id).toBeNull();
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the outcome assertions on propose-link and propose-attribute (accepted, consolidated, superseded_previous with superseded_link_id, disputed), and the second-collision test at lines 986-1023
+    evidence: >-
+      expect(envelope.result.outcome).toBe("superseded_previous"); expect(envelope.result.superseded_link_id).toBe(EXISTING_LINK_ID); expect(thrown.code).toBe("SYSTEM_INTERNAL_ERROR");
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: nowhere
+    evidence: >-
+      Every test that proposes change_hint "succession" onto a held target uses the multi-current type participates_in (line 663). The only functional same-target tests use change_hint "none" (lines 530 and 695). No test combines a functional type, a held target, change_hint "succession" and a different valid_from. None asserts that the link is not marked disputed or that it keeps its original valid_from.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      the test at lines 663-693, "re-affirms the held link: consolidated with its identity, no new link, provenance added to it, when change_hint='succession' repeats its target on a multi-current link type"
+    evidence: >-
+      link_type: "participates_in", target_node_id: TARGET_NODE_A, change_hint: "succession" expecting { outcome: "consolidated", link_id: EXISTING_LINK_ID, new_links: 0, provenance_targets: [EXISTING_LINK_ID] }
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      the test at lines 869-904
+    evidence: >-
+      fragmentText: "neutral text without succession or errata markers", target_node_id: TARGET_NODE_B, change_hint: "none", then outcome "disputed", the vigent row updated to 'disputed', and a new row inserted with status "disputed" and supersedes_link_id null
+looked_past: >-
+  Comments and test titles restate node facts that the assertions also hold, or add conditions the nodes do not state (BR-27 step labels, "overlapping period" for a dispute, "conflicting_link_id" never asserted); this is prose, whose route is its removal, and not a finding on behavior.
+candidates_opened:
+  - rules/knowledge-base/succession-closes-previous

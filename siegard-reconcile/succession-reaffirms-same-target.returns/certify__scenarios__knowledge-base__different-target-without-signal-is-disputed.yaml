@@ -1,0 +1,39 @@
+certified:
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+        name: marks the current link disputed and records the new link from A to C in status disputed, superseding nothing
+      - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+        name: marks that assertion disputed and records a new assertion in status disputed that supersedes nothing, for a link and for an attribute
+      - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+        name: is answered as a dispute when no cited fragment signals succession
+      - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+        name: takes a proposal as the first of re-affirmation, correction, succession, dispute and new assertion whose condition it meets
+      - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+        name: is the one of its node and type, or the one of its node, type and target or value where the type allows multiple current assertions, and no other
+    why: >-
+      The setup matches the scenario's given and when. The link type allows one
+      current link. The held link runs from A to B. The proposal is for A to C,
+      with change hint none, and its cited fragment texts are neutral, so none
+      signals succession. The scenario test checks three things: that disputed
+      is the only status written on knowledge_link, that exactly one new link is
+      recorded, in status disputed, with target C, and that the new link has a
+      null supersedes_link_id. Two parts of the fact are only half pinned. First,
+      "the current link is marked disputed" is checked as some update on
+      knowledge_link that assigns status disputed. No assertion ties that update
+      to the held link's identity, so code that wrote disputed onto some row
+      other than the held A-to-B link would still pass. Second, "a new link from
+      A to C" is checked on the target only. Nothing reads the recorded row's
+      source_node_id, so a new link recorded from some node other than A would
+      still pass. The precedence and meeting tests confirm the outcome is
+      disputed and that disputed is the status written to the table. They
+      inherit both gaps, because they read only the outcome and the statuses
+      that were written.
+    remainder: testable
+    remainder_why: >-
+      Hold a current A-to-B link of a type that allows one current link. Submit
+      an A-to-C proposal with change hint none and only neutral fragment texts.
+      The expected result has two parts. The status update that assigns disputed
+      names the held link's id. The one recorded new row has source_node_id A
+      and target_node_id C.

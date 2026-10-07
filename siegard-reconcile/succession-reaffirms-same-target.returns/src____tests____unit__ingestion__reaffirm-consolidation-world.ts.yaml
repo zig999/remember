@@ -1,0 +1,48 @@
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a fake `PoolClient`. `answer()` only routes statements: `if (sql.startsWith("SELECT") && sql.includes("FOR UPDATE")) { return selectHeld(state, sql, params); }`. It never decides whether a proposal re-affirms a held assertion. That decision is made by the code under test, which the fake answers.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `answer()` branches on statement shape only (`SAVEPOINT_CONTROL.test(sql)`, `sql.startsWith("INSERT INTO provenance")`, `sql.startsWith("UPDATE information_fragment")`, otherwise `recordWrite`). No re-affirm, correct, succeed, dispute or new-assertion order appears in it.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `selectHeld` returns `rows.filter((row) => matchesWhere(row, sql, params))`. It filters the seeded rows by whatever `WHERE` equalities and `IS NULL` conditions the code under test sent. It does not state which keys (node, type, target or value) a proposal meets.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      `storeProvenance`, the test double's emulation of the provenance table. It records one entry per cited fragment id, and a repeat is skipped (`ON CONFLICT`) or raises a unique violation.
+    evidence: >-
+      `for (const fragment_id of fragmentIdsOf(params[1])) { const held = state.provenance.some((p) => p.target_id === target && p.fragment_id === fragment_id); if (held && !tolerant) throw new UniqueViolation(index); if (!held) state.provenance.push({ target_id: target, fragment_id }); }`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `recordWrite` appends every `INSERT INTO` or `UPDATE` on `knowledge_link` or `node_attribute` to `state.writes` without interpreting it: `state.writes.push({ table, kind, values });`. Nothing in the file marks a row disputed or sets a status.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no operation, outcome, error code or HTTP status of the contract. Its only error is the test double's `class UniqueViolation extends Error { readonly code = UNIQUE_VIOLATION; ... }`, which emulates the store's `23505` code. That code is not a contract refusal.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries no scenario outcome. It only exposes `buildWorld(seed)` returning `{ client, writes: state.writes, provenance: state.provenance }`, from which a test can observe the writes.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface World { readonly client: PoolClient; readonly writes: Write[]; readonly provenance: HeldProvenance[]; }`. It is a recording harness and decides no outcome.
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (kind === "update") return EMPTY; return { rows: [{ id: `inserted-${table}-${state.writes.length}` }], rowCount: 1 };`. The harness records the writes and echoes a synthetic id. It never produces a disputed status or a supersession.
+looked_past: >-
+  The unique-index names `provenance_link_fragment_uq` and `provenance_attr_fragment_uq` and the `23505` code are the test double's emulation of storage schema, which is not a business fact. Whether they match the migrations belongs to a test-fidelity judgment, not to this one.

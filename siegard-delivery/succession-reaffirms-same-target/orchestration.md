@@ -5,3 +5,5 @@ Invoked /plan-work as the corrective increment the human named; outcome one epic
 Invoked /implement-task over task/succession-reaffirms-same-target/reaffirm-same-target-succession; setup, build and suite runs passed first time, both records written, delivery derived, bindings written to the trace and the others left stale for the review to answer.
 Two existing tests that asserted the old behavior were rewritten whole by the test author and are named under the proof's files; the source change is two lines.
 The deliverable set is now empty; the next step is /review-change over the one task.
+Invoked /review-change over task reaffirm-same-target-succession with the four files of its records; the registry's five steps passed in run/succession-reaffirms-same-target, so the failures pass did not run.
+The review recorded 21 findings (1 conformance, 20 standard), 12 of 14 criteria covered and 2 partial, and 5 of 8 certifications covered with 3 partial carrying a testable remainder; committed as the review commit.

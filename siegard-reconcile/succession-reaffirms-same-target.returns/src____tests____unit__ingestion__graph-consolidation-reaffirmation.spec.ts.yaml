@@ -1,0 +1,56 @@
+findings: []
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      The describe block "re-affirmation by a proposal with change hint none or succession" (`reaffirmationsMissed`, line 850 and the `it` at line 868). It also covers the link and attribute describes at lines 239 and 315.
+    evidence: >-
+      `for (const hint of HINTS_OF_REAFFIRMATION) { for (const startClass of START_CLASSES) {` runs over `const HINTS_OF_REAFFIRMATION: readonly ChangeHint[] = ["none", "succession"];` and `const START_CLASSES = ["the held start", "another start", "no start"] as const;`. Each case is compared with `reaffirmed(subject)`, which is `{ outcome: "consolidated", identity: subject.heldId, provenance: [FRAGMENT_ONE], new_assertions: 0, assigned: [] }`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      The `PRECEDENCE` table (line 883) and the describe "order of the consolidation of a link or attribute proposal" (line 956).
+    evidence: >-
+      `it("takes a proposal as the first of re-affirmation, correction, succession, dispute and new assertion whose condition it meets", ...` over rows such as `{ name: "correction before succession", ... branch: "accepted:superseded" }` and `{ name: "dispute before new assertion", ... branch: "disputed:disputed" }`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      `heldFor`, `expectedMeeting` and `meetingsMisjudged` (lines 964-995), and the describe "the current assertion a proposal meets".
+    evidence: >-
+      `if (relation === "another node") { return { ...subject.held, [subject.ownerColumn]: OTHER_NODE }; }` and `if (relation === "another target or value" && !subject.multi) { return "disputed:disputed"; }`. The multi-current case falls through to `return "accepted:";`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      `landingsMissingACitedFragment` (line 1161) and the describe "provenance of a taken proposal" (line 1174).
+    evidence: >-
+      `if (held.join() !== [FRAGMENT_ONE, FRAGMENT_TWO].join()) { missing.push(...) }` over `LANDINGS`, which covers new assertion, re-affirmation, correction, succession and dispute for both links and attributes.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      The `DISPUTED` constant (line 1016), `disputeOf` (line 1005) and the describe at line 1074.
+    evidence: >-
+      `const DISPUTED: Dispute = { held_statuses: ["disputed"], recorded_statuses: ["disputed"], recorded_supersedes: [null], };` is asserted for a link and for an attribute by `expect({ link, attribute }).toEqual({ link: DISPUTED, attribute: DISPUTED });`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The outcome words the tests assert on the consolidation results, in the `toMatchObject` and `branch` expectations (lines 245-248, 275-284, 883-940).
+    evidence: >-
+      `expect(result).toMatchObject({ outcome: "consolidated", link_id: HELD_LINK_ID, });` and the precedence branches `"superseded_previous:superseded"`, `"disputed:disputed"` and `"accepted:superseded"`. These are the outcomes the contract lists for propose-link and propose-attribute.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      The describe "scenarios of a succession proposal repeating the target of the current link" (line 1034).
+    evidence: >-
+      `expect({ outcome: result.outcome, link_id: result.link_id, provenance: fragmentsOn(world, HELD_LINK_ID), new_links: writesTo(world, "knowledge_link", "insert").length, held_statuses: assignedStatuses(world, "knowledge_link"), validity_start_assigned: ... }).toEqual({ outcome: "consolidated", link_id: HELD_LINK_ID, provenance: [FRAGMENT_ONE], new_links: 0, held_statuses: [], validity_start_assigned: false, });`
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      The "link, multiple current" subject in `SUBJECTS` (line 736), the re-affirmation loop at line 850, and the describe at line 580 for a multi-current attribute key.
+    evidence: >-
+      `name: "link, multiple current", multi: true, ... propose: (world, proposal) => landLink(world, proposal, PARTICIPATES),` and `{ name: "re-affirmation before new assertion", subjects: MANY_CURRENT_SUBJECTS, held: true, proposal: proposing("none", false, NEUTRAL_TEXTS), branch: "consolidated:" }`.
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      The describe at line 1061 and the dispute test at line 615.
+    evidence: >-
+      `}).toEqual({ ...DISPUTED, recorded_targets: [TARGET_NODE_A] });` and `expect(result.outcome).toBe("disputed");` for a proposal with `target_node_id: TARGET_NODE_A` and `change_hint: "none"`.
+looked_past: >-
+  The file's other behaviors, such as correction superseding while keeping the validity end, succession by signal, a held row being current only while it has neither a validity end nor a supersession time, and one provenance per fragment, are governed by nodes outside the set (correction-replaces, succession-signal, succession-closes-previous, current-assertion, link-provenance-once-per-fragment). Each is held there and none is unstated.
+candidates_opened:
+  - rules/knowledge-base/correction-replaces
+  - rules/knowledge-base/current-assertion
+  - rules/knowledge-base/succession-signal
+  - rules/knowledge-base/new-assertion
+  - rules/knowledge-base/succession-closes-previous
+  - rules/knowledge-base/link-provenance-once-per-fragment
