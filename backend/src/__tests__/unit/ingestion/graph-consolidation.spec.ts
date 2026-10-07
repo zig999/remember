@@ -605,9 +605,7 @@ describe("TC-011 — consolidateLink — consolidated (re-affirmation)", () => {
 // `sameTarget && change_hint === 'none'` WITHOUT requiring `sameValidFrom`.
 // The dup-guard scope (source, target, link_type) already guarantees there
 // is at most one vigent row per triple, so a vigent row here IS the same
-// assertion. Functional types still require `sameValidFrom` (a different
-// period on a functional type is potential succession or dispute, not
-// re-affirmation).
+// assertion.
 describe("TC-011 — multi-current link re-affirmation with divergent valid_from (§18 bug fix)", () => {
   // §18: "Re-afirmação consolida, nunca duplica — proveniência acumula no
   // item existente." On a multi-current link type, a re-affirmation from a
@@ -695,10 +693,7 @@ describe("TC-011 — multi-current link re-affirmation with divergent valid_from
     }
   });
 
-  // Functional types must still require `sameValidFrom` for branch (a) —
-  // different valid_from on a functional type is a different period, which
-  // belongs to branches (c) succession or (d) dispute, not consolidation.
-  it("functional link with different valid_from does NOT auto-consolidate (still requires sameValidFrom)", async () => {
+  it("functional link with the same target and a different valid_from consolidates on the held link", async () => {
     const catalog = buildCatalog();
     const { client, state } = buildClient({
       vigentLink: {
@@ -724,12 +719,9 @@ describe("TC-011 — multi-current link re-affirmation with divergent valid_from
 
     expect(envelope.ok).toBe(true);
     if (!envelope.ok) return;
-    // Not consolidated — functional + different valid_from + sameTarget +
-    // no signal => dispute (branch (d)).
-    expect(envelope.result.outcome).not.toBe("consolidated");
-    expect(envelope.result.outcome).toBe("disputed");
-    // The new row was inserted (dispute branch INSERTs the conflicting row).
-    expect(state.inserts.knowledge_link.length).toBe(1);
+    expect(envelope.result.outcome).toBe("consolidated");
+    expect(envelope.result.link_id).toBe(EXISTING_LINK_ID);
+    expect(state.inserts.knowledge_link.length).toBe(0);
   });
 });
 

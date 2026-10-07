@@ -1,44 +1,3 @@
-// Graph consolidation service — implements §6.5 of `remember-modelagem-v7.md`
-// and BR-25 of `ingestion.spec.md` / BR-27 of `ingestion.back.md`.
-//
-// In every branch where a (new or existing) main row id ends up being the
-// provenance target, the service inserts one provenance row per fragment
-// with ON CONFLICT DO NOTHING (the UNIQUE(link_id, fragment_id) and
-// UNIQUE(attribute_id, fragment_id) partial indexes already exist in
-// migrations/0001_init.sql). This satisfies BR-18 — every accepted /
-// consolidated assertion has at least one provenance row.
-//
-// Transaction policy: this service NEVER calls BEGIN / COMMIT — the caller
-// (the propose-link / propose-attribute service) owns the transaction
-// (BR-19). All work happens on the open `PoolClient` it receives.
-//
-// SPEC DIVERGENCE — `status='corrected'`:
-//   `ingestion.spec.md` BR-25, `ingestion.back.md` BR-27 and the task
-//   contract describe the correction branch as closing the previous row
-//   with `status='corrected'`. The actual `assertion_status` enum defined
-//   in `migrations/0001_init.sql` is
-//     ('active', 'uncertain', 'disputed', 'superseded', 'deleted')
-//   — there is no `'corrected'` value (and no migration adds one). v7
-//   §6.5-B itself describes the correction branch as
-//     "Encerra o antigo só no eixo de transação: superseded_at = now(),
-//      status = superseded, valid_to intocado"
-//   which matches the DB enum. This service uses `'superseded'` for the
-//   closed vigent row in the correction branch; the audit of WHY it was
-//   superseded lives in (a) the supersedes_* chain on the new row and
-//   (b) `tool_call.result.outcome = 'accepted'` plus the original `args`
-//   (which carry `change_hint = 'correction'`). The two outcomes — natural
-//   succession vs. correction — remain distinguishable by inspecting the
-//   originating tool_call. This divergence is recorded in the delivery
-//   file and was confirmed against v7 (the normative source per CLAUDE.md).
-//
-// SPEC DIVERGENCE — `valid_to` in succession branch when new row has no
-// `valid_from`:
-//   BR-27 succession step says `valid_to = $newValidFrom (or now()::date
-//   if the new row has no valid_from)`. The new row is required to have
-//   `valid_from` whenever `link_type.requires_valid_from = true` (layer 3
-//   already enforced it). For functional types without that flag, we fall
-//   back to `now()::date` per the task contract.
-
 import type { PoolClient } from "pg";
 
 import type {
@@ -61,7 +20,6 @@ const SUCCESSION_MARKERS = [
   "replaced",
 ] as const;
 
-/** Visible for unit tests. */
 export function hasSuccessionSignal(
   fragmentTexts: readonly string[]
 ): boolean {
@@ -74,14 +32,12 @@ export function hasSuccessionSignal(
   return false;
 }
 
-/** Discriminated union of consolidator outcomes (shape consumed by callers). */
 export type ConsolidateOutcome =
   | "accepted"
   | "consolidated"
   | "superseded_previous"
   | "disputed";
 
-/** Arguments for the link branch. */
 export interface ConsolidateLinkArgs {
   readonly source_node_id: string;
   readonly target_node_id: string;
@@ -92,11 +48,9 @@ export interface ConsolidateLinkArgs {
   readonly valid_from_basis: "stated" | "document" | "received" | null;
   readonly change_hint: "none" | "succession" | "correction";
   readonly fragment_ids: readonly string[];
-  /** `'active'` if confidence ≥ 0.75, else `'uncertain'` (BR-17). */
   readonly status_for_new_row: "active" | "uncertain";
 }
 
-/** Arguments for the attribute branch. */
 export interface ConsolidateAttributeArgs {
   readonly node_id: string;
   readonly attribute_key_id: string;
@@ -108,24 +62,16 @@ export interface ConsolidateAttributeArgs {
   readonly valid_from_basis: "stated" | "document" | "received" | null;
   readonly change_hint: "none" | "succession" | "correction";
   readonly fragment_ids: readonly string[];
-  /** `'active'` if confidence ≥ 0.75, else `'uncertain'` (BR-17). */
   readonly status_for_new_row: "active" | "uncertain";
 }
 
-/** Result for the link branch (consumed by `proposeLinkService`). */
 export interface ConsolidateLinkResult {
   readonly outcome: ConsolidateOutcome;
-  /**
-   * For `accepted` / `superseded_previous` / `disputed`: the id of the new
-   * row. For `consolidated`: the id of the existing (re-affirmed) row.
-   */
   readonly link_id: string;
-  /** When `outcome = 'superseded_previous'` or `outcome = 'disputed'`. */
   readonly superseded_link_id?: string;
   readonly conflicting_link_id?: string;
 }
 
-/** Result for the attribute branch. */
 export interface ConsolidateAttributeResult {
   readonly outcome: ConsolidateOutcome;
   readonly attribute_id: string;
@@ -133,10 +79,6 @@ export interface ConsolidateAttributeResult {
   readonly conflicting_attribute_id?: string;
 }
 
-/**
- * Shape of a `knowledge_link` row touched by the consolidator. Only the
- * columns this service reads are listed.
- */
 interface VigentLinkRow {
   readonly id: string;
   readonly source_node_id: string;
@@ -147,7 +89,6 @@ interface VigentLinkRow {
   readonly status: string;
 }
 
-/** Shape of a `node_attribute` row touched by the consolidator. */
 interface VigentAttributeRow {
   readonly id: string;
   readonly node_id: string;
@@ -158,7 +99,6 @@ interface VigentAttributeRow {
   readonly status: string;
 }
 
-/** Postgres error shape — narrowed to the fields we need. */
 interface PgError extends Error {
   readonly code?: string;
   readonly constraint?: string;
@@ -173,10 +113,6 @@ function isDupGuardViolation(err: unknown, guard: string): boolean {
   );
 }
 
-/**
- * Insert provenance rows for a (link_id | attribute_id, fragment_id) pair
- * set. `ON CONFLICT DO NOTHING` makes re-affirmation idempotent (§18).
- */
 async function insertLinkProvenance(
   client: PoolClient,
   linkId: string,
@@ -219,9 +155,6 @@ async function promoteFragmentsToAccepted(
   );
 }
 
-/**
- * `table` is a fixed literal (never input) — safe to interpolate.
- */
 async function closeVigentForSuccession(
   client: PoolClient,
   table: "knowledge_link" | "node_attribute",
@@ -248,13 +181,6 @@ async function closeVigentForSuccession(
   );
 }
 
-/**
- * Acquire FOR UPDATE on the vigent knowledge_link row for the functional
- * scope (source, link_type). Returns the row (if any). Note: dup-guard
- * scope is (source, link_type, target) but FUNCTIONAL succession scope is
- * (source, link_type) — for functional types we lock the broader scope so
- * a sibling-target update sees a consistent vigent set.
- */
 async function lockVigentLinkBySourceAndType(
   client: PoolClient,
   sourceNodeId: string,
@@ -276,11 +202,6 @@ async function lockVigentLinkBySourceAndType(
   return res.rows[0] ?? null;
 }
 
-/**
- * Acquire FOR UPDATE on the vigent knowledge_link row for the DUP-GUARD
- * scope (source, link_type, target). Used by multi-valued (non-functional)
- * types where succession is not allowed.
- */
 async function lockVigentLinkByTriple(
   client: PoolClient,
   sourceNodeId: string,
@@ -304,7 +225,6 @@ async function lockVigentLinkByTriple(
   return res.rows[0] ?? null;
 }
 
-/** Mirror of `lockVigentLinkBySourceAndType` for the attribute table. */
 async function lockVigentAttributeByNodeAndKey(
   client: PoolClient,
   nodeId: string,
@@ -326,7 +246,6 @@ async function lockVigentAttributeByNodeAndKey(
   return res.rows[0] ?? null;
 }
 
-/** Mirror of `lockVigentLinkByTriple` for the attribute table. */
 async function lockVigentAttributeByTriple(
   client: PoolClient,
   nodeId: string,
@@ -357,7 +276,6 @@ export async function consolidateLink(
   fragmentTexts: readonly string[],
   runCtx: RunContext
 ): Promise<ConsolidateLinkResult> {
-  // Two attempts max (BR-27 / task contract).
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const savepoint = `gc_link_${attempt}`;
     await client.query(`SAVEPOINT ${savepoint}`);
@@ -373,13 +291,10 @@ export async function consolidateLink(
       return result;
     } catch (err) {
       if (!isDupGuardViolation(err, "knowledge_link_current_dup_guard")) {
-        // Non-dup-guard error: rollback the savepoint to keep the parent
-        // transaction usable, then propagate.
         await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         await client.query(`RELEASE SAVEPOINT ${savepoint}`);
         throw err;
       }
-      // Dup-guard race: rollback the savepoint and either retry or give up.
       await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
       await client.query(`RELEASE SAVEPOINT ${savepoint}`);
       if (attempt === 2) {
@@ -389,11 +304,8 @@ export async function consolidateLink(
           { scope: "knowledge_link" }
         );
       }
-      // attempt === 1 -> loop and retry. The concurrent row is now
-      // visible to our SELECT FOR UPDATE.
     }
   }
-  // Unreachable — the loop returns or throws on every path.
   throw new ValidationFailure(
     "SYSTEM_INTERNAL_ERROR",
     "consolidateLinkWithRetry: unreachable loop exit.",
@@ -401,10 +313,6 @@ export async function consolidateLink(
   );
 }
 
-/**
- * Single lookup-and-decide attempt for the link branch. Does NOT manage
- * savepoints; the caller wraps it.
- */
 async function consolidateLinkOnce(
   client: PoolClient,
   args: ConsolidateLinkArgs,
@@ -414,15 +322,6 @@ async function consolidateLinkOnce(
 ): Promise<ConsolidateLinkResult> {
   const functional = !linkTypeInfo.allows_multiple_current;
 
-  // Step 1 / 2 — lock the vigent row(s).
-  //
-  // For FUNCTIONAL types: the succession scope is (source, link_type). We
-  // lock that broader scope, then refine the decision by comparing target.
-  //
-  // For MULTI-VALUED types: succession does not apply (§6.5). The scope is
-  // (source, link_type, target) — same as the dup-guard. We lock that
-  // narrow scope; the only valid outcomes are `consolidated` (same row)
-  // or `accepted` (new row).
   let vigent: VigentLinkRow | null;
   if (functional) {
     vigent = await lockVigentLinkBySourceAndType(
@@ -439,23 +338,15 @@ async function consolidateLinkOnce(
     );
   }
 
-  // ---- Branch decision per §6.5 / BR-27 -----------------------------
   if (vigent !== null) {
     const sameTarget = vigent.target_node_id === args.target_node_id;
-    const sameValidFrom = vigent.valid_from === (args.valid_from ?? null);
 
-    const reaffirmation =
-      sameTarget &&
-      args.change_hint === "none" &&
-      (!functional || sameValidFrom);
-    if (reaffirmation) {
+    if (sameTarget && args.change_hint === "none") {
       await insertLinkProvenance(client, vigent.id, args.fragment_ids);
       return { outcome: "consolidated", link_id: vigent.id };
     }
 
     if (args.change_hint === "correction") {
-      // Close the vigent row (transaction axis only — valid_to untouched
-      // per §6.5-B).
       await client.query(
         `UPDATE knowledge_link
             SET superseded_at = now(),
@@ -463,7 +354,6 @@ async function consolidateLinkOnce(
           WHERE id = $1`,
         [vigent.id]
       );
-      // Insert the corrected row, chained.
       const newRow = await insertLinkRow(client, args, runCtx, {
         status: args.status_for_new_row,
         supersedes_link_id: vigent.id,
@@ -476,19 +366,12 @@ async function consolidateLinkOnce(
       };
     }
 
-    // (c) Succession (functional only) — different target on a functional
-    //     type AND succession signal (change_hint='succession' OR
-    //     textual marker).
     if (
       functional &&
       !sameTarget &&
       (args.change_hint === "succession" ||
         hasSuccessionSignal(fragmentTexts))
     ) {
-      // Close the old row for succession (§6.5-A): valid_to = the new row's
-      // valid_from (or today when absent), EXCEPT for an intra-day succession
-      // where that would collapse the interval — then close on the transaction
-      // axis only. See closeVigentForSuccession.
       await closeVigentForSuccession(
         client,
         "knowledge_link",
@@ -507,18 +390,7 @@ async function consolidateLinkOnce(
       };
     }
 
-    //     For multi-valued types: a vigent row with the SAME target is
-    //     ALWAYS caught by branch (a) above (re-affirmation now ignores
-    //     `valid_from` differences for multi-current types). Multi-valued
-    //     can only reach here when change_hint is 'succession' or
-    //     'correction' on a multi-current type — semantically odd, since
-    //     succession does not apply to multi-current types (§6.5). We
-    //     fall through to (e) which will hit the dup-guard and surface
-    //     SYSTEM_INTERNAL_ERROR — the correct outcome for a malformed
-    //     proposal on a multi-current type.
-    if (!functional) {
-      // Multi-valued — fall through to (e) below.
-    } else {
+    if (functional) {
       await client.query(
         `UPDATE knowledge_link
             SET status = 'disputed'::assertion_status
@@ -538,8 +410,6 @@ async function consolidateLinkOnce(
     }
   }
 
-  // (e) Accepted (new) — no vigent row in scope, or multi-valued with
-  //     coexisting validity that doesn't overlap.
   const newRow = await insertLinkRow(client, args, runCtx, {
     status: args.status_for_new_row,
     supersedes_link_id: null,
@@ -548,7 +418,6 @@ async function consolidateLinkOnce(
   return { outcome: "accepted", link_id: newRow.id };
 }
 
-/** Insert a `knowledge_link` row with the resolved status and supersedes-link. */
 async function insertLinkRow(
   client: PoolClient,
   args: ConsolidateLinkArgs,
@@ -584,11 +453,6 @@ async function insertLinkRow(
   return res.rows[0]!;
 }
 
-// =====================================================================
-// Attribute branch — mirrors the link branch with key-scoped predicates.
-// =====================================================================
-
-/** Public entry point — see `consolidateLink` doc for the retry semantics. */
 export async function consolidateAttribute(
   client: PoolClient,
   args: ConsolidateAttributeArgs,
@@ -660,19 +524,12 @@ async function consolidateAttributeOnce(
 
   if (vigent !== null) {
     const sameValue = vigent.value === args.value;
-    const sameValidFrom = vigent.valid_from === (args.valid_from ?? null);
 
-    // (a) Re-affirmation.
-    if (
-      sameValue &&
-      sameValidFrom &&
-      args.change_hint === "none"
-    ) {
+    if (sameValue && args.change_hint === "none") {
       await insertAttributeProvenance(client, vigent.id, args.fragment_ids);
       return { outcome: "consolidated", attribute_id: vigent.id };
     }
 
-    // (b) Correction.
     if (args.change_hint === "correction") {
       await client.query(
         `UPDATE node_attribute
@@ -693,14 +550,12 @@ async function consolidateAttributeOnce(
       };
     }
 
-    // (c) Succession (functional only).
     if (
       functional &&
       !sameValue &&
       (args.change_hint === "succession" ||
         hasSuccessionSignal(fragmentTexts))
     ) {
-      // §6.5-A succession close with the same intra-day collapse guard as links.
       await closeVigentForSuccession(
         client,
         "node_attribute",
@@ -719,7 +574,6 @@ async function consolidateAttributeOnce(
       };
     }
 
-    // (d) Dispute (functional only).
     if (functional) {
       await client.query(
         `UPDATE node_attribute
@@ -738,12 +592,8 @@ async function consolidateAttributeOnce(
         conflicting_attribute_id: vigent.id,
       };
     }
-    // Multi-valued vigent row with same value would have been caught by
-    // re-affirmation; fall through to accepted-new (different valid_from
-    // on a multi-valued attribute is coexistence).
   }
 
-  // (e) Accepted (new).
   const newRow = await insertAttributeRow(client, args, runCtx, {
     status: args.status_for_new_row,
     supersedes_attribute_id: null,
@@ -788,7 +638,6 @@ async function insertAttributeRow(
   return res.rows[0]!;
 }
 
-/** Test-only helpers. */
 export const __testing__ = {
   hasSuccessionSignal,
   SUCCESSION_MARKERS,
