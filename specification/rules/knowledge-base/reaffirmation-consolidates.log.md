@@ -16,4 +16,12 @@ entries:
   unstated: A judgment shows an attribute needing the same validity start to re-affirm even where it allows multiple current values, while a link of such a type does not.
   decided: A proposal re-affirms only with change hint none and the same validity start, a link of a type allowing multiple current links excepted.
   why: The owner decided the source's behavior is the truth, and the attribute branch requires the same start.
+- field: statement
+  unstated: The owner now wants a same-target or same-value proposal with change hint none to re-affirm whatever validity start it states, reversing the earlier decision that required the same start, and did not say what happens to the start the assertion already holds.
+  decided: Every proposal with change hint none and the same target or value re-affirms whatever its validity start, and the assertion keeps the start it holds, since only its provenance changes.
+  why: A re-affirmation records no new assertion, so a proposal that adds nothing but evidence has no ground to move the start of the assertion it repeats.
+- field: statement
+  unstated: The owner did not say whether a proposal with change hint succession or correction and the same target or value still follows the rules it follows today.
+  decided: 'Change hint none stays the only hint that re-affirms: a same-target succession still goes to dispute and a correction still supersedes the assertion it meets.'
+  why: The owner asked to settle the different start only, and a hint other than none states a claim about the assertion that a repeat does not make.
 ---

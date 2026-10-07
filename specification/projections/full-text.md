@@ -22618,7 +22618,7 @@ None.
 === rules/knowledge-base/reaffirmation-consolidates
 ---
 type: policy
-statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, only when its change hint is none and it states the same validity start, a link of a type that allows multiple current links excepted from the validity start.
+statement: A proposal with change hint none that meets a current assertion with the same target or value re-affirms it whatever validity start it states, adding its provenance and changing nothing else about the assertion.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-link
@@ -22650,6 +22650,14 @@ entries:
   unstated: A judgment shows an attribute needing the same validity start to re-affirm even where it allows multiple current values, while a link of such a type does not.
   decided: A proposal re-affirms only with change hint none and the same validity start, a link of a type allowing multiple current links excepted.
   why: The owner decided the source's behavior is the truth, and the attribute branch requires the same start.
+- field: statement
+  unstated: The owner now wants a same-target or same-value proposal with change hint none to re-affirm whatever validity start it states, reversing the earlier decision that required the same start, and did not say what happens to the start the assertion already holds.
+  decided: Every proposal with change hint none and the same target or value re-affirms whatever its validity start, and the assertion keeps the start it holds, since only its provenance changes.
+  why: A re-affirmation records no new assertion, so a proposal that adds nothing but evidence has no ground to move the start of the assertion it repeats.
+- field: statement
+  unstated: The owner did not say whether a proposal with change hint succession or correction and the same target or value still follows the rules it follows today.
+  decided: 'Change hint none stays the only hint that re-affirms: a same-target succession still goes to dispute and a correction still supersedes the assertion it meets.'
+  why: The owner asked to settle the different start only, and a hint other than none states a claim about the assertion that a repeat does not make.
 ---
 
 === rules/knowledge-base/recent-ingestion-latest-run
@@ -24731,6 +24739,28 @@ then:
 
 None.
 
+=== scenarios/knowledge-base/same-target-other-start-re-affirms
+---
+subject: rules/knowledge-base/reaffirmation-consolidates
+given:
+- a link type that does not allow multiple current links
+- a current knowledge link of that type from node A to node B, valid from 2024-01-01
+when:
+- a proposal of that link type from A to B arrives with change hint none, valid from 2024-06-01
+then:
+- the proposal re-affirms the link
+- the provenance of the proposal is added to the link
+- no new link is recorded
+- the link stays valid from 2024-01-01
+involves:
+- rules/knowledge-base/consolidation-precedence
+- rules/knowledge-base/conflict-disputes
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/same-target-succession-is-disputed
 ---
 subject: rules/knowledge-base/conflict-disputes
@@ -24748,6 +24778,28 @@ involves:
 - rules/knowledge-base/consolidation-precedence
 - rules/knowledge-base/reaffirmation-consolidates
 - rules/knowledge-base/succession-closes-previous
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/same-value-other-start-re-affirms
+---
+subject: rules/knowledge-base/reaffirmation-consolidates
+given:
+- an attribute key that does not allow multiple current values
+- a current node attribute of that key holding the value V, valid from 2026-01-01
+when:
+- a proposal of that key for the same node arrives with change hint none, the value V and valid from 2026-03-01
+then:
+- the proposal re-affirms the attribute
+- the provenance of the proposal is added to the attribute
+- no new attribute is recorded
+- the attribute stays valid from 2026-01-01
+involves:
+- rules/knowledge-base/consolidation-precedence
+- rules/knowledge-base/conflict-disputes
 ---
 
 ## Description

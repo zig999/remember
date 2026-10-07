@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, only when its change hint is none and it states the same validity start, a link of a type that allows multiple current links excepted from the validity start.
+statement: A proposal with change hint none that meets a current assertion with the same target or value re-affirms it whatever validity start it states, adding its provenance and changing nothing else about the assertion.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-link
