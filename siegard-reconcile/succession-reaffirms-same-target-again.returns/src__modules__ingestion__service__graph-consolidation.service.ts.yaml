@@ -1,0 +1,71 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the SUCCESSION_MARKERS declaration (lines 11-21) and hasSuccessionSignal (lines 23-33), which consolidateLinkOnce and consolidateAttributeOnce call
+    evidence: >-
+      const SUCCESSION_MARKERS = [ "deixou de", "passou a", "novo", "nova", "substituiu", "substituido", "substituido por", "succeeded", "replaced", ] as const;
+      ... if (lower.includes(m)) return true;
+    cost: >-
+      The specification already holds this vocabulary in rules/knowledge-base/succession-signal: "An information fragment signals succession when its text contains, in any letter case, deixou de, passou a, novo, nova, substituiu, substituido, substituido por, succeeded or replaced." The word list is declared here as well, in a file that node is not in the delegated set for. The marker list is also exported through `__testing__`, so a test can pin the code's copy. If the node's list changes, `--check` never reaches this file and the code keeps deciding succession from the old words. Nobody can tell which list the business decided. The lists agree today, word for word.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/succession-signal to this file, so a change to the node reaches the declaration that implements it. Code cannot read the specification, so the bind is what closes this, not a rewrite of the list.
+    node: rules/knowledge-base/succession-signal
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the two ValidationFailure throws on the second dup-guard collision in consolidateLink (lines 300-306) and consolidateAttribute (lines 484-490)
+    evidence: >-
+      throw new ValidationFailure("SYSTEM_INTERNAL_ERROR", "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.", { scope: "knowledge_link" }) and the same with { scope: "node_attribute" }. The consolidated, accepted, superseded_previous and disputed outcomes are returned by consolidateLinkOnce and consolidateAttributeOnce.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      the change_hint field of ConsolidateLinkArgs (line 49) and ConsolidateAttributeArgs (line 63)
+    evidence: >-
+      readonly change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the valid_from_basis field of ConsolidateLinkArgs (line 48) and ConsolidateAttributeArgs (line 62)
+    evidence: >-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      the `if (functional)` dispute branch in consolidateLinkOnce (lines 393-410) and consolidateAttributeOnce (lines 577-594)
+    evidence: >-
+      SET status = 'disputed'::assertion_status WHERE id = $1 ... insertLinkRow(client, args, runCtx, { status: "disputed", supersedes_link_id: null, }) ... outcome: "disputed"
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the order of the branches in consolidateLinkOnce (lines 341-418) and consolidateAttributeOnce (lines 525-602): same target or value without correction, then correction, then functional succession, then functional dispute, then a new row
+    evidence: >-
+      if (sameTarget && args.change_hint !== "correction") { ... outcome: "consolidated" ... } if (args.change_hint === "correction") { ... } if (functional && !sameTarget && (args.change_hint === "succession" || hasSuccessionSignal(fragmentTexts))) { ... } if (functional) { ... disputed ... } followed by the new-row insert returning outcome: "accepted"
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      insertLinkProvenance (lines 116-128) and insertAttributeProvenance (lines 130-142), called on every taken branch
+    evidence: >-
+      INSERT INTO provenance (link_id, fragment_id) SELECT $1, f FROM unnest($2::uuid[]) AS f ON CONFLICT DO NOTHING
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the vigent lookup in consolidateLinkOnce (lines 323-339) and consolidateAttributeOnce (lines 507-523)
+    evidence: >-
+      if (functional) { vigent = await lockVigentLinkBySourceAndType(client, args.source_node_id, linkTypeInfo.id); } else { vigent = await lockVigentLinkByTriple(client, args.source_node_id, linkTypeInfo.id, args.target_node_id); } and the matching lockVigentAttributeByNodeAndKey / lockVigentAttributeByTriple branches
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the first branch inside `if (vigent !== null)` in consolidateLinkOnce (lines 344-347) and consolidateAttributeOnce (lines 528-531)
+    evidence: >-
+      if (sameTarget && args.change_hint !== "correction") { await insertLinkProvenance(client, vigent.id, args.fragment_ids); return { outcome: "consolidated", link_id: vigent.id }; } — valid_from is not read and the existing row is not updated
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      the `if (functional)` dispute branch after the succession branch in consolidateLinkOnce (lines 393-410)
+    evidence: >-
+      reached only when the hint is not correction, the target differs, and neither change_hint === "succession" nor hasSuccessionSignal(fragmentTexts) holds; it runs UPDATE knowledge_link SET status = 'disputed'::assertion_status, then insertLinkRow(... status: "disputed", supersedes_link_id: null)
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      the same-target branch of consolidateLinkOnce (lines 342-347), taken before the succession branch
+    evidence: >-
+      if (sameTarget && args.change_hint !== "correction") { await insertLinkProvenance(client, vigent.id, args.fragment_ids); return { outcome: "consolidated", link_id: vigent.id }; } — no insert, no status change, and valid_from is left alone
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      the triple lookup and the same-target branch of consolidateLinkOnce (lines 332-347)
+    evidence: >-
+      vigent = await lockVigentLinkByTriple(client, args.source_node_id, linkTypeInfo.id, args.target_node_id); followed by the same-target branch returning outcome: "consolidated" with the existing link_id
+looked_past: >-
+  The succession closing date, the promotion of a proposed fragment to accepted, the correction supersession, and the single decide-again retry before the race refusal are all behavior that other nodes outside this set hold (succession-closing-date, provenance-accepts-proposed-fragment, correction-replaces, consolidation-race-decided-again); I judged only the vocabulary as a second home, and left whether those nodes are bound to this file to the trace.

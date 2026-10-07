@@ -1,0 +1,87 @@
+findings:
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      the comment above the first consolidated test (lines 528-529), the "Bug / Fix" comment block (lines 605-620) and the attribute test title at line 1045
+    evidence: >-
+      // BR-27 step (a): vigent row exists; same target; same valid_from;
+      // change_hint='none' -> no new row, only provenance.
+      ... "Fix: for multi-current types, recognize re-affirmation by `sameTarget && change_hint === 'none'` WITHOUT requiring `sameValidFrom`."
+      ... it("consolidated — same (node, key, value, valid_from)"
+    cost: >-
+      The comments and the title say a re-affirmation depends on the same validity start, or only on same target with hint none for multi-current types. The node says it holds "whatever validity start it states" for hint none or succession. The test code at lines 626-661, 663-693 and 695-724 already holds the node's rule, so the prose is a second, narrower statement of it. A reader who finds the comment first will take the same-start condition as the rule and look for it in the code instead of in the specification.
+    kind: restates
+    correction: >-
+      Remove the comments at lines 528-529 and 605-625. The test names and assertions already carry the behavior. The node binds the fact, and the code that holds it is the tests at 626-724 plus the consolidation service the candidate index binds.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      the comment above the disputed link test (lines 867-868)
+    evidence: >-
+      // BR-27 step (d): functional vigent row exists; different target; overlapping
+      // period; no signal -> mark BOTH disputed.
+    cost: >-
+      The comment restates the dispute rule and adds an "overlapping period" condition the node does not hold. The node only requires a type that does not allow multiple current assertions and a proposal that meets the current assertion as a dispute. The assertions at lines 894-901 hold the outcome (old row disputed, new row disputed, supersedes nothing). A reader who trusts the comment will believe the specification makes overlap a condition of a dispute.
+    kind: restates
+    correction: >-
+      Remove the comment. The assertions already hold the dispute outcome, and the node binds it.
+    node: rules/knowledge-base/conflict-disputes
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      the comment inside the first consolidated test (line 553) and the comment on the multi-current test (line 656)
+    evidence: >-
+      // Provenance MUST still be inserted (BR-18) — re-affirmation accumulates.
+      ... // Provenance accumulated on the vigent link (BR-18).
+    cost: >-
+      The comments restate that a taken proposal records provenance on the assertion it lands on. The assertions at lines 554-555 and 657-658 already hold that, so the sentence has two homes. When the node moves, the file stays unbound by the prose and nothing would flag the comment.
+    kind: restates
+    correction: >-
+      Remove the comments. The assertions on state.inserts.provenance and its target_id hold the fact.
+    node: rules/knowledge-base/consolidation-records-provenance
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the tests at lines 530-558, 626-661 (different valid_from, multi-current), 663-693 (succession hint, same target) and 695-724 (functional, same target, different valid_from)
+    evidence: >-
+      expect(envelope.result.outcome).toBe("consolidated"); expect(envelope.result.link_id).toBe(EXISTING_LINK_ID); expect(state.inserts.knowledge_link.length).toBe(0);
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the test at lines 663-693, where change_hint 'succession' repeating the held target yields consolidated, and the tests at 733-860 (succession), 914-954 (correction) and 869-904 (dispute)
+    evidence: >-
+      change_hint: "succession", ... outcome: "consolidated", link_id: EXISTING_LINK_ID, new_links: 0
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the catalog in buildCatalog (allows_multiple_current false for leads and deadline, true for participates_in and tag) and the multi-current tests at lines 626-693
+    evidence: >-
+      allows_multiple_current: false, // functional ... allows_multiple_current: true, // multi-valued
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      the provenance assertions at lines 472-473, 554-555, 657-658 and the BR-18 loop at lines 1268-1280
+    evidence: >-
+      expect(state.inserts.provenance.length).toBeGreaterThanOrEqual(1);
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      the disputed link test at lines 869-904 and the disputed attribute test at lines 1105-1133
+    evidence: >-
+      expect(state.inserts.knowledge_link[0]!.status).toBe("disputed"); expect(state.inserts.knowledge_link[0]!.supersedes_link_id).toBeNull();
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the outcome and identity assertions for propose-link and propose-attribute (lines 471, 550-551, 758-759, 894, 940-941, 1063-1064, 1094, 1159) and the second-collision refusal at line 1020
+    evidence: >-
+      expect(envelope.result.outcome).toBe("superseded_previous"); expect(envelope.result.superseded_link_id).toBe(EXISTING_LINK_ID); expect(thrown.code).toBe("SYSTEM_INTERNAL_ERROR");
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      nowhere in this file for the functional link type. No test sends change_hint 'succession' with the same target on a link type that does not allow multiple current links. The functional same-target case at lines 695-724 uses change_hint 'none'.
+    evidence: >-
+      link_type: "leads", // functional (allows_multiple_current=false) ... change_hint: "none"
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      the test at lines 663-693
+    evidence: >-
+      link_type: "participates_in", target_node_id: TARGET_NODE_A, change_hint: "succession" ... outcome: "consolidated", new_links: 0, provenance_targets: [EXISTING_LINK_ID]
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      the test at lines 869-904
+    evidence: >-
+      target_node_id: TARGET_NODE_B, valid_from: "2026-01-15", change_hint: "none" ... expect(envelope.result.outcome).toBe("disputed");
+looked_past: >-
+  The tests assert further facts that other nodes outside my set hold: confidence thresholds 0.75 and 0.40 (line 21767), promotion of a proposed fragment to accepted (line 22574), and the succession keywords, errata evidence and the intra-day no-validity-end case (lines 23397, 18696 and 23325 of the full-text projection). I also did not report the SQL-token assertions ("ELSE superseded_at", "THEN now()", the savepoint counts), the "BR-nn" and "§n" citations in test titles and comments, or the comment-only "overlapping period" and "same period" conditions, because they are another judgment's to weigh.

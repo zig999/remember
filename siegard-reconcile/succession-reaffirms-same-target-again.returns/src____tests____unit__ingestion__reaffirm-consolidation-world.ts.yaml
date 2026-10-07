@@ -1,0 +1,48 @@
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a stand-in for a database client. `answer()` only routes statements: `if (sql.startsWith("SELECT") && sql.includes("FOR UPDATE")) { return selectHeld(state, sql, params); }`. It never decides whether a proposal re-affirms a held assertion. The decision belongs to the code under test.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement orders re-affirmation, correction, succession, dispute and new assertion. `recordWrite` only logs what it is given: `state.writes.push({ table, kind, values, addressed });`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `selectHeld` returns whichever seeded rows satisfy the WHERE clause of the SQL it receives: `const found = rows.filter((row) => matchesWhere(row, sql, params));`. It does not state which key (node and type, or node, type and target or value) identifies the current assertion. The SQL under test decides that.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      storeProvenance(), lines 102-120. It keeps at most one row per (target, fragment) and adds a row for each cited fragment not yet held.
+    evidence: >-
+      for (const fragment_id of fragmentIdsOf(params[1])) { const held = state.provenance.some( (p) => p.target_id === target && p.fragment_id === fragment_id ); if (held && !tolerant) throw new UniqueViolation(index); if (!held) state.provenance.push({ target_id: target, fragment_id }); }
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No branch marks a held row disputed or records a disputed row that supersedes nothing. `updatedValues` and `insertedValues` only echo the column values that the SQL under test assigns.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no outcome, error code or message of the ingestion surface. The only error it raises is the database-level `class UniqueViolation extends Error { readonly code = UNIQUE_VIOLATION;`, which is not an ingestion refusal.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      nowhere
+    evidence: >-
+      It is only a seedable world. `buildWorld(seed: WorldSeed = {})` returns `{ client, writes: state.writes, provenance: state.provenance }`. The scenario's expectations (no new link, provenance added, validity unchanged) are read off `writes` and `provenance` by tests outside this file.
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      nowhere
+    evidence: >-
+      It states no multi-current rule. `selectHeld` filters seeded `HeldRow` values by the WHERE clause and does not look at whether a type allows multiple current assertions.
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      It states no dispute outcome. `recordWrite` returns `{ rows: [{ id: `inserted-${table}-${state.writes.length}` }], rowCount: 1 }` for any insert, whatever status the values carry.
+looked_past: >-
+  The unique-index names (`provenance_link_fragment_uq`, `provenance_attr_fragment_uq`), the SQL-shape regexes and the `23505` code mirror the store's schema for a test double. That is an implementation concern, not a domain fact.

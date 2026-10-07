@@ -1,0 +1,62 @@
+findings:
+  - file: src/__tests__/unit/ingestion/graph-consolidation-reaffirmation.spec.ts
+    where: >-
+      the CORRECTED expectation (line 889), used by the precedence rows "correction before succession", "correction before dispute" and "correction before new assertion on a type allowing multiple current assertions"
+    evidence: >-
+      const CORRECTED: Taken = { outcome: "accepted", on_held: false, held_statuses: ["superseded"], new_assertions: 1, };
+    cost: >-
+      The test fixes which outcome word a correction proposal gets: "accepted", the same word as a new assertion, and not "superseded_previous". The ingestion contract lists the outcomes (consolidated; accepted; superseded_previous with the superseded identity; disputed). rules/knowledge-base/correction-replaces says what a correction does (supersedes the assertion, keeps its validity end, records a new assertion naming it) and says nothing about its outcome word. No node says which branch answers with which word. The mapping now lives only in this test and in the service, so a reader looking in the specification for the outcome of a correction finds nothing.
+    kind: unstated
+    correction: >-
+      The analysis that owns the propose-link and propose-attribute answers would need to state which outcome a correction, a succession and a new assertion each carry. Nothing in this file changes.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the `reaffirmationsMissed` loop and its single `it` (lines 851-874), with the re-affirmation describes at lines 239-424 and 456-591
+    evidence: >-
+      const HINTS_OF_REAFFIRMATION: readonly ChangeHint[] = ["none", "succession"]; ... reaffirmed(subject) returns { outcome: "consolidated", identity: subject.heldId, provenance: [FRAGMENT_ONE], new_assertions: 0, assigned: [] }; expect(missed).toEqual([]);
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the PRECEDENCE table and `precedenceBroken` (lines 922-1030)
+    evidence: >-
+      { name: "re-affirmation before succession by hint", ... taken: REAFFIRMED_ON_HELD }, { name: "correction before dispute", ... taken: CORRECTED }, { name: "dispute before new assertion", ... taken: DISPUTE_TAKEN }
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      `heldFor`, `expectedMeeting` and `meetingsMisjudged` (lines 1032-1071)
+    evidence: >-
+      if (relation === "another node") { return { ...subject.held, [subject.ownerColumn]: OTHER_NODE }; } if (relation === "another type or key") { return { ...subject.held, [subject.typeColumn]: OTHER_TYPE }; }
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      `landingsMissingACitedFragment` over the LANDINGS table (lines 1212-1264)
+    evidence: >-
+      if (held.join() !== [FRAGMENT_ONE, FRAGMENT_TWO].join()) { missing.push(`${landing.name}: ${held.join() || "none"}`); }
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      `disputeOf` and `disputedOn` with the dispute describes (lines 1073-1165)
+    evidence: >-
+      return { held_statuses: ["disputed"], marked_disputed: [heldId], recorded_statuses: ["disputed"], recorded_supersedes: [null], };
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the `outcome: "consolidated"` expectations carrying the held identity (for example lines 245-248 and 280-283) and the outcome words "disputed", "superseded_previous" and "accepted" in the Taken constants (lines 883-912). The outcome word of a correction is the point reported as a finding.
+    evidence: >-
+      expect(result).toMatchObject({ outcome: "consolidated", link_id: HELD_LINK_ID, });
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms
+    held_at: >-
+      the test "re-affirms the link of a type allowing one current link: provenance added, no new link, not marked disputed, validity start kept" (lines 1109-1132)
+    evidence: >-
+      held_statuses: [], validity_start_assigned: false, new_links: 0, provenance: [FRAGMENT_ONE]
+  - node: scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+    held_at: >-
+      the "attribute, multiple current" subject in SUBJECTS and the test at lines 580-591 (multi-current attribute, hint succession, consolidated on the held identity), with the "link, multiple current" subject in the loop at lines 851-874
+    evidence: >-
+      name: "link, multiple current", multi: true, ... propose: (world, proposal) => landLink(world, proposal, PARTICIPATES)
+  - node: scenarios/knowledge-base/different-target-without-signal-is-disputed
+    held_at: >-
+      the test "marks the current link disputed and records the new link from A to C in status disputed, superseding nothing" (lines 1135-1153)
+    evidence: >-
+      recorded_sources: [SOURCE_NODE], recorded_targets: [TARGET_NODE_A], ...disputedOn(HELD_LINK_ID)
+looked_past: >-
+  The correction, succession-signal and current-assertion behaviors the test also pins are held by nodes outside the set (rules/knowledge-base/correction-replaces, succession-signal, current-assertion, new-assertion), and the test restates them as expectations only, not as an authority. The test also feeds correction proposals NEUTRAL_TEXTS, which have no errata evidence, directly to the consolidation service, and that is a question for the correction-evidence rules and not for this pass.
+candidates_opened:
+  - rules/knowledge-base/correction-replaces
