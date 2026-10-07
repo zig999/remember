@@ -24,4 +24,8 @@ entries:
   unstated: The owner did not say whether a proposal with change hint succession or correction and the same target or value still follows the rules it follows today.
   decided: 'Change hint none stays the only hint that re-affirms: a same-target succession still goes to dispute and a correction still supersedes the assertion it meets.'
   why: The owner asked to settle the different start only, and a hint other than none states a claim about the assertion that a repeat does not make.
+- field: statement
+  unstated: The owner now holds that a proposal with change hint succession and the same target or value is not a dispute, because the twin it would record has nothing to settle against the assertion it repeats, and the earlier entry that kept it a dispute rested on no execution and cannot be carried out; the material did not say what such a proposal is instead, for a type that allows multiple current assertions or not.
+  decided: A proposal with change hint succession and the same target or value re-affirms the current assertion like one with change hint none, for every type, and only change hint correction with the same target or value stays correction-replaces.
+  why: A succession claims the assertion changed and a same target or value shows it did not, so what the proposal adds is evidence and a repeat consolidates and never duplicates.
 ---

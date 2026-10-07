@@ -12,7 +12,7 @@ Derived by spec.py from the specification files; never edited.
 | curation-workspace | supporting | 10 | 218 | 3 | 9 |
 | graph-explorer | supporting | 10 | 170 | 3 | 4 |
 | ingest-workspace | supporting | 3 | 58 | 3 | 4 |
-| knowledge-base | core | 79 | 427 | 5 | 26 |
+| knowledge-base | core | 79 | 427 | 5 | 28 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
@@ -91,4 +91,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-311 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+312 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.

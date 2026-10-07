@@ -22618,7 +22618,7 @@ None.
 === rules/knowledge-base/reaffirmation-consolidates
 ---
 type: policy
-statement: A proposal with change hint none that meets a current assertion with the same target or value re-affirms it whatever validity start it states, adding its provenance and changing nothing else about the assertion.
+statement: A proposal with change hint none or succession that meets a current assertion with the same target or value re-affirms it whatever validity start it states, adding its provenance and changing nothing else about the assertion.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-link
@@ -22658,6 +22658,10 @@ entries:
   unstated: The owner did not say whether a proposal with change hint succession or correction and the same target or value still follows the rules it follows today.
   decided: 'Change hint none stays the only hint that re-affirms: a same-target succession still goes to dispute and a correction still supersedes the assertion it meets.'
   why: The owner asked to settle the different start only, and a hint other than none states a claim about the assertion that a repeat does not make.
+- field: statement
+  unstated: The owner now holds that a proposal with change hint succession and the same target or value is not a dispute, because the twin it would record has nothing to settle against the assertion it repeats, and the earlier entry that kept it a dispute rested on no execution and cannot be carried out; the material did not say what such a proposal is instead, for a type that allows multiple current assertions or not.
+  decided: A proposal with change hint succession and the same target or value re-affirms the current assertion like one with change hint none, for every type, and only change hint correction with the same target or value stays correction-replaces.
+  why: A succession claims the assertion changed and a same target or value shows it did not, so what the proposal adds is evidence and a repeat consolidates and never duplicates.
 ---
 
 === rules/knowledge-base/recent-ingestion-latest-run
@@ -24503,6 +24507,27 @@ involves:
 
 None.
 
+=== scenarios/knowledge-base/different-target-without-signal-is-disputed
+---
+subject: rules/knowledge-base/conflict-disputes
+given:
+- a link type that does not allow multiple current links
+- a current knowledge link of that type from node A to node B
+when:
+- a proposal of that link type from A to node C arrives with change hint none, citing no fragment that signals succession
+then:
+- the current link is marked disputed
+- a new link from A to C is recorded in status disputed
+- the new link supersedes nothing
+involves:
+- rules/knowledge-base/consolidation-precedence
+- rules/knowledge-base/succession-closes-previous
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/directed-alias-admitted-without-source
 ---
 subject: rules/knowledge-base/alias-admitted-only-from-source
@@ -24761,23 +24786,44 @@ involves:
 
 None.
 
-=== scenarios/knowledge-base/same-target-succession-is-disputed
+=== scenarios/knowledge-base/same-target-succession-re-affirms
 ---
-subject: rules/knowledge-base/conflict-disputes
+subject: rules/knowledge-base/reaffirmation-consolidates
 given:
 - a link type that does not allow multiple current links
-- a current knowledge link of that type from node A to node B
+- a current knowledge link of that type from node A to node B, valid from 2024-01-01
 when:
-- a proposal of that link type from A to B arrives with change hint succession, citing no errata
+- a proposal of that link type from A to B arrives with change hint succession, valid from 2024-06-01
 then:
-- the proposal does not re-affirm the link, because its change hint is not none
-- it does not succeed the link, because its target is the same
-- the current link is marked disputed
-- a new link from A to B is recorded in status disputed
+- the proposal re-affirms the link
+- the provenance of the proposal is added to the link
+- no new link is recorded
+- the link is not marked disputed
+- the link stays valid from 2024-01-01
 involves:
 - rules/knowledge-base/consolidation-precedence
-- rules/knowledge-base/reaffirmation-consolidates
 - rules/knowledge-base/succession-closes-previous
+---
+
+## Description
+
+None.
+
+=== scenarios/knowledge-base/same-target-succession-re-affirms-multi-current
+---
+subject: rules/knowledge-base/reaffirmation-consolidates
+given:
+- a link type that allows multiple current links
+- a current knowledge link of that type from node A to node B
+when:
+- a proposal of that link type from A to B arrives with change hint succession
+then:
+- the proposal re-affirms the link
+- the provenance of the proposal is added to the link
+- no new link is recorded
+involves:
+- rules/knowledge-base/consolidation-precedence
+- rules/knowledge-base/new-assertion
 ---
 
 ## Description
