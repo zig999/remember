@@ -1,0 +1,78 @@
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the describe blocks "re-affirmation of the current link by a proposal with another validity start" and "re-affirmation of the current attribute by a proposal with another validity start" (lines 165-350), with the no-write assertions
+    evidence: >-
+      expect(writesTo(world, "knowledge_link", "insert")).toHaveLength(0); expect(writesTo(world, "knowledge_link", "update")).toHaveLength(0); and expect(result.outcome).not.toBe("consolidated") for change_hint "succession" and "correction"
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the held rows and keys in the fixtures (LEADS and DEADLINE with allows_multiple_current false, TAGS with allows_multiple_current true), and the test "answers a same-value proposal with another start as consolidated on an attribute key that allows multiple current values" (lines 277-299)
+    evidence: >-
+      allows_multiple_current: false, / allows_multiple_current: true, and "does not answer a proposal with change hint none and another value as a re-affirmation"
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the LANDINGS table (lines 427-452) and the test "records, on the assertion a taken proposal lands on, one provenance for each fragment it cites, in every branch of the consolidation order"
+    evidence: >-
+      linkLanding("link, re-affirmation", HOLDING_LINK, {}), linkLanding("link, correction", HOLDING_LINK, {... change_hint: "correction"}), linkLanding("link, succession", ...), linkLanding("link, dispute", HOLDING_LINK, { target_node_id: TARGET_NODE_A }), linkLanding("link, new assertion", {}, {})
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      the CURRENCIES table and the describe "current assertion" (lines 475-526)
+    evidence: >-
+      { valid_to: null, superseded_at: null, current: true }, { valid_to: "2025-01-01", superseded_at: null, current: false }, { valid_to: null, superseded_at: "2025-01-01T00:00:00Z", current: false }
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      landingsMissingACitedFragment and the describe "provenance of a taken proposal" (lines 454-473), and the provenance assertions in the re-affirmation tests
+    evidence: >-
+      if (held.join() !== [FRAGMENT_ONE, FRAGMENT_TWO].join()) { missing.push(`${landing.name}: ${held.join() || "none"}`); }
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: >-
+      the test "adds a second cited fragment once and the already-held one not again when the held link is re-cited" (lines 223-238)
+    evidence: >-
+      provenance: [{ target_id: HELD_LINK_ID, fragment_id: FRAGMENT_ONE }] seeded, then fragment_ids: [FRAGMENT_ONE, FRAGMENT_TWO] cited, and expect(fragmentsOn(world, HELD_LINK_ID)).toEqual([FRAGMENT_ONE, FRAGMENT_TWO])
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: >-
+      the test "adds a second cited fragment once and the already-held one not again when the held attribute is re-cited" (lines 334-349)
+    evidence: >-
+      provenance: [{ target_id: HELD_ATTRIBUTE_ID, fragment_id: FRAGMENT_ONE }] seeded, then fragment_ids: [FRAGMENT_ONE, FRAGMENT_TWO] cited, and expect(fragmentsOn(world, HELD_ATTRIBUTE_ID)).toEqual([FRAGMENT_ONE, FRAGMENT_TWO])
+  - node: scenarios/knowledge-base/same-target-other-start-re-affirms
+    held_at: >-
+      the test "re-affirms a link from A to B valid from 2024-01-01 by a proposal valid from 2024-06-01 ..." (lines 353-365), with HELD_LINK valid_from "2024-01-01" and SCENARIO_LINK valid_from "2024-06-01"
+    evidence: >-
+      expect(result).toMatchObject({ outcome: "consolidated", link_id: HELD_LINK_ID }); expect(writesTo(world, "knowledge_link", "insert")).toHaveLength(0); expect(writesTo(world, "knowledge_link", "update")).toHaveLength(0);
+  - node: scenarios/knowledge-base/same-value-other-start-re-affirms
+    held_at: >-
+      the test "re-affirms an attribute holding V valid from 2026-01-01 by a proposal of V valid from 2026-03-01 ..." (lines 367-379), with HELD_ATTRIBUTE valid_from "2026-01-01" and SCENARIO_ATTRIBUTE valid_from "2026-03-01"
+    evidence: >-
+      expect(result).toMatchObject({ outcome: "consolidated", attribute_id: HELD_ATTRIBUTE_ID }); expect(writesTo(world, "node_attribute", "insert")).toHaveLength(0); expect(writesTo(world, "node_attribute", "update")).toHaveLength(0);
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls consolidateLink and consolidateAttribute directly on a fake client and states no operation answer, HTTP status or error code
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds ConsolidateLinkArgs and ConsolidateAttributeArgs values (const SCENARIO_LINK: ConsolidateLinkArgs = {...}) and imports their types; it declares no proposal shape
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      const HELD_LINK: HeldRow = {...} uses a row type imported from ./reaffirm-consolidation-world.js; no knowledge-link shape is declared in this file
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      const HELD_ATTRIBUTE: HeldRow = {...} uses a row type imported from ./reaffirm-consolidation-world.js; no node-attribute shape is declared in this file
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      change_hint: "none", change_hint: "succession" and change_hint: "correction" are used as values only; the enumeration is declared outside this file
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      provenance: [{ target_id: HELD_LINK_ID, fragment_id: FRAGMENT_ONE }] seeds the test double and fragmentsOn reads target_id and fragment_id from it; the file does not declare the provenance shape
+looked_past: >-
+  The structure of the test double in reaffirm-consolidation-world.js, the NEUTRAL_TEXTS fixture and the fixed confidence and status_for_new_row inputs are test construction and not domain facts, and I judged none of them.

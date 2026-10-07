@@ -1,0 +1,207 @@
+findings:
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      line 464, the comment above the status assertion in "inserts a new knowledge_link row and one provenance row when no vigent exists"
+    evidence: >-
+      // active status because confidence >= 0.75 (BR-17).
+    cost: >-
+      The 0.75 floor is stated a second time in test prose. If the node's threshold moves, this comment goes stale and nothing flags it, because it is prose and no bind reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment. The status assertion beside it and the production consolidation code already hold the fact.
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 469-474 and 485-487, the comments in "promotes the cited fragment proposed -> accepted when provenance is created (§6.6)"
+    evidence: >-
+      §6.6 requires the fragment to flip to 'accepted' exactly when its Provenance row is created on consolidation.
+    cost: >-
+      A second statement of when a fragment moves from proposed to accepted sits in the test beside the assertions. A reader looking for that rule finds this prose instead of the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The assertions `expect(promotion.sql).toContain("status = 'proposed'")` and the consolidation service's UPDATE hold the fact.
+    node: rules/knowledge-base/provenance-accepts-proposed-fragment
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 516-517, the comment above "returns outcome=consolidated and does NOT insert a new row when (source, link_type, target, valid_from) match the vigent row"
+    evidence: >-
+      // BR-27 step (a): vigent row exists; same target; same valid_from;
+      // change_hint='none' -> no new row, only provenance.
+    cost: >-
+      The comment states the re-affirmation condition with a same-validity-start requirement. The node says re-affirmation holds "whatever validity start it states". The test at line 696 does not require a same start either. A reader of the comment learns the older, narrower rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The production re-affirmation branch, in graph-consolidation.service.ts which this file imports, holds the fact, and the node holds it as stated.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 541 and 544, the comments in the re-affirmation test, and line 645 in the multi-current test
+    evidence: >-
+      // Provenance MUST still be inserted (BR-18) — re-affirmation accumulates.
+    cost: >-
+      The rule that a re-affirmation records provenance on the existing assertion is restated in prose. The assertions on `state.inserts.provenance` already carry it.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/knowledge-base/consolidation-records-provenance
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 593-608, the block comment above describe "multi-current link re-affirmation with divergent valid_from (§18 bug fix)"
+    evidence: >-
+      Fix: for multi-current types, recognize re-affirmation by
+      `sameTarget && change_hint === 'none'` WITHOUT requiring `sameValidFrom`.
+    cost: >-
+      The comment limits the "any validity start" re-affirmation to multi-current types. The node applies it to every type, and the test at line 696 exercises it on a functional type. A reader of the comment gets a narrower rule than the one decided, and the comment records a bug history that belongs in a decision log.
+    kind: restates
+    correction: >-
+      Remove the comment block. The behavior is held by the production consolidator and by the node.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 651-655, the comment above "does NOT consolidate when change_hint='succession' even on a multi-current link"
+    evidence: >-
+      (succession does not apply to multi-current types per
+      §6.5)
+    cost: >-
+      The scope of succession, only types that do not allow multiple current assertions, is stated in test prose. The rule lives in the node and the consolidator.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/succession-closes-previous
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 767-772, the comment in "closes vigent and inserts a new chained row when functional + different target + textual succession signal"
+    evidence: >-
+      // Emenda v7.3: succession closes the VALIDITY axis only — the close must
+      // guard superseded_at conditionally (intra-day fallback), never set it
+      // unconditionally.
+    cost: >-
+      How a succession closes the previous assertion is restated in prose that cites an amendment of the old source document, not a node. If the node is changed, nothing reaches this comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The assertions on the UPDATE's SQL and the production close hold the fact.
+    node: rules/knowledge-base/succession-closes-previous
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 784-788 and 824-827, the comments in "intra-day succession closes on the transaction axis only"
+    evidence: >-
+      // the strict `valid_from < valid_to` CHECK. The succession close must guard
+      // this: emit valid_to only when valid_from < closeDate, else leave it.
+    cost: >-
+      The rule for a closing date on or before the previous start is restated in prose, in terms of a database CHECK. The node states it in domain terms.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/knowledge-base/succession-before-previous-start
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 913-914 and 943-944, the comments in the correction test, and line 1162 in the attribute mirror
+    evidence: >-
+      // The vigent row's UPDATE must NOT touch valid_to (§6.5-B "transaction
+      // axis only").
+    cost: >-
+      A correction leaving the previous assertion's validity end as it was is restated in prose citing the old source document. The node holds it.
+    kind: restates
+    correction: >-
+      Remove the comments. The assertion `expect(state.updates[0]!.sql).not.toContain("valid_to")` holds the fact.
+    node: rules/knowledge-base/correction-replaces
+  - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+    where: >-
+      lines 959 and 988, the describe-level and test-title comments on the dup-guard race
+    evidence: >-
+      // Dup-guard 23505 race recovery (BR-27 step "SQLSTATE 23505 -> retry once")
+    cost: >-
+      The decide-again-once rule for a concurrent collision is restated in prose and cites a step number from the old source document.
+    kind: restates
+    correction: >-
+      Remove the comment. The `savepoints.length` and `insertAttempts` assertions hold the behavior.
+    node: rules/knowledge-base/consolidation-race-decided-again
+read:
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the test at line 696, "functional link with the same target and a different valid_from consolidates on the held link", and the multi-current test at line 614
+    evidence: >-
+      expect(envelope.result.outcome).toBe("consolidated");
+      expect(envelope.result.link_id).toBe(EXISTING_LINK_ID);
+      expect(state.inserts.knowledge_link.length).toBe(0);
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the catalog (a functional `leads` and a multi-valued `participates_in`, `allows_multiple_current`) and the FOR UPDATE fixtures returning one vigent row
+    evidence: >-
+      allows_multiple_current: false, // functional
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the five branch describes, 444 to 956, with the correction test at line 915 and the succession test at line 734 each expecting its own outcome
+    evidence: >-
+      expect(envelope.result.outcome).toBe("superseded_previous");
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      the FOR UPDATE fixtures return the vigent row with no validity end
+    evidence: >-
+      valid_to: null,
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      the assertions on `state.inserts.provenance` in every branch, including the BR-18 loop at line 1270
+    evidence: >-
+      expect(state.inserts.provenance[0]!.target_id).toBe(EXISTING_LINK_ID);
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: nowhere
+    evidence: >-
+      every test cites one fragment (`fragment_ids: [FRAGMENT_ID]`) and asserts `expect(state.inserts.provenance.length).toBe(1);`. No test cites the same fragment twice.
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: nowhere
+    evidence: >-
+      the attribute tests assert `expect(state.inserts.provenance.length).toBe(1);` for a single fragment and never repeat a fragment.
+  - node: scenarios/knowledge-base/same-target-other-start-re-affirms
+    held_at: >-
+      the test at line 696, with the vigent link valid from 2026-06-13 and a proposal valid from 2026-06-14
+    evidence: >-
+      valid_from: "2026-06-14", // different period
+        change_hint: "none",
+  - node: scenarios/knowledge-base/same-value-other-start-re-affirms
+    held_at: nowhere
+    evidence: >-
+      the only attribute re-affirmation test, at line 1046, uses an equal start: `valid_from: "2026-01-10"` on the vigent row and `baseAttrArgs()` with `valid_from: "2026-01-10"`. No attribute test proposes the same value with a different start.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the outcome assertions on propose-link and propose-attribute results, and the second-collision refusal at line 1021
+    evidence: >-
+      expect(thrown.code).toBe("SYSTEM_INTERNAL_ERROR");
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      the argument shapes of `baseLinkArgs` and `baseAttrArgs`, whose Partial type declares confidence, change_hint, valid_from and valid_from_basis
+    evidence: >-
+      change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      the `knowledge_link` insert capture in the mock, with its valid_from, valid_to, status, confidence, valid_from_basis and supersedes_link_id
+    evidence: >-
+      supersedes_link_id: params[9],
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      the `node_attribute` insert capture in the mock, with its value, valid_from, valid_to, status, confidence, valid_from_basis and supersedes_attribute_id
+    evidence: >-
+      supersedes_attribute_id: params[10],
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      the union in the `baseLinkArgs` and `baseAttrArgs` override types
+    evidence: >-
+      change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      the `INSERT INTO provenance` handler in the mock, which records a target and a fragment id per row
+    evidence: >-
+      state.inserts.provenance.push({
+            target_id: targetId,
+            fragment_id: fid,
+looked_past: >-
+  The test declares its own change-hint literal union and hard-codes SQL text fragments such as "ELSE superseded_at" and "THEN now()" as assertions, which is test design and not a domain fact no node holds.
+candidates_opened:
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/provenance-accepts-proposed-fragment
+  - rules/knowledge-base/succession-closes-previous
+  - rules/knowledge-base/succession-before-previous-start
+  - rules/knowledge-base/correction-replaces
+  - rules/knowledge-base/consolidation-race-decided-again
+  - rules/knowledge-base/consolidation-race-refuses-second-collision
+  - rules/knowledge-base/conflict-disputes
