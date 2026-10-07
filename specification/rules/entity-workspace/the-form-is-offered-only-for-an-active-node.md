@@ -1,6 +1,6 @@
 ---
 type: invariant
-statement: "The form MUST be offered only for a knowledge node whose status is active, and any other node MUST show its attributes without a form."
+statement: "The form MUST be offered only for a knowledge node whose status is active, and any other node the knowledge base still delivers MUST show its attributes without a form."
 constrains:
 - domain/entity-workspace/entity-edit-session
 ---

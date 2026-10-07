@@ -10,7 +10,7 @@ Derived by spec.py from the specification files; never edited.
 | chat | supporting | 17 | 131 | 1 | 0 |
 | chat-workspace | supporting | 6 | 126 | 2 | 4 |
 | curation-workspace | supporting | 10 | 218 | 3 | 9 |
-| entity-workspace | supporting | 2 | 21 | 3 | 3 |
+| entity-workspace | supporting | 2 | 41 | 3 | 3 |
 | graph-explorer | supporting | 10 | 170 | 3 | 4 |
 | ingest-workspace | supporting | 3 | 58 | 3 | 4 |
 | knowledge-base | core | 85 | 452 | 6 | 33 |
@@ -95,4 +95,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-360 decision(s) disclosed, 2 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+388 decision(s) disclosed, 8 fact(s) recorded as read, 2 location(s) retired in the decision logs.

@@ -34,10 +34,12 @@ answers:
   refusals:
   - rule: rules/entity-workspace/review-needs-a-changed-field
     answer: no review is offered
+  - rule: rules/entity-workspace/a-field-accepts-only-its-value-type
+    answer: a message on that field naming the value type it expects, and no review is offered while the value stands
   - rule: rules/entity-workspace/review-requires-a-trimmed-reason
     answer: the save is not offered until the reason holds a character
   - rule: rules/entity-workspace/validity-start-precedes-the-end
-    answer: a message on the validity end field and no save
+    answer: the message "O início deve ser anterior ao fim." on the validity end field and no save
 - operation: save-edit
   accepted: a notice that the edit is recorded with an undo that lasts five seconds, then the form reloaded from the values now current
   refusals:

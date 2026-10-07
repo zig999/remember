@@ -1231,11 +1231,32 @@ direction: consumed
 upstream: contracts/knowledge-base/entity-editing
 operations:
 - edit-entity
+answers:
+- operation: edit-entity
+  accepted: "POST /api/v1/nodes/{node_id}/edit with the node id URL-encoded in the path and a JSON body { reason, changes }, each change carrying attribute_key, kind, value, item_id, valid_from and valid_to, answered with the accepted answer the upstream publishes"
+  refusals:
+  - when: "The answer is not 2xx and its body carries a readable error code."
+    answer: "that status with the code, message and details read from the body { ok: false, error: { code, message, details } }, a BUSINESS_ENTITY_EDIT_CONFLICT carrying details { attribute_key, item_id } with item_id null where the conflict names no item"
+  - rule: "rules/application-shell/a-request-is-cut-off-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/application-shell/a-failed-refresh-ends-the-session"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is not 2xx, is below status 500 and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
 ---
 
 ## Description
 
 The write the entity workspace makes of the knowledge base: one edit carrying every change the owner reviewed, under one reason.
+The upstream publishes what each answer carries, and this contract states only how the screen sends the edit and reads the answer.
 
 === contracts/entity-workspace/bff-entity-edit.log
 ---
@@ -1244,6 +1265,17 @@ entries:
   unstated: The material names no such thing.
   decided: api
   why: The screen consumes the write under its own name and the context map reads that dependency from this contract.
+- field: answers
+  unstated: No node states the method or path of the edit, or how the node identity is carried in it; the intake gives the method and path and puts the identity in the path, but says nothing about encoding it.
+  decided: POST /api/v1/nodes/{node_id}/edit with the node id URL-encoded in the path
+  why: The person adopted POST /api/v1/nodes/{node_id}/edit with the node identity in the path (intake wire-facts.md), and URL-encoding is how every consumed contract in this specification carries an identity in a path.
+- field: answers
+  unstated: No node stated the body the edit is sent with, the body a refused edit carries over REST, or the keys under which a conflict refusal names the attribute key and the item.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-facts.md: "Body JSON { reason, changes: [{ attribute_key, kind, value, item_id, valid_from, valid_to }] }. Refusals answer in the body { ok: false, error: { code, message, details } }. A conflict answers with details { attribute_key, item_id }, item_id null where there is none."'
+- field: answers
+  unstated: No node and no material says how the entity workspace's edit request reports a request with no answer, a request its caller cancelled, a non-2xx answer with no error code, a 2xx answer whose body is not JSON, or a session that cannot be refreshed. The shell's request helper states these failures for itself, but its envelope check refuses the edit's accepted answer, which has no envelope.
+  decided: 'The same failures, codes and wording the curation and ingest requests answer: SYSTEM_TIMEOUT at the shell''s 30000 millisecond cutoff, SYSTEM_ABORTED for a cancelled request, SYSTEM_NETWORK when no answer comes, HTTP 401 with AUTH_SESSION_EXPIRED for a session that cannot be refreshed, SYSTEM_INVALID_RESPONSE for a 2xx body that is not JSON, and, when the body has no error code, SYSTEM_UPSTREAM at status 500 or above and SYSTEM_UNKNOWN below it.'
+  why: The edit is accepted as an HTTP 200 body with no envelope. The application already reports failures for requests of that shape in exactly these terms, and the shell helper's envelope reading cannot accept such an answer.
 ---
 
 === contracts/entity-workspace/bff-entity-reads
@@ -1256,6 +1288,83 @@ operations:
 - list-nodes
 - read-node
 - list-attribute-keys
+answers:
+- operation: list-node-types
+  accepted: "GET /api/v1/node-types with no query parameter"
+  refusals:
+  - when: "The answer is not 2xx, or is 2xx with a JSON body whose ok is not true, and its body carries a readable error code."
+    answer: "that status with the code, message and details read from the body { ok: false, error: { code, message, details } }"
+  - rule: "rules/application-shell/a-request-is-cut-off-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/application-shell/a-failed-refresh-ends-the-session"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is below status 500, is not 2xx or is 2xx with a JSON body whose ok is not true, and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+- operation: list-nodes
+  accepted: "GET /api/v1/nodes"
+  refusals:
+  - when: "The answer is not 2xx, or is 2xx with a JSON body whose ok is not true, and its body carries a readable error code."
+    answer: "that status with the code, message and details read from the body { ok: false, error: { code, message, details } }"
+  - rule: "rules/application-shell/a-request-is-cut-off-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/application-shell/a-failed-refresh-ends-the-session"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is below status 500, is not 2xx or is 2xx with a JSON body whose ok is not true, and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+- operation: read-node
+  accepted: "GET /api/v1/nodes/{node_id} with the node id URL-encoded in the path and no query parameter"
+  refusals:
+  - when: "The answer is not 2xx, or is 2xx with a JSON body whose ok is not true, and its body carries a readable error code."
+    answer: "that status with the code, message and details read from the body { ok: false, error: { code, message, details } }"
+  - rule: "rules/application-shell/a-request-is-cut-off-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/application-shell/a-failed-refresh-ends-the-session"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is below status 500, is not 2xx or is 2xx with a JSON body whose ok is not true, and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+- operation: list-attribute-keys
+  accepted: "GET /api/v1/attribute-keys with the node type named by its name in the node_type query parameter, read through the { ok, result } envelope as total and items, the items ordered by node type name and then by key"
+  refusals:
+  - when: "The answer is not 2xx, or is 2xx with a JSON body whose ok is not true, and its body carries a readable error code."
+    answer: "that status with the code, message and details read from the body { ok: false, error: { code, message, details } }"
+  - rule: "rules/application-shell/a-request-is-cut-off-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/application-shell/a-failed-refresh-ends-the-session"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is below status 500, is not 2xx or is 2xx with a JSON body whose ok is not true, and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
 ---
 
 ## Description
@@ -1269,6 +1378,20 @@ entries:
   unstated: The material names no such thing.
   decided: api
   why: The screen consumes the knowledge base reads under their own names and the context map reads that dependency from this contract.
+- field: answers
+  unstated: No node stated the request path the entity workspace uses for the knowledge base's node-type listing or its node listing.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-facts.md: "GET /api/v1/node-types, no parameters." and "GET /api/v1/nodes?node_type=&name_prefix=&status=&limit=&offset="'
+- field: answers
+  unstated: No node states the REST route of the attribute-key listing, the name of its node-type query parameter, or the order its keys come back in.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-facts.md: "GET /api/v1/attribute-keys?node_type= (node_type optional, string 1..200)." and "Ordered by node type name, then key."'
+- field: answers
+  unstated: No node states the method or path of the entity workspace's node read, how the node identity is carried in it, or which of its optional query parameters the screen sends. The intake gives GET /api/v1/nodes/{node_id}?as_of=&in_effect_only=&include_uncertain= with all three parameters optional, but does not say whether the identity is URL-encoded or which parameters the screen sends.
+  decided: GET /api/v1/nodes/{node_id} with the node id URL-encoded in the path and no query parameter
+  why: The form needs every attribute the node holds, current, uncertain and disputed alike. A node read that names no as-of date, does not ask for in-effect-only items and does not leave out uncertain items withholds none of them. URL-encoding is how every consumed contract in this specification carries an identity in a path.
+- field: answers
+  unstated: 'No node and no material states how the entity workspace''s reads of the knowledge base turn a failed answer into a failure: where a refused read''s body carries its code, message and details, or which failure a read reports when the body has no error code, when a 2xx body is not JSON, when the request is cut off, when it is cancelled, when no answer comes or when the session cannot be refreshed. The intake says only that the four reads answer inside { ok: true, result }.'
+  decided: 'For each of the four reads, a refused read takes the status and the code, message and details from the body { ok: false, error: { code, message, details } }, for a non-2xx answer and for a 2xx JSON body whose ok is not true. The other failures are SYSTEM_TIMEOUT at the shell''s 30000 millisecond cutoff, SYSTEM_ABORTED for a cancelled request, SYSTEM_NETWORK when no answer comes, HTTP 401 with AUTH_SESSION_EXPIRED when the session cannot be refreshed, SYSTEM_INVALID_RESPONSE for a 2xx body that is not JSON, and, when the body has no error code, SYSTEM_UPSTREAM at status 500 or above and SYSTEM_UNKNOWN below it, a second 401 included. Each failure carries the wording the application already uses for that code.'
+  why: The application already reports failures for back-end requests in exactly these codes and wording. Unlike the edit, a read's accepted answer comes inside { ok, result }, so a 2xx body whose ok is not true is also a refused read.
 ---
 
 === contracts/entity-workspace/entity-screen
@@ -1308,10 +1431,12 @@ answers:
   refusals:
   - rule: rules/entity-workspace/review-needs-a-changed-field
     answer: no review is offered
+  - rule: rules/entity-workspace/a-field-accepts-only-its-value-type
+    answer: a message on that field naming the value type it expects, and no review is offered while the value stands
   - rule: rules/entity-workspace/review-requires-a-trimmed-reason
     answer: the save is not offered until the reason holds a character
   - rule: rules/entity-workspace/validity-start-precedes-the-end
-    answer: a message on the validity end field and no save
+    answer: the message "O início deve ser anterior ao fim." on the validity end field and no save
 - operation: save-edit
   accepted: a notice that the edit is recorded with an undo that lasts five seconds, then the form reloaded from the values now current
   refusals:
@@ -1334,6 +1459,14 @@ entries:
   unstated: The material names no such thing.
   decided: api
   why: The material describes a screen, which the other workspaces state as a published api whose answers are what the owner sees.
+- field: answers
+  unstated: No node and no intake material states what the entity edit screen shows when a field holds a value that does not read as its key's value type, where it shows it, or whether the review is still offered while that value stands.
+  decided: Under show-review, a refusal on rules/entity-workspace/a-field-accepts-only-its-value-type answering "a message on that field naming the value type it expects, and no review is offered while the value stands".
+  why: A value the knowledge base would refuse for its kind cannot be reviewed as an edit, so the owner is held at the offending field, told the type it expects, before any review is shown.
+- field: answers
+  unstated: No node and no intake material gives the text of the message the entity screen shows on the validity end field when rules/entity-workspace/validity-start-precedes-the-end refuses a validity start that is not strictly earlier than the end. Whether the message is raised when only the end is given is already held by that rule's statement, which applies only when the owner gives both a start and an end.
+  decided: Under show-review, the refusal on rules/entity-workspace/validity-start-precedes-the-end answers 'the message "O início deve ser anterior ao fim." on the validity end field and no save'.
+  why: The curation screen already shows the owner "O início deve ser anterior ao fim." on the end field for the same condition, a start not strictly earlier than the end, so the owner reads the same words for the same refusal in both workspaces.
 ---
 
 === contracts/graph-explorer/bff-graph-view
@@ -14715,6 +14848,76 @@ constrains:
 
 None.
 
+=== rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+---
+type: invariant
+statement: "Every read and every edit the entity workspace makes of the knowledge base that is answered 401 on its first attempt MUST start one token refresh and, when the refresh succeeds, be sent once more with the new token, the same options and a fresh cutoff of 30000 milliseconds, without the repeated request ever starting a second refresh."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule covers what happens when the knowledge base answers 401 to the first attempt of a request the entity workspace sends through the bff-entity-reads and bff-entity-edit contracts.
+It does not decide what a failed refresh does to the stored token and the page. rules/application-shell/a-failed-refresh-ends-the-session decides that.
+It does not decide how a 401 on the repeated request is reported. contracts/entity-workspace/bff-entity-reads and contracts/entity-workspace/bff-entity-edit decide that.
+
+=== rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. The shell's refresh-and-repeat rules bind only requests that go through the shell request helper, and the entity workspace's edit request does not read its answer through that helper. No node and no material says whether the edit, or the reads, refresh the token and repeat once after a 401.
+  decided: invariant
+  why: The edit carries the same bearer token as the four reads, and its contract already answers a failed refresh with AUTH_SESSION_EXPIRED and reports a second 401 the way the reads do, so the edit already assumes that a first 401 starts one refresh and one repeat.
+---
+
+=== rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+---
+type: policy
+statement: "The review MUST judge the effect of each changed field against the knowledge node as the form loaded it, without regard to the other changes of the same edit."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/knowledge-base/edit-effect
+consistency: eventual
+---
+
+## Description
+
+This rule covers the node state that the review judges each field's effect against when the edit carries several changes: the node as the form loaded it, and not as the changes before it in the edit would leave it.
+It does not decide which effect a change takes from that state. The rules entity-edit-first-value, entity-edit-addition, entity-edit-succession, entity-edit-correction and entity-edit-removal under rules/knowledge-base/ decide that.
+It does not decide what the knowledge base records for a change within an edit that carries several, which rules/knowledge-base/entity-edit-adds-no-second-current-value and rules/knowledge-base/entity-edit-unchanged-records-nothing decide.
+It does not decide which fields count as changed, which rules/entity-workspace/a-field-is-changed-only-by-its-value and rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed decide.
+
+=== rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded.log
+---
+entries:
+- field: type
+  unstated: No node and no material says whether the review judges each change of an entity edit against the node as the form loaded it or against the node as the edit's earlier changes would leave it. An earlier decision of this plan took the second reading, and it made the review state a wrong effect for two fields added to one multi-valued key.
+  decided: policy
+  why: The person chose that the review judges each field against the node as the form loaded it, replacing the earlier decision that judged each change after the earlier ones of its edit. The review predicts one effect per field from what the owner sees on screen, and the backend may record a later change of the same edit differently.
+---
+
+=== rules/entity-workspace/a-change-writes-an-empty-member-as-null
+---
+type: invariant
+statement: "The save MUST send each change with its value, item_id, valid_from and valid_to members always present, writing JSON null in every member that holds nothing, and MUST send a remove change with null in its value, valid_from and valid_to."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule covers how each change in the edit request writes a member that holds nothing, and what a remove change carries in its value and validity. Which changes the save sends, and what a set change carries, is set by rules/entity-workspace/save-sends-one-change-per-changed-field. The attribute a remove change names in item_id is set by rules/knowledge-base/entity-edit-removal-names-an-attribute. How the knowledge base refuses a malformed member is set by contracts/knowledge-base/entity-editing.
+
+=== rules/entity-workspace/a-change-writes-an-empty-member-as-null.log
+---
+entries:
+- field: type
+  unstated: No node and no material has a rule for how the edit request writes a change member that holds nothing, or for what a remove change carries in its value, valid_from and valid_to. The intake (wire-facts.md) leaves open whether such a member is sent as null or left out, for the backend session to confirm.
+  decided: invariant
+  why: The knowledge base refuses a change member that is missing or is not a well-formed identifier or YYYY-MM-DD date, and accepts null where a member may be empty, so JSON null is the only empty form it takes in all three members. A remove carries null validity because a change to a stable key may state no validity and the removal looks at none.
+---
+
 === rules/entity-workspace/a-changed-stable-field-offers-no-validity
 ---
 type: invariant
@@ -14744,7 +14947,7 @@ None.
 === rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
 ---
 type: invariant
-statement: "A field of a key that has allowed values MUST offer only those values, by their labels and in their order."
+statement: "A field of a key that has allowed values MUST offer only those values, in their order, each by its label and, for a value that has no label, by its value."
 constrains:
 - domain/entity-workspace/attribute-field
 ---
@@ -14752,6 +14955,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/entity-workspace/a-closed-key-offers-only-its-allowed-values.log
+---
+entries:
+- field: statement
+  unstated: No node and no material says what a closed key's field shows for an allowed value that carries no label.
+  decided: The allowed value's own value, unchanged.
+  why: The value is the one text every allowed value is required to carry, and it is the catalog's own word for that value, so the owner can still recognise it without a label.
+---
 
 === rules/entity-workspace/a-conflict-keeps-the-typed-values
 ---
@@ -14774,17 +14986,97 @@ entries:
   why: The owner typed values the refusal says nothing against, and losing them would make a conflict cost the whole edit.
 ---
 
-=== rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+=== rules/entity-workspace/a-deleted-node-shows-its-own-alert
 ---
 type: invariant
-statement: "A key whose attribute is disputed MUST show its values without a field and point the owner to the curation workspace."
+statement: "The page for a knowledge node the knowledge base refuses as deleted MUST show the deleted-node alert written in the description in place of the form, with no action to try again."
 constrains:
 - domain/entity-workspace/entity-edit-session
 ---
 
 ## Description
 
-None.
+The deleted-node alert reads "Este nó foi apagado.", ending as written, and carries no code or message of the failure's own.
+rules/knowledge-base/deleted-node-read-refused decides that a node read refuses a deleted node with HTTP 410 and the code BUSINESS_NODE_DELETED, so a deleted node's attributes never reach the screen.
+rules/entity-workspace/the-form-is-offered-only-for-an-active-node decides what the screen shows for every other node the knowledge base still delivers.
+contracts/entity-workspace/entity-screen decides the alerts for a node that is not held and for any other failure to load.
+
+=== rules/entity-workspace/a-deleted-node-shows-its-own-alert.log
+---
+entries:
+- field: type
+  unstated: 'The specification contradicts itself for a deleted node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node says any other node shows its attributes without a form, while rules/knowledge-base/deleted-node-read-refused makes the node read refuse a deleted node with HTTP 410, so its attributes never reach the screen, and contracts/entity-workspace/entity-screen sends any other load failure to an alert that the form could not be loaded.'
+  decided: A deleted node shows its own alert, "Este nó foi apagado.", in place of the form with no action to try again, and the active-node rule is narrowed to the nodes the knowledge base still delivers.
+  why: The person chose a dedicated deleted-node alert over the generic could-not-be-loaded alert, with no retry because a deleted node does not come back. The wording follows the application's short fixed sentences, and was chosen by the planner, not by the person.
+---
+
+=== rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+---
+type: invariant
+statement: "The pointer a disputed key shows on the entity form MUST be a link to the curation address /curation carrying no search key, reading the text written in the description."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+The link reads "Abrir na fila de curadoria" exactly as written, with no closing period.
+rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation decides which key is disputed and that it shows its values without a field.
+rules/application-shell/the-areas-live-at-fixed-addresses decides the curation address, and rules/application-shell/chat-and-curation-keep-one-search-key decides the search key that address accepts.
+
+=== rules/entity-workspace/a-disputed-key-links-to-the-curation-queue.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None gives the pt-BR text of the pointer a disputed key shows on the entity form, says whether that pointer is a link to the curation address, or says whether the link carries the curation address's item search key.
+  decided: invariant, stating that the pointer is a link to /curation with no search key, reading "Abrir na fila de curadoria"
+  why: The curation drawer already labels its link into the curation queue "Abrir na fila de curadoria", and that link leads to the queue as a whole, since the node read returns no curation item identity to narrow it with.
+---
+
+=== rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+---
+type: invariant
+statement: "A key holding an attribute whose status, as the knowledge base's node read returns it, is disputed MUST show its values without a field and point the owner to the curation workspace, whether or not that attribute is current or in effect."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+What makes a key of the entity form a disputed key: the status of one of its attributes, and not that attribute's effective status, its flags, or whether it is current or in effect. An attribute whose status is superseded or deleted is not disputed and never makes its key disputed. This rule does not decide whether the knowledge base accepts a change to a disputed attribute. rules/knowledge-base/entity-edit-leaves-disputes-to-curation decides that.
+
+=== rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation.log
+---
+entries:
+- field: statement
+  unstated: No node and no material says which property of the attribute the node read returns makes the entity form treat its key as disputed. The read returns status, effective status, flags, and whether the attribute is current and in effect. Nothing says whether a superseded or not-current attribute still makes its key disputed either.
+  decided: An attribute makes its key disputed exactly when its status is disputed, whether or not it is current or in effect. Its effective status and flags are not consulted, and an attribute whose status is superseded or deleted never makes its key disputed.
+  why: The knowledge base refuses to change any attribute whose status is disputed (rules/knowledge-base/entity-edit-leaves-disputes-to-curation), so testing the same property makes the form withhold a field exactly where a save would be refused. The effective status equals the status for a disputed attribute (rules/knowledge-base/effective-status). Disputed is a status of a held attribute, which is neither superseded nor deleted (domain/knowledge-base/live-assertion-status).
+---
+
+=== rules/entity-workspace/a-failed-save-reads-its-wording
+---
+type: invariant
+statement: "A conflict answer to a save MUST be alerted with the conflict text and an edit that could not be sent with the could-not-be-sent text, both written in the description, and neither alert carries a message of the failure's own."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+The conflict text reads "Este nó mudou desde que você abriu o formulário." and the could-not-be-sent text reads "Não foi possível enviar a edição. Tente novamente.", each ending as written.
+rules/entity-workspace/a-save-failure-is-classified-by-its-code decides which failures count as an edit that could not be sent.
+rules/entity-workspace/a-conflict-keeps-the-typed-values decides what the form keeps on a conflict.
+contracts/entity-workspace/bff-entity-edit decides how the request reports each failure, and contracts/entity-workspace/entity-screen decides the alert that carries a refusal's own message.
+
+=== rules/entity-workspace/a-failed-save-reads-its-wording.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None gives the pt-BR text of the alert the entity screen shows for a conflict answer or for an edit that could not be sent. None says whether the could-not-be-sent alert also shows the failure's own message.
+  decided: invariant
+  why: The conflict text follows the curation screen's stale-item line "Este item mudou desde que você o abriu.", naming the node and the form. The could-not-be-sent text follows the fixed alerts "Não foi possível <ação>. Tente novamente." of the curation, chat and graph screens, which show no code and no message of their own. To the owner, a timeout, a cancellation and a network failure all mean the same thing, that the edit never reached the knowledge base and can be sent again.
+---
 
 === rules/entity-workspace/a-field-accepts-only-its-value-type
 ---
@@ -14798,6 +15090,93 @@ constrains:
 
 None.
 
+=== rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+---
+type: invariant
+statement: "A field the owner adds to a key that allows multiple current values MUST start empty and from no current attribute, whatever values the node already holds of that key."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+What a field the owner adds to a multi-valued key starts from: no value, and no current attribute of the node. It does not decide which fields a multi-valued key shows when the form opens, or that the owner may add and remove them, which rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields decides. It does not decide what a field shown for a current attribute starts with, which rules/entity-workspace/fields-start-from-the-current-values decides. It does not decide when an added field counts as a changed field, which rules/entity-workspace/a-field-is-changed-only-by-its-value and rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed decide.
+
+=== rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None says what value a field the owner adds to a multi-valued key starts with, or whether the field starts from one of the node's current attributes of that key.
+  decided: invariant
+  why: Each current attribute of a multi-valued key already has its own field that starts from it, so an added field can only stand for a value the node does not hold yet, and the owner has not typed that value.
+---
+
+=== rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+---
+type: invariant
+statement: "A field added to a key that allows multiple current values MUST NOT count as a changed field while its value equals the value of an active or uncertain attribute of that key."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+When a field the owner added to a multi-valued key is a changed field. It does not decide what the review lists or what the save sends for a changed field, which rules/entity-workspace/review-lists-each-changed-field-once, rules/entity-workspace/review-states-the-effect-of-each-change and rules/entity-workspace/save-sends-one-change-per-changed-field decide. It does not decide what the knowledge base records for a set change that names no attribute and states a value its key already holds, which rules/knowledge-base/entity-edit-unchanged-records-nothing decides.
+
+=== rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None says whether a field added to a multi-valued key counts as a changed field when an active or uncertain attribute of that key already holds its value, what the review states for such a field or what the save sends for it.
+  decided: invariant
+  why: The knowledge base reports a set change that names no attribute, and states a value an active or uncertain attribute of its key holds, as unchanged and records nothing. Such a field therefore has no effect among the five the review states, and nothing for the save to record. On its own it would only draw the refusal BUSINESS_ENTITY_EDIT_NO_CHANGES, so it is not a changed field. The review does not list it and the save sends no change for it.
+---
+
+=== rules/entity-workspace/a-field-is-changed-only-by-its-value
+---
+type: invariant
+statement: "A field whose value equals the value it started with MUST NOT count as a changed field, whatever validity it holds."
+constrains:
+- domain/entity-workspace/entity-edit-session
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+What makes a field of the entity form a changed field. It does not decide what the knowledge base records for a set change whose value equals the value already held, which rules/knowledge-base/entity-edit-unchanged-records-nothing decides.
+
+=== rules/entity-workspace/a-field-is-changed-only-by-its-value.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule, and none says whether a field of a temporal key whose value equals the value it started with but whose validity differs is a changed field.
+  decided: invariant
+  why: The knowledge base reports a set change whose value equals the value it names as unchanged and records nothing, whatever validity it states, so a field that differs only in validity has no effect for the review to state and nothing for the save to record.
+---
+
+=== rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+---
+type: invariant
+statement: "A field of the form MUST show as its help text the description the catalog holds for the field's attribute key."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+This rule covers the help text each field of the entity form shows. How the help text is announced to assistive technology is covered by rules/application-shell/an-invalid-field-is-described.
+
+=== rules/entity-workspace/a-field-shows-its-key-description-as-help-text.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule saying where a field's help text comes from. The entity-screen contract's show-entity-form answer says each field holds "its help text" but does not say what that text is.
+  decided: invariant
+  why: The only text the catalog holds about an attribute key is the description that list-attribute-keys returns for it, so that description is the field's help text.
+---
+
 === rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
 ---
 type: invariant
@@ -14810,6 +15189,31 @@ constrains:
 ## Description
 
 None.
+
+=== rules/entity-workspace/a-save-failure-is-classified-by-its-code
+---
+type: invariant
+statement: "A failed save MUST count as an edit that could not be sent for SYSTEM_TIMEOUT, SYSTEM_ABORTED and SYSTEM_NETWORK, as a refusal of the edit for SYSTEM_INVALID_RESPONSE, SYSTEM_UPSTREAM and SYSTEM_UNKNOWN, and as neither for AUTH_SESSION_EXPIRED, whose typed values are not kept."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+Which of the two save failures the entity form treats each failure of the edit request as, and what happens to the typed values when the session cannot be refreshed.
+The save-edit answers of contracts/entity-workspace/entity-screen decide what the screen shows for a refusal and for an edit that could not be sent.
+contracts/entity-workspace/bff-entity-edit decides how the request reports each failure.
+rules/entity-workspace/a-conflict-keeps-the-typed-values decides how a conflict is treated.
+rules/application-shell/a-failed-refresh-ends-the-session decides how the page is replaced when the session ends.
+
+=== rules/entity-workspace/a-save-failure-is-classified-by-its-code.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None says which of the edit request's failures the entity screen shows as a refusal carrying its own message and which as an edit that could not be sent. None says whether the typed values survive when the session cannot be refreshed.
+  decided: invariant
+  why: A timeout, a cancellation and a network failure are the failures where no answer came back from the knowledge base. The invalid, upstream and unknown failures each arrive from an answer with a message of their own. A session that cannot be refreshed replaces the page that holds the typed values.
+---
 
 === rules/entity-workspace/a-saved-edit-reloads-the-entity
 ---
@@ -14832,6 +15236,54 @@ entries:
   why: The values current after a succession differ from those the form started with, and a second edit made from the old ones would conflict.
 ---
 
+=== rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+---
+type: invariant
+statement: "A field holding a value that does not read as its key's value type MUST show the message the description writes for that value type, and a field holding no value MUST NOT be refused for its value type."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+The message for a date key reads "Data inválida. Use o formato AAAA-MM-DD.", the message for a number key reads "Número inválido. Use dígitos, com sinal de menos e ponto decimal opcionais." and the message for a bool key reads "Valor booleano inválido. Use true ou false.", each ending as written. The messages name the value types data, número and booleano.
+A text key has no message, because any text reads as text.
+A field holding no value carries no value to read, so it is never refused for its type. An empty field counts as a removal or as no change.
+rules/knowledge-base/attribute-value-parses decides what reads as each value type.
+rules/entity-workspace/a-field-accepts-only-its-value-type decides that a value of the wrong type is refused.
+contracts/entity-workspace/entity-screen decides where the message stands and that no review is offered while the value stands.
+rules/entity-workspace/save-sends-one-change-per-changed-field decides what an emptied field sends.
+
+=== rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None gives the pt-BR text of the message the entity screen shows on a field whose value does not read as its key's value type, or the word that message uses for date, number and bool. None says whether a field holding no value is refused for its value type.
+  decided: invariant
+  why: The date message repeats the curation screen's "Data inválida. Use o formato AAAA-MM-DD.", so the owner sees the same words for a badly written date on both screens. The number and bool messages follow the same pattern of the type named as invalid, then how to write it, taking the accepted forms from rules/knowledge-base/attribute-value-parses. An empty field holds no value to read, and fields-start-from-the-current-values, a-field-added-to-a-multi-valued-key-starts-empty and save-sends-one-change-per-changed-field all need empty fields to exist and to be saved as a removal or as no change.
+---
+
+=== rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+---
+type: invariant
+statement: "The screen MUST treat an empty name prefix or an empty node type as a narrowing the owner has not given in the node listing request."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule covers when the name prefix or the node type the owner leaves empty counts as a narrowing of the node listing. It does not set which query parameters carry the narrowings, or that a narrowing not given is left out of the request. rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name sets both. Which nodes the screen lists and opens is set by rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type.
+
+=== rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule saying whether an empty name prefix or an empty node type is a narrowing the owner has given in the node listing request.
+  decided: invariant
+  why: The knowledge base refuses a name or node type outside 1 to 200 characters, so a narrowing sent empty would make it refuse the listing instead of listing the nodes without that narrowing.
+---
+
 === rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
 ---
 type: invariant
@@ -14844,6 +15296,27 @@ constrains:
 
 None.
 
+=== rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+---
+type: invariant
+statement: "The today an unstated validity start shows as MUST be the browser clock's calendar date in the owner's local time zone as the browser reports it."
+constrains:
+- domain/entity-workspace/attribute-field
+---
+
+## Description
+
+Names the time zone in which the entity screen reads the calendar date it shows as today for a validity start the owner has not stated. It does not decide that such a start shows as today and is sent empty, which rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty holds. It also does not decide which date the knowledge base records for that start, which rules/knowledge-base/entity-edit-start-defaults-to-today holds.
+
+=== rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date.log
+---
+entries:
+- field: type
+  unstated: No node and no intake material names the time zone in which the entity screen reads the date it shows as today for an unstated validity start, and the material names no such rule.
+  decided: invariant
+  why: Today is a word the screen addresses to the owner, and where the client turns the present clock into a date for the owner the specification reads it in the owner's local time zone as the browser reports it (rules/graph-explorer/a-source-date-time-is-short-pt-br). UTC formatting in the client applies only to dates that already arrive as year-month-day.
+---
+
 === rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
 ---
 type: invariant
@@ -14855,6 +15328,26 @@ constrains:
 ## Description
 
 None.
+
+=== rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+---
+type: invariant
+statement: "Every read and every edit the entity workspace makes of the knowledge base MUST carry the owner's access token as a bearer in the Authorization header."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule covers the requests the entity workspace sends through the bff-entity-reads and bff-entity-edit contracts, and the header each one carries. It does not cover what such a request does when the application holds no token.
+
+=== rules/entity-workspace/entity-workspace-requests-carry-the-access-token.log
+---
+entries:
+- field: statement
+  unstated: No node stated that the entity workspace's reads and its edit of the knowledge base carry the owner's access token as a bearer in the Authorization header.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-facts.md: "All operations sit under the prefix /api/v1, require the bearer token, and the four reads answer inside the envelope { ok: true, result }."'
+---
 
 === rules/entity-workspace/fields-start-from-the-current-values
 ---
@@ -14882,6 +15375,30 @@ constrains:
 
 None.
 
+=== rules/entity-workspace/review-names-each-effect-in-its-wording
+---
+type: invariant
+statement: "The review MUST name the effect of each changed field with the text the description writes for that effect, for a first value, an addition, a succession, a correction and a removal alike."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+The first value reads "Primeiro valor", the addition reads "Adição", the succession reads "Sucessão", the correction reads "Correção" and the removal reads "Remoção", each written exactly as here and with no ending punctuation.
+This rule gives no text to the effect unchanged.
+rules/entity-workspace/review-states-the-effect-of-each-change decides that the review states an effect for each changed field.
+rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded decides which node state each effect is judged against, and the rules entity-edit-first-value, entity-edit-addition, entity-edit-succession, entity-edit-correction and entity-edit-removal under rules/knowledge-base/ decide which effect a change takes.
+
+=== rules/entity-workspace/review-names-each-effect-in-its-wording.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. Neither intake file and no node in the impact set gives the pt-BR text the entity edit review uses to name the effects first value, addition, succession, correction and removal. rules/entity-workspace/review-states-the-effect-of-each-change and domain/knowledge-base/edit-effect name the effects only in English.
+  decided: invariant, with the effect texts "Primeiro valor", "Adição", "Sucessão", "Correção" and "Remoção", each without ending punctuation
+  why: Each text is the plain pt-BR noun for the effect's own name, written as a short label like the curation screen's decision labels (Fundir neste, Preferir este, Corrigir…), so the owner sees each effect under the same name the knowledge base records it by.
+---
+
 === rules/entity-workspace/review-needs-a-changed-field
 ---
 type: invariant
@@ -14898,7 +15415,7 @@ None.
 === rules/entity-workspace/review-requires-a-trimmed-reason
 ---
 type: invariant
-statement: "The review MUST require a reason of between 1 and 1000 characters once trimmed and MUST send it trimmed."
+statement: "The review MUST require a reason of between 1 and 1000 UTF-16 code units once trimmed and MUST send it trimmed."
 constrains:
 - domain/entity-workspace/entity-edit-session
 ---
@@ -14906,6 +15423,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/entity-workspace/review-requires-a-trimmed-reason.log
+---
+entries:
+- field: statement
+  unstated: The unit of the 1000-character limit on the review's trimmed reason, which says only "characters".
+  decided: The limit is counted in UTF-16 code units, the unit decided for rules/knowledge-base/entity-edit-reason-length.
+  why: The screen's limit and the knowledge base's limit on the same reason must be counted in one unit, or a reason near the limit holding characters outside the Basic Multilingual Plane would pass one and fail the other.
+---
 
 === rules/entity-workspace/review-states-the-effect-of-each-change
 ---
@@ -14974,7 +15500,7 @@ None.
 === rules/entity-workspace/the-form-is-offered-only-for-an-active-node
 ---
 type: invariant
-statement: "The form MUST be offered only for a knowledge node whose status is active, and any other node MUST show its attributes without a form."
+statement: "The form MUST be offered only for a knowledge node whose status is active, and any other node the knowledge base still delivers MUST show its attributes without a form."
 constrains:
 - domain/entity-workspace/entity-edit-session
 ---
@@ -14990,6 +15516,88 @@ entries:
   unstated: The material does not say what the screen shows for a node that is not active.
   decided: Its attributes without a form.
   why: The knowledge base refuses an edit of such a node and the owner should not be offered a form that always fails.
+- field: statement
+  unstated: The statement says any other node shows its attributes without a form, but the knowledge base refuses to read a deleted node, so a deleted node's attributes never reach the screen.
+  decided: Any other node the knowledge base still delivers shows its attributes without a form; a deleted node shows its own alert under rules/entity-workspace/a-deleted-node-shows-its-own-alert.
+  why: The person decided that a deleted node shows a dedicated alert, so this rule can only speak for the nodes the read still delivers.
+---
+
+=== rules/entity-workspace/the-listing-and-page-states-read-their-wording
+---
+type: invariant
+statement: "The entity listing and the entity page MUST show the could-not-load-nodes alert, the no-node statement, the node-not-found alert, the could-not-load-form alert, their loading indications and the recorded-edit notice in the wording written in the description, with their try-again and undo actions labelled as written there, and no alert carries a code or message of the failure's own."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+The could-not-load-nodes alert on the listing reads "Não foi possível carregar os nós. Tente novamente." and its try-again action reads "Tentar novamente".
+The no-node statement on the listing reads "Nenhum nó encontrado."
+The node-not-found alert on the page reads "Nó não encontrado."
+The could-not-load-form alert on the page reads "Não foi possível carregar o formulário. Tente novamente." and its try-again action reads "Tentar novamente".
+The listing's loading indication reads "Carregando nós…" and the page's loading indication reads "Carregando formulário…".
+The recorded-edit notice reads "Edição registrada." and its undo action reads "Desfazer".
+Each text ends as written.
+contracts/entity-workspace/entity-screen decides when each of these is shown.
+rules/entity-workspace/a-deleted-node-shows-its-own-alert decides the alert for a deleted node.
+rules/entity-workspace/the-node-listing-stands-without-the-node-types decides what is shown in place of the node-type choice.
+rules/entity-workspace/a-failed-save-reads-its-wording decides the alerts for a conflict and for an edit that could not be sent.
+rules/entity-workspace/saving-waits-for-undo decides how long the undo lasts and what an undo sends.
+
+=== rules/entity-workspace/the-listing-and-page-states-read-their-wording.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None gives the pt-BR text of the entity listing's could-not-load-nodes alert or its try-again label, the no-node statement, the entity page's node-not-found alert, its could-not-load-form alert or that alert's try-again label, the loading indications of the listing and the page, or the recorded-edit notice and its undo label. contracts/entity-workspace/entity-screen gives only what each one means.
+  decided: invariant
+  why: Each text copies the wording the owner already reads elsewhere in the application. The two failure alerts use the fixed "Não foi possível <ação>. Tente novamente." sentence with the action "Tentar novamente" from the curation, chat and graph screens, and the entity screen's could-not-load-types alert uses the same sentence. The node-not-found alert is the graph screen's "Nó não encontrado." for the same failure. The no-node statement and the loading texts follow the graph screen's "Nenhuma relação encontrada." and "Carregando relações…". The notice is "Edição registrada.", the short caption form of the curation undo toast, with that toast's "Desfazer" action.
+---
+
+=== rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+---
+type: invariant
+statement: "The screen MUST request the node listing with the name prefix in the query parameter name_prefix and the node type, by its name rather than its identity, in the query parameter node_type, and MUST leave out of the request each narrowing the owner has not given."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule covers how the screen's node listing request carries its two narrowings. Which nodes the screen lists and opens is set by rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type. How the knowledge base matches a name prefix is set by rules/knowledge-base/node-listing-name-prefix.
+
+=== rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name.log
+---
+entries:
+- field: statement
+  unstated: No node states which query parameters carry the node listing's name prefix and node type, whether the node type travels by its name or its identity, or what the request carries for a narrowing the caller does not give.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-facts.md: "GET /api/v1/nodes?node_type=&name_prefix=&status=&limit=&offset=", "node_type: string 1..200, optional, the node type''s name and not its id." and "name_prefix: string 1..200, optional."'
+---
+
+=== rules/entity-workspace/the-node-listing-stands-without-the-node-types
+---
+type: invariant
+statement: "While the node-type listing is being fetched or after it has failed, the screen MUST keep offering the name prefix and the node listing with no node-type narrowing, showing a loading indication in place of the node-type choice while it is fetched and, once it has failed, the could-not-load-types alert written in the description with an action that fetches the node-type listing again."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+The could-not-load-types alert reads "Não foi possível carregar os tipos de nó. Tente novamente.", ending as written, and carries no code or message of the failure's own.
+This rule covers only what the screen shows in place of the node-type choice while the node-type listing is pending or failed, and that the node listing stays offered meanwhile.
+rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type decides which nodes the screen lists and opens.
+rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name decides how the node listing request carries a narrowing and leaves out one not given.
+contracts/entity-workspace/entity-screen decides what the screen shows while the node listing itself is fetched, fails or holds no node.
+contracts/entity-workspace/bff-entity-reads decides how the node-type listing request reports each failure.
+
+=== rules/entity-workspace/the-node-listing-stands-without-the-node-types.log
+---
+entries:
+- field: type
+  unstated: No node and no material names this rule. None says what the entity listing screen shows while the node-type listing is being fetched or after it has failed, whether the node listing is still offered without a node-type choice meanwhile, or whether that failure comes with an action to try again.
+  decided: invariant
+  why: The node type is only an optional narrowing of the node listing, so a pending or failed node-type listing removes the type choice but not the listing by name prefix, as the curation picker falls back to a manual input when its listing fails. The failure gets a retry action and the fixed "Não foi possível <ação>. Tente novamente." wording that the curation, chat, graph and entity-save alerts use, with no code or message of its own.
 ---
 
 === rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
@@ -15011,6 +15619,26 @@ entries:
   unstated: The material edits an entity named by the owner without saying how the owner finds it.
   decided: A listing narrowed by name prefix and node type that opens the node picked.
   why: The knowledge base already lists nodes by exactly those two narrowings.
+---
+
+=== rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+---
+type: invariant
+statement: "The entity listing MUST live at /entities and the form for one knowledge node at /entities/{node identity}, the code of each of these two pages being fetched only when its address is first opened and never with the application's initial load."
+constrains:
+- domain/entity-workspace/entity-edit-session
+---
+
+## Description
+
+This rule sets the two addresses of the entity workspace, and when the code of each of its two pages is fetched. It does not decide the guarded layout these addresses sit under (rules/application-shell/every-other-address-is-guarded decides that). It does not decide the addresses of the other areas (rules/application-shell/the-areas-live-at-fixed-addresses decides those). It does not decide which areas the header lists (rules/application-shell/the-header-lists-six-areas decides that).
+
+=== rules/entity-workspace/the-screen-lives-at-the-entities-addresses.log
+---
+entries:
+- field: statement
+  unstated: No node stated the addresses of the entity listing and the entity form, or that each page's code is fetched only when its address is first opened.
+  found: 'siegard-work/entity-edit-frontend/intake/scope.md: "A tela fica nas rotas `/entities` (lista) e `/entities/$nodeId` (formulário), dentro do layout protegido, carregadas com lazy."'
 ---
 
 === rules/entity-workspace/validity-start-precedes-the-end
@@ -20749,7 +21377,7 @@ entries:
 === rules/knowledge-base/entity-edit-reason-length
 ---
 type: invariant
-statement: "An entity edit's reason MUST hold between 1 and 1000 characters once trimmed."
+statement: "An entity edit's reason MUST hold between 1 and 1000 UTF-16 code units once trimmed."
 constrains:
 - domain/knowledge-base/entity-edit
 ---
@@ -20765,6 +21393,10 @@ entries:
   unstated: The material requires a reason without bounding it.
   decided: Between 1 and 1000 characters once trimmed.
   why: The reason is recorded as a curation action reason, which holds at most 1000 characters, and a blank one is refused as in every other curation request.
+- field: statement
+  unstated: The unit of the 1000-character limit on an entity edit's trimmed reason. Both this rule and rules/entity-workspace/review-requires-a-trimmed-reason say only "characters", and neither the material nor any node says whether that means Unicode code points or UTF-16 code units. The two counts differ when the reason holds characters outside the Basic Multilingual Plane.
+  decided: The trimmed reason's 1000 limit is counted in UTF-16 code units, the same unit in this rule and in rules/entity-workspace/review-requires-a-trimmed-reason.
+  why: Each Unicode code point is one or two UTF-16 code units, so a reason that holds within 1000 UTF-16 code units also holds within 1000 code points, and it fits the 1000-character curation action reason it is recorded as, whichever of the two units that limit counts in.
 ---
 
 === rules/knowledge-base/entity-edit-records-curation-action
