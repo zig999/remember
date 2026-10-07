@@ -1,0 +1,54 @@
+findings: []
+read:
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    held_at: >-
+      The tests' store stand-in and the first five describe blocks (lines 240-352). The stand-in's `applyOrder` and `compareValues` order rows by creation time, then by node identity, with null creation times last. The tests assert the outcome through `resolveOrCreateNode`.
+    evidence: >-
+      `expect(pickResolution(result)).toEqual(resolvedTo(NODE_MID));` in the test named "resolves to the earliest-created alias of an active node of the type, ties going to the lowest identity, alias with no time last, other types and inactive nodes ignored". Its fixture is `homonym(NODE_LOW, null)`, `homonym(NODE_HIGH, MIDDLE)`, `homonym(NODE_MID, MIDDLE)` and `homonym(NODE_LATER, LATE)`. Separate tests cover earliest wins (`homonym(NODE_LOW, LATE), homonym(NODE_HIGH, EARLY)` resolves to NODE_HIGH), equal times going to the lower identity, and a null creation time losing to a recorded one.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      The test "resolves the later proposal named CNPq to the node holding the canonical alias and the alias CNPq as matched_existing" (lines 287-301). The tests also filter on active status and node type in `matchingAliases`.
+    evidence: >-
+      `[activeNode(NODE_MID)], [{ node_id: NODE_MID, alias_norm: CANONICAL_NORM, created_at: EARLY }, homonym(NODE_MID, EARLY)]` is asserted against `resolvedTo(NODE_MID)`. The stand-in keeps only aliases whose node has `n.node_type_id === typeId && n.status === "active"`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      The `MATCHED` constant (line 31) and `resolvedTo` (lines 229-231). The tests only assert the resolution value and do not declare the enumeration.
+    evidence: >-
+      `const MATCHED = "matched_existing";`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere. The file declares a test-local `StoreAlias` interface (`node_id`, `alias_norm`, `created_at: string | null`). That is a stand-in for the store's row, not the node-alias shape.
+    evidence: >-
+      `interface StoreAlias { readonly node_id: string; readonly alias_norm: string; readonly created_at: string | null; }`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere. The file declares a test-local `StoreNode` interface (`id`, `node_type_id`, `status`). That is a stand-in for the store's row, not the knowledge-node shape.
+    evidence: >-
+      `interface StoreNode { readonly id: string; readonly node_type_id: string; readonly status: string; }`
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      The describe block "a name equal to an alias of exactly one active node" (lines 287-301). It uses the scenario's canonical alias and "CNPq", and asserts a matched_existing resolution.
+    evidence: >-
+      `const HOMONYM_NAME = "CNPq";` and `const CANONICAL_NORM = "conselho nacional de desenvolvimento cientifico";`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere. The file only reads the `matched_existing` resolution value of propose-node's accepted answer. It declares no operation, refusal or message.
+    evidence: >-
+      `return { node_id: result.node_id, resolution: result.resolution };`
+  - node: rules/chat/assistant-writes-only-on-owner-request
+    held_at: >-
+      nowhere. The file states nothing about when the chat assistant calls directed ingestion.
+    evidence: >-
+      The file holds no chat or assistant construct. Its only subject is `resolveOrCreateNode(buildClient(store), {...})`.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere. The file has no directed-ingestion construct.
+    evidence: >-
+      The file holds no directed batch. Its only call is `resolveOrCreateNode` with `nodeTypeId`, `name`, `llmRunId` and `catalog`.
+  - node: constraints/chat-directed-ingestion-description-matches-mcp
+    held_at: >-
+      nowhere. The file states no tool description.
+    evidence: >-
+      The file holds no tool description. The only emitted-text-like content is the stand-in's `throw new Error("unsupported ORDER BY item in store stand-in: ...")`, which is test scaffolding.
+looked_past: >-
+  The SQL-parsing store stand-in (ORDER BY regexes, row rotation, `REPETITIONS = 6`) is test scaffolding and test tuning, not a domain fact. The "merged" status value in the fixture is held by domain/knowledge-base/node-status.

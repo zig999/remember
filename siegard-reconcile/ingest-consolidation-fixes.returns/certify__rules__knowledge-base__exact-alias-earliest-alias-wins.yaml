@@ -1,0 +1,45 @@
+certified:
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution-exact-alias-order.spec.ts
+        name: resolves to the node whose matching alias was created earliest even when its node identity is higher and it is stored second
+      - file: src/__tests__/unit/ingestion/entity-resolution-exact-alias-order.spec.ts
+        name: resolves to the node with the lower node identity even when it is stored second
+      - file: src/__tests__/unit/ingestion/entity-resolution-exact-alias-order.spec.ts
+        name: resolves to the same node on every repetition although the store returns candidate rows in a different order each time
+      - file: src/__tests__/unit/ingestion/entity-resolution-exact-alias-order.spec.ts
+        name: resolves to a node whose alias has a creation time rather than to a lower-identity node whose alias has none
+      - file: src/__tests__/unit/ingestion/entity-resolution-exact-alias-order.spec.ts
+        name: resolves to the earliest-created alias of an active node of the type, ties going to the lowest identity, alias with no time last, other types and inactive nodes ignored
+    why: >-
+      The ordering half of the fact is exercised, and these tests would fail if it stopped
+      holding. Among competing candidates the earliest matching alias wins, even over a node
+      with a lower identity that is stored first. Equal creation times go to the lowest
+      knowledge node identity, even when that node is stored second. An alias with no creation
+      time loses to one that has a creation time, and in every case the answer is
+      matched_existing. One caveat: the test's store stand-in sorts the rows itself by
+      re-applying the implementation's own ORDER BY/LIMIT text, and it throws on any sort item
+      it does not recognise. So these tests depend on the ordering being written as a SQL
+      ORDER BY of that shape. A correct reordering done in code would fail them, but a wrong
+      order would fail them too.
+      What goes unexercised is that the candidates are only active knowledge nodes of the
+      proposal's node type. The stand-in (matchingAliases) keeps only active nodes of the
+      requested type itself, whatever the implementation's SQL asks for. The last test has a
+      merged node and a node of another type holding the alias at the earliest time, and its
+      name says they are "ignored". But it would still pass if the implementation's lookup
+      stopped excluding them, because the stand-in removes them before the implementation ever
+      sees them. So in that test the "other types and inactive nodes ignored" part cannot fail.
+      Two tests in the file do not bear on this fact. "resolves the later proposal named CNPq
+      to the node holding the canonical alias and the alias CNPq as matched_existing" and
+      "still resolves to the node when its matching alias is the only candidate and has no
+      creation time" each have a single candidate, so there is no choice among several nodes
+      to make.
+    remainder: testable
+    remainder_why: >-
+      Run the proposal against a store that applies the implementation's own filters, such as
+      a real database or a stand-in that honours the query's WHERE clause. Input: a proposal
+      named CNPq of type Person. A merged Person node and an active node of another type both
+      hold the alias cnpq with the earliest creation time, and an active Person node holds cnpq
+      with a later one. Expected result: the proposal resolves as matched_existing to the
+      active Person node, and to neither of the earlier-aliased nodes.

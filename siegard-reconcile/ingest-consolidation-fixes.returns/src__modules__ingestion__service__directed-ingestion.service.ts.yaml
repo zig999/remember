@@ -1,0 +1,237 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      lines 74-75 and 85-86, the valid_to field of DirectedAttributeItemSchema and DirectedLinkItemSchema, and its forwarding at lines 480 and 556
+    evidence: >-
+      valid_to: IsoDateSchema.optional(),  and  ...(item.valid_to !== undefined ? { valid_to: item.valid_to } : {}),  with  .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD")
+    cost: >-
+      The service accepts a validity end on a directed attribute or link and fixes its shape. The specification holds only the validity start (directed-validity-start-shape), and its decision log records that the end is left unstated because the tool strips it before the service reads it. The end's shape therefore lives only here. The next reader looking for what a directed item may state will not find it in the specification.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the directed validity end a node, or the service stops accepting a field the entry point never delivers. That choice is the person's.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      refForAttribute, line 741, used as the report reference of every directed attribute entry
+    evidence: >-
+      return `${item.node_ref}.${item.key}`;
+    cost: >-
+      A directed attribute's report entry takes a reference built from its node reference and key joined by a dot. No node states this form. The link form is held by directed-link-report-reference, and the log decided the link form only. A client that reads the report relies on a form that only the code states.
+    kind: unstated
+    correction: >-
+      The analysis would give the attribute's report reference a node beside directed-link-report-reference, constraining domain/knowledge-base/directed-item.
+    node: domain/knowledge-base/directed-item
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe, lines 839-843 and 861-863, the fallback values for the run's start, finish and attempts
+    evidence: >-
+      started_at: new Date(0).toISOString(),
+          finished_at: new Date(0).toISOString(),
+          attempts: 1,
+    cost: >-
+      When the closed run cannot be read, the answer carries start and finish times at the Unix epoch and one attempt, and the finish time falls back to the epoch while the run is still open. The contract states that the run is reported completed and the affected nodes are an empty list. It states nothing about these values. A reader sees 1970 timestamps as if the business had decided them.
+    kind: unstated
+    correction: >-
+      The contract's ingest-directed answer would have to state what the run's times and attempts are when the run cannot be read, or the answer would have to omit them.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      line 201, the message of the defensive refusal when the payload fails the schema
+    evidence: >-
+      message: "Input failed Zod parse.",
+    cost: >-
+      The contract states every shape refusal of ingest-directed with the message "ingest_directed arguments failed validation.". This path, reached when the service is called with a payload its schema refuses, emits a different message. Callers that read the message get two wordings for one refusal.
+    kind: contradicts
+    correction: >-
+      The message would have to be the one the contract names, "ingest_directed arguments failed validation.".
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the final return of directedIngestionService (lines 641-662), the intake failure branches (lines 244-314) and verifyNodePin (lines 680-717)
+    evidence: >-
+      outcome: "ingested", raw_information_id, llm_run_id, chunk_count, summary, run: {... status: "completed" ...}, report,  and  message: "Failed to persist the directed payload before dispatch."
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      DirectedIngestionInputSchema, line 91
+    evidence: >-
+      fragments: z.array(DirectedFragmentItemSchema).min(1),  nodes: z.array(DirectedNodeItemSchema).min(1),  source_label: z.string().min(1).max(200).optional(),
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      the DirectedItemKind type, line 105
+    evidence: >-
+      export type DirectedItemKind = "fragment" | "node" | "attribute" | "link";
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      the DirectedItemStatus type, lines 107-116
+    evidence: >-
+      | "accepted"
+        | "consolidated"
+        | "superseded_previous"
+        | "needs_review"
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      canonicaliseAttributeValue, lines 747-751
+    evidence: >-
+      if (typeof v === "boolean") return v ? "true" : "false";
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      DirectedAttributeValueSchema, lines 63-67
+    evidence: >-
+      z.string().min(1).max(2000),
+        z.number().finite(),
+        z.boolean(),
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      the metadataPointer type and its merge into the intake metadata, lines 185-189 and 227-230
+    evidence: >-
+      intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+          intakeMetadata.message_id = deps.metadataPointer.message_id;
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      the attribute input (lines 481-482) and the link input (lines 557-558)
+    evidence: >-
+      valid_from_basis: item.valid_from_basis ?? "stated",
+            change_hint: item.change_hint ?? "none",
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      checkCascade and checkLinkCascade, lines 719-738, and their use in the attribute and link loops
+    evidence: >-
+      if (!refToNodeId.has(item.source_ref)) return item.source_ref;
+        if (!refToNodeId.has(item.target_ref)) return item.target_ref;
+        if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref;
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      the four loops, in order, lines 331, 370, 448 and 523
+    evidence: >-
+      for (const item of payload.fragments) {  ...  for (const item of payload.nodes) {  ...  for (const item of attributeItems) {  ...  for (const item of linkItems) {
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      line 316 and the fragment proposal, line 335
+    evidence: >-
+      const anchorChunkId = chunks[0]!.id;  and  chunk_ids: [anchorChunkId],
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      the fragment, attribute and link inputs, lines 334, 477 and 553
+    evidence: >-
+      confidence: 1.0,
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      the intake call, lines 235-242. The values of DIRECTED_MODEL and DIRECTED_PROMPT_VERSION are declared in directed-run.js, outside this file. This file only passes them, and calls no language model.
+    evidence: >-
+      model: DIRECTED_MODEL,
+        prompt_version: DIRECTED_PROMPT_VERSION,
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      the report pushes in the four loops and classifyEnvelopeFailureStatus, line 762
+    evidence: >-
+      return envelope.error.code.startsWith("SYSTEM_") ? "error" : "rejected";  and  status: envelope.result.resolution === "needs_review" ? "needs_review" : "accepted",
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      the reference maps, set only on an accepted item, lines 343, 374 and 417
+    evidence: >-
+      refToFragmentId.set(item.ref, envelope.result.fragment_id);
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      the node_id branch of the node loop and verifyNodePin, lines 371-403 and 680-717
+    evidence: >-
+      if (row.status !== "active") {  and  resolution: "matched_existing",
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      DirectedRefSchema, line 48
+    evidence: >-
+      const DirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      DirectedIngestionInputSchema, lines 92-93
+    evidence: >-
+      fragments: z.array(DirectedFragmentItemSchema).min(1),
+        nodes: z.array(DirectedNodeItemSchema).min(1),
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      the call to closeRunCompletedSafe and the literal completed status, lines 602 and 653
+    evidence: >-
+      await closeRunCompletedSafe(deps.pool, llm_run_id, deps.logger);  and  status: "completed",
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      synthesiseContent, lines 665-678
+    evidence: >-
+      (f) => `[${f.ref}] ${f.text}`  and  lines.push(`-- source_label=${payload.source_label}`);  and  lines.push(`-- directed_at=${at.toISOString()} nonce=${nonce}`);
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      line 96
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional(),
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      intakeMetadata, lines 221-230, with source_type chat at line 236
+    evidence: >-
+      directed: true,  and  intakeMetadata.source_label = payload.source_label;
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the intake call, line 241
+    evidence: >-
+      original_input: deps.sourceExcerpt ?? null,
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IsoDateSchema applied to valid_from, lines 44-46 and 74
+    evidence: >-
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");  and  valid_from: IsoDateSchema.optional(),
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      DirectedFragmentItemSchema, line 52
+    evidence: >-
+      text: z.string().min(1).max(1000),
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the attribute and link inputs always cite the item's evidence fragment, lines 478 and 554
+    evidence: >-
+      fragment_ids: [fragmentId],
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      DirectedNodeItemSchema, lines 58 and 60
+    evidence: >-
+      name: z.string().min(1).max(500),
+        aliases: z.array(z.string().min(1).max(500)).optional(),
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    held_at: >-
+      nowhere. Resolution is delegated to the propose-node handler, and this file holds no alias lookup.
+    evidence: >-
+      const envelope = await proposeNode(nodeInput, {
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere. Resolution is delegated to the propose-node handler, and this file holds no alias lookup.
+    evidence: >-
+      const envelope = await proposeNode(nodeInput, {
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere. The file reads the resolution from the handler's result and declares no enumeration of it.
+    evidence: >-
+      readonly resolution?: ProposeNodeResolution;  and  import type { ProposeNodeInput, ProposeNodeResolution } from "../dto/propose-node.dto.js";
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere. The file does not declare the alias shape. It only passes the alias strings along.
+    evidence: >-
+      ...(item.aliases !== undefined ? { aliases: item.aliases } : {}),
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere. The file only reads the status of a knowledge_node row, and the shape of the element is declared elsewhere.
+    evidence: >-
+      `SELECT status FROM knowledge_node WHERE id = $1 LIMIT 1`
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere. The scenario concerns resolution by exact alias, which this file delegates.
+    evidence: >-
+      const envelope = await proposeNode(nodeInput, {
+  - node: rules/chat/assistant-writes-only-on-owner-request
+    held_at: >-
+      nowhere. The rule governs the chat assistant's decision to call the tool, and this file is the tool's service.
+    evidence: >-
+      export async function directedIngestionService(
+  - node: constraints/chat-directed-ingestion-description-matches-mcp
+    held_at: >-
+      nowhere. This file holds no description of the tool.
+    evidence: >-
+      export async function directedIngestionService(
+looked_past: >-
+  Comment blocks in the handler file are outside the file set. In this file, the min(1) bounds on node_type, key and link_type, the log lines and the nonce format are the implementation's choices or other judgments' territory.

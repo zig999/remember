@@ -1,0 +1,137 @@
+findings:
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the header comment, items 6 of the validation criteria (lines 16-17)
+    evidence: >-
+      //   6. Confidence clamping: confidence=1.0 enforced on every dispatched
+      //      propose_* args (the caller payload has no confidence field).
+    cost: >-
+      The fact is a second home in prose. The service code holds it (it forces 1.0 on dispatch, per the index binding to directed-ingestion.service.ts), and this file's `expect(input.confidence).toBe(1.0)` assertions check it. The comment adds nothing running. It is also a copy that stays behind when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/directed-full-confidence and by the dispatch code.
+    node: rules/knowledge-base/directed-full-confidence
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the "synthesises content with the fragments + nonce + timestamp" test (lines 251-255)
+    evidence: >-
+      expect(out.content).toContain("[f1] Alice works on Project X.");
+      expect(out.content).toContain("directed_at=2026-06-25T10:00:00.000Z");
+      expect(out.content).toContain(`nonce=${out.nonce}`);
+      expect(out.nonce).toMatch(/^[0-9a-f-]{36}$/);
+    cost: >-
+      The node says only that the content lists each fragment as its reference and text, then the label, then the moment of ingestion and a nonce of its own. The bracketed `[ref] text` layout, the `directed_at=` and `nonce=` markers, the ISO-8601 millisecond form of the moment and the 36-character UUID shape of the nonce are stored-content formats that only this test and the service state. A reader who looks in the specification for what a directed raw information's content looks like finds none of them.
+    kind: unstated
+    correction: >-
+      Give the content layout, or the parts the owner wants fixed, a place in rules/knowledge-base/directed-source-content through the analysis route. Alternatively, loosen the test to assert only the ordering the node holds.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the comment in the "classifies envelope failures" test (lines 281-284)
+    evidence: >-
+      // BR-13 (P2.1) — layered validation rejections (`VALIDATION_*`,
+      // `BUSINESS_*`, `RESOURCE_NOT_FOUND`) are `rejected`; system-level
+      // failures (`SYSTEM_*` — e.g. SYSTEM_INTERNAL_ERROR, SYSTEM_SERVICE_UNAVAILABLE)
+      // are the SDK / catch-all bucket and stay `error`.
+    cost: >-
+      The status mapping is held as code by `classifyEnvelopeFailureStatus` in directed-ingestion.service.ts (index binding) and asserted in the lines below. The comment is a second written copy that names a prefix-based rule and a BR-13 reference outside the specification.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/directed-item-status and by the classification code.
+    node: rules/knowledge-base/directed-item-status
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the comment in the "happy path" test (lines 367-370)
+    evidence: >-
+      // Why this matters: BR-34 step 3 prescribes a specific dispatch ORDER —
+      // attributes/links cannot resolve their refs until the fragments/nodes
+      // they cite have been dispatched.
+    cost: >-
+      The dispatch order is held by the service's code and asserted by `expect(calls).toEqual([...])`. The comment restates it, with a reason, in prose. If the node moves, the comment keeps the old reason.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/directed-dispatch-order and by the dispatch code.
+    node: rules/knowledge-base/directed-dispatch-order
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the report-shape assertion in the "happy path" test (lines 485-493)
+    evidence: >-
+      "nAlice.age",
+    cost: >-
+      The reference of a directed attribute's report entry (node reference, a dot, the key) is stated only here and in the service. The node sets a form only for a link's reference (source reference, link type and target reference joined by "->"). The contract says only "one entry per item with its reference". The next reader looks in the specification for the attribute's reference form and does not find it. The link form has a decision log noting that the chat graph delta parses it, and the attribute form has no such record.
+    kind: unstated
+    correction: >-
+      Give the attribute entry's reference form a node, as directed-link-report-reference does for links, through the analysis route.
+    node: contracts/knowledge-base/ingestion
+  - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+    where: >-
+      the "node_id pin (valid)" test assertions (line 621)
+    evidence: >-
+      expect(nodeEntry?.resolution).toBe("matched_existing");
+    cost: >-
+      rules/knowledge-base/directed-pinned-node says a pinned node resolves to the existing knowledge node without entity resolution. It does not say which resolution a pinned node's report entry carries. A directed pin reporting matched_existing is stated only by this assertion and the service.
+    kind: unstated
+    correction: >-
+      State the resolution a pinned directed node reports in rules/knowledge-base/directed-pinned-node through the analysis route.
+    node: rules/knowledge-base/directed-pinned-node
+read:
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file stubs every `proposeNode` (`vi.fn(async () => ({ ok: true as const, result: { node_id: ALICE_NODE_ID, resolution: "created_new" as const } }))`) and runs no alias resolution.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only exact-alias outcome is the stubbed `resolution: "matched_existing" as const` in the re-affirmation test, returned by a stub with no alias lookup.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes the values along as string literals, such as `resolution: "created_new" as const`. It declares no enumeration.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The test builds no alias shape. Its catalog is `nodeTypes: [{ id: NODE_TYPE_PERSON, name: "Person" }]`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Rows are mock results of the affected-nodes resolver (`id`, `canonical_name`, `node_type`, `status`, `merged_into_node_id`) inside `PoolHooks`. That is a mock row type for a query, not a declaration of the knowledge node's shape.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No test names "CNPq" or any alias admission. Node proposals are stubbed.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the "directed-ingestion / result field order" tests (lines 1064-1101) and the per-item assertions of the orchestrator tests (lines 366-950)
+    evidence: >-
+      expect(keys.indexOf("summary")).toBeLessThan(keys.indexOf("run"));
+      expect(cut).toContain(JSON.stringify(envelope.result.summary));
+  - node: rules/chat/assistant-writes-only-on-owner-request
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exercises `directedIngestionService` only. It has no chat turn and no assistant call.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports `type DirectedIngestionInput` from directed-ingestion.service.js and declares no shape of its own.
+  - node: constraints/chat-directed-ingestion-description-matches-mcp
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool description or chat toolset appears in the file.
+looked_past: >-
+  Comments citing BR-34, BR-33, BR-13 and "ingestion.back.md", a document outside the specification, and one stating "no tool_call row" for cascaded items, are prose no node or code in this file holds. The route for them is their removal.
+candidates_opened:
+  - rules/knowledge-base/directed-source-content
+  - domain/knowledge-base/directed-item
+  - rules/knowledge-base/directed-full-confidence
+  - rules/knowledge-base/directed-item-status
+  - rules/knowledge-base/directed-dispatch-order
+  - rules/knowledge-base/directed-pinned-node

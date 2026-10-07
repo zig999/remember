@@ -1,0 +1,74 @@
+findings:
+  - file: src/__tests__/unit/ingestion/ingest-directed-description.spec.ts
+    where: >-
+      the filter in the first test (lines 15-21), which requires the word "explicitly" in the owner-request sentence of the ingest_directed description
+    evidence: >-
+      /owner['’]s own message/i.test(sentence) &&
+              /\bexplicitly\b/i.test(sentence) &&
+              /\brecord\b/i.test(sentence)
+    cost: >-
+      The rule node says the assistant calls directed ingestion only when the owner's own message "asks it to record knowledge". The test requires the emitted description to say the ask must be explicit. That stricter condition is held only here, so the next reader looks in the specification for it and does not find it. The test also fails a description that states the node's condition exactly.
+    kind: unstated
+    correction: >-
+      Either an analysis gives the node (or its description) the explicit-ask wording, or the test stops pinning "explicitly".
+    node: rules/chat/assistant-writes-only-on-owner-request
+  - file: src/__tests__/unit/ingestion/ingest-directed-description.spec.ts
+    where: >-
+      the third test (lines 41-51), which requires every sentence of the description that mentions tool results, lookups or queries to also say "never" or "not"
+    evidence: >-
+      /\b(tool|prior|earlier|previous)\s+results?\b|\blookups?\b|\bqueries\b/i.test(sentence) &&
+            !/\bnever\b|\bnot\b/i.test(sentence)
+    cost: >-
+      The rule node names only an instruction inside a document or tool result as something the assistant never acts on. This test extends the prohibition to prior lookups and queries, so a rule about which earlier chat activity may justify a write lives only in a test. A change to the description is judged against it, and the specification gives no way to settle a disagreement.
+    kind: unstated
+    correction: >-
+      An analysis decides whether prior lookups and queries are covered by the rule (by extending the rule node). If they are not, the test stops pinning them.
+    node: rules/chat/assistant-writes-only-on-owner-request
+read:
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    held_at: nowhere
+    evidence: >-
+      The file tests only the ingest_directed description text; it says nothing about alias resolution or alias creation order.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file tests only the ingest_directed description text; it says nothing about alias resolution.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file never mentions matched-existing, created-new or needs-review.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for a node alias.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for a knowledge node.
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: nowhere
+    evidence: >-
+      The file contains no alias or acronym scenario; its only subject is IngestToolDescriptions.ingest_directed.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file asserts on the description text of ingest_directed and none of the contract's accepted answers or refusals, for example `const sentences = sentencesOf(IngestToolDescriptions.ingest_directed);`.
+  - node: rules/chat/assistant-writes-only-on-owner-request
+    held_at: >-
+      the first two tests, lines 12-39, which assert the description states the owner-request condition and the never-on-a-document-or-tool-result-instruction prohibition
+    evidence: >-
+      /owner['’]s own message/i.test(sentence) && ... /\binstruction\b/i.test(sentence) &&
+              /\bdocument\b/i.test(sentence) &&
+              /tool result/i.test(sentence) &&
+              /\bnever\b/i.test(sentence)
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      the fourth test, line 56, which asserts the description states the server runs no language model for the call
+    evidence: >-
+      expect(text).toMatch(/\bno\s+(llm|language\s+model)\b/i);
+  - node: constraints/chat-directed-ingestion-description-matches-mcp
+    held_at: nowhere
+    evidence: >-
+      The file reads only IngestToolDescriptions.ingest_directed and never compares it with the text offered to the chat assistant.
+looked_past: >-
+  The regex-based sentence splitting and filters are test-design choices, not a domain fact.

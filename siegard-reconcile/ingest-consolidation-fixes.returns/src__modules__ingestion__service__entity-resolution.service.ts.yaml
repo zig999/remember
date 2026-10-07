@@ -1,0 +1,141 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      ALIAS_ADMISSION_SQL, the admitted expression (lines 63-68)
+    evidence: >-
+      OR (norm(a.alias) <> '' AND strpos(r.content_norm, norm(a.alias)) > 0)
+    cost: >-
+      The refusal of a proposed alias that normalizes to nothing exists only in this query. The node says an alias is admitted when its normalized form occurs in the normalized content. An empty string occurs in any content, so the node would admit it. A reader who looks in the specification for what happens to a blank alias finds no answer, and the code is where the decision lives. In a directed ingestion the same alias is admitted anyway, so the rule is also uneven across the two modes.
+    kind: unstated
+    correction: >-
+      Analysis should state in rules/knowledge-base/alias-admitted-only-from-source, or in a rule beside it, whether an alias whose normalized form is empty is admitted. It should also say whether a directed ingestion is exempt from that refusal.
+    node: rules/knowledge-base/alias-admitted-only-from-source
+read:
+  - node: rules/knowledge-base/alias-admitted-only-from-source
+    held_at: >-
+      ALIAS_ADMISSION_SQL (lines 63-78) and admitAliases (lines 170-195)
+    evidence: >-
+      OR (norm(a.alias) <> '' AND strpos(r.content_norm, norm(a.alias)) > 0)
+      and, for the directed exception, SELECT (lr.model = $2 AND lr.prompt_version = $3) AS directed
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      decideFromCandidates (lines 271-286), createNewNode (lines 127-152), insertMatchReviews (lines 248-261), findTrigramCandidates (lines 215-234)
+    evidence: >-
+      return { kind: "ambiguous", candidates: aboveFloor };
+      INSERT INTO knowledge_node (node_type_id, canonical_name, status) VALUES ($1, $2, 'needs_review')
+      INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
+      const TRIGRAM_CANDIDATE_LIMIT = 10;
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      findTrigramCandidates, the select and group (lines 219-228)
+    evidence: >-
+      SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim ... GROUP BY na.node_id
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      acquireNameLock (lines 154-168), called first in resolveOrCreateNode (line 84)
+    evidence: >-
+      SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+  - node: rules/knowledge-base/exact-alias-earliest-alias-wins
+    held_at: >-
+      findExactMatch, the ORDER BY clause (line 208)
+    evidence: >-
+      ORDER BY na.created_at ASC NULLS LAST, na.node_id ASC
+      LIMIT 1
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      findExactMatch (lines 197-213) and its use in resolveWithAdmittedAliases (lines 95-98)
+    evidence: >-
+      WHERE na.alias_norm = norm($1::text) AND kn.node_type_id = $2 AND kn.status = 'active'
+      and return { node_id: nodeId, resolution: "matched_existing" };
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      matchExisting (lines 113-125) and the is_name column of the admission query
+    evidence: >-
+      aliases: admission.admittedOtherThanName,
+      norm(a.alias) = norm($5::text) AS is_name
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the norm(...) calls in the exact-match, trigram, lock-key and admission SQL
+    evidence: >-
+      WHERE na.alias_norm = norm($1::text)
+      AND na.alias_norm % norm($1::text)
+      strpos(r.content_norm, norm(a.alias))
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases (lines 288-308) and attachAliases (lines 310-327), fed by createNewNode (lines 142-147)
+    evidence: >-
+      VALUES ($1, $2, 'canonical', $3)
+      VALUES ($1, $2, 'alias', $3)
+      aliases: plan.aliases,
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      decideFromCandidates, the novel branch (lines 277-279), and createNewNode choosing status (lines 135-140)
+    evidence: >-
+      if (aboveFloor.length === 0) { return { kind: "novel" }; }
+      needsReview ? "needs_review" : "active"
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates (lines 271-286) and MATCH_STRONG, MATCH_FLOOR (lines 12-14)
+    evidence: >-
+      if (strong.length === 1 && aboveFloor.length === 1) { return { kind: "strong_unique", nodeId: strong[0]!.node_id }; }
+      export const MATCH_STRONG = 0.85;
+      export const MATCH_FLOOR = 0.55;
+  - node: scenarios/knowledge-base/acronym-in-source-is-admitted
+    held_at: >-
+      ALIAS_ADMISSION_SQL (lines 63-78), then createNewNode and attachCanonicalAndAliases
+    evidence: >-
+      strpos(r.content_norm, norm(a.alias)) > 0
+      and VALUES ($1, $2, 'canonical', $3), then attachAliases inserting the admitted alias with kind 'alias'
+  - node: scenarios/knowledge-base/admitted-acronym-resolves-later-proposal
+    held_at: >-
+      findExactMatch (lines 197-213), which matches every alias of an active node
+    evidence: >-
+      WHERE na.alias_norm = norm($1::text) AND kn.node_type_id = $2 AND kn.status = 'active'
+  - node: scenarios/knowledge-base/alias-absent-from-source-not-admitted
+    held_at: >-
+      admitAliases, the notAdmitted construction (lines 191-193)
+    evidence: >-
+      .filter((r) => !r.admitted)
+      .map((r) => ({ alias: r.alias, reason: ALIAS_NOT_IN_SOURCE })),
+  - node: scenarios/knowledge-base/directed-alias-admitted-without-source
+    held_at: >-
+      ALIAS_ADMISSION_SQL, the directed flag (lines 65-72), with DIRECTED_MODEL and DIRECTED_PROMPT_VERSION passed at lines 180-181
+    evidence: >-
+      r.directed OR (...) and SELECT (lr.model = $2 AND lr.prompt_version = $3) AS directed
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the enumeration's type, `type ProposeNodeResolution`, from ../dto/propose-node.dto.js and returns the values "matched_existing", "created_new" and "needs_review". It declares no shape for it.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts rows, with `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id)`. It declares no shape for the entity.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts rows, with `INSERT INTO knowledge_node (node_type_id, canonical_name, status)`. It declares no shape for the aggregate.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      admitAliases, the notAdmitted list (lines 191-193). This is the file's part of the propose-node answer; the rest of the contract lives elsewhere.
+    evidence: >-
+      notAdmitted: res.rows.filter((r) => !r.admitted).map((r) => ({ alias: r.alias, reason: ALIAS_NOT_IN_SOURCE })),
+  - node: rules/chat/assistant-writes-only-on-owner-request
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chat or assistant behavior. It resolves node proposals only.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for a directed ingestion. It only reads whether a run is directed, with `(lr.model = $2 AND lr.prompt_version = $3) AS directed`.
+  - node: constraints/chat-directed-ingestion-description-matches-mcp
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no tool description and no chat text.
+looked_past: >-
+  The prefilter `na.alias_norm % norm($1::text)` uses the pg_trgm default threshold ahead of the 0.55 floor, which is an implementation of candidate retrieval and not a domain fact.
