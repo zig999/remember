@@ -11,3 +11,4 @@ Invoked /implement-task as the proof-only re-delivery over the task, closing the
 The suite run suite-2 passed, the proof was rewritten whole and the delivery derived; committed as the prove commit.
 Invoked /review-change again over the same task, review name succession-reaffirms-same-target-again; the registry's five steps passed, the failures pass did not run; 50 findings recorded in the delivery, 6 of 8 certifications covered and 2 partial with testable remainders.
 The prove step runs once per run, so the two remainders left are relayed and not taken; the measure follows.
+Ran the measure step: probe read the session transcripts for counts only, telemetry report written under siegard-telemetry; committed as the measure commit.
