@@ -1,0 +1,4 @@
+deliver-scope ingest-consolidation-fixes began at HEAD 8360ec1 on main, 2026-10-07T13:36:08Z.
+Slug derived from the ask: ingest-consolidation-fixes. Target decided: backend (the project declares three targets; the scope names backend files).
+Item (1) of the scope was excluded by the planner: the specification (reaffirmation-consolidates, consolidation-precedence, conflict-disputes) sends a same-target proposal with a different validity start to dispute, and the human's expected re-affirmation contradicts it; the door is /analyse, never invoked by this run.
+Invoked /plan-work over the ordinary path; outcome 3 epics, 3 tasks, 3 unstated facts decided into the specification, plan derived. Commit fb8b473.
