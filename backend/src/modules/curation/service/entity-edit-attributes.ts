@@ -14,6 +14,8 @@ import type {
 import { ConflictError } from "./errors.js";
 
 const ENTITY_EDIT_CONFLICT_CODE = "BUSINESS_ENTITY_EDIT_CONFLICT";
+const ENTITY_EDIT_DISPUTED_CODE = "BUSINESS_ENTITY_EDIT_DISPUTED";
+const DISPUTED_STATUS: AssertionStatus = "disputed";
 const LIVE_STATUSES: readonly AssertionStatus[] = [
   "active",
   "uncertain",
@@ -46,6 +48,39 @@ function isLiveAttributeOf(held: ItemLockedRow, target: EditedKey): boolean {
   );
 }
 
+function disputedOf(
+  held: ItemLockedRow,
+  change: AttributeChange
+): ConflictError {
+  return new ConflictError(
+    ENTITY_EDIT_DISPUTED_CODE,
+    `Attribute '${held.id}' of key '${change.attribute_key}' is disputed and is settled through curation, not through an entity edit.`,
+    { attribute_key: change.attribute_key, item_id: held.id }
+  );
+}
+
+function statesOtherValueThan(
+  held: ItemLockedRow,
+  change: AttributeChange
+): boolean {
+  return (
+    change.kind === "set" &&
+    change.value !== undefined &&
+    change.value !== held.value
+  );
+}
+
+function assertDisputeLeftToCuration(
+  held: ItemLockedRow,
+  change: AttributeChange
+): void {
+  const changesHeld =
+    change.kind === "remove" || statesOtherValueThan(held, change);
+  if (held.status === DISPUTED_STATUS && changesHeld) {
+    throw disputedOf(held, change);
+  }
+}
+
 function assertSupersessionTimeLeavesValue(
   held: ItemLockedRow,
   change: AttributeChange
@@ -53,11 +88,7 @@ function assertSupersessionTimeLeavesValue(
   const carriesSupersessionTime =
     held.superseded_at !== null &&
     SUPERSESSION_TIME_STATUSES.includes(held.status);
-  const statesOtherValue =
-    change.kind === "set" &&
-    change.value !== undefined &&
-    change.value !== held.value;
-  if (carriesSupersessionTime && statesOtherValue) {
+  if (carriesSupersessionTime && statesOtherValueThan(held, change)) {
     throw conflictOf(
       `Attribute '${held.id}' of key '${change.attribute_key}' carries a supersession time and its value cannot be changed.`,
       change
@@ -84,6 +115,7 @@ async function checkNamedAttribute(
       change
     );
   }
+  assertDisputeLeftToCuration(held, change);
   assertSupersessionTimeLeavesValue(held, change);
 }
 
