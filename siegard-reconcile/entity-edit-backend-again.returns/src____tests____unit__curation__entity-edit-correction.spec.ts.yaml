@@ -1,0 +1,76 @@
+findings:
+  - file: src/__tests__/unit/curation/entity-edit-correction.spec.ts
+    where: >-
+      line 36, the LIVE_STATUSES constant, used by supersedeStatement at line 128
+    evidence: >-
+      const LIVE_STATUSES: readonly string[] = ["active", "uncertain", "disputed"];
+    cost: >-
+      This is the enumeration that domain/knowledge-base/live-assertion-status holds, declared a second time in a
+      file that node is not bound to. The test double decides which rows the supersede statement touches from this
+      copy. If the node's values move, the double keeps applying the old set. The tests then pass against a
+      vocabulary nobody decided, and `--check` never reaches this file through the node.
+    kind: contradicts
+    correction: >-
+      Bind this file to domain/knowledge-base/live-assertion-status so the node answers for the vocabulary here. The
+      alternative is for the double not to carry its own list of live statuses.
+    node: domain/knowledge-base/live-assertion-status
+read:
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file never calls the route or a response shape. It only runs `AttributeChangeSchema.parse({ attribute_key: "any", kind: "set", value: ... })` and the correction and new-attribute recorders.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the enumeration. It uses the literals "superseded" and "active" in
+      assertions, and `Row = Record<string, unknown>` carries no attributes.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      No `reason` or `changes` shape is declared here. The only edit input is `AttributeChangeSchema.parse({ attribute_key: "any", kind: "set", value: scenario.value ?? NEW_CNPJ })`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      Attributes are held as `type Row = Record<string, unknown>` and `interface Store { attributes: Row[]; provenance: Row[]; }`. The file declares no shape of the element.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The only use is the fixture `const NODE: KnowledgeNodeLockedRow = { ..., status: "active", ... }`. No enumeration is declared and no behavior depends on it.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file exercises no wire rendering of a node status or an assertion flag.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      the assertions of the "status of the attribute a correction supersedes" and "new attribute a correction
+      records" groups
+    evidence: >-
+      expect(outcome.predecessor.status).toBe("superseded"); expect(outcome.recorded.supersedes_attribute_id).toBe(PREDECESSOR_ID); expect(outcome.recorded.status).toBe("active");
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: >-
+      the deadline-key test in the "supersession time" group and the uncertain-predecessor test in the "state of the new attribute" group
+    evidence: >-
+      predecessor: { value: OLD_DEADLINE, status: "uncertain", valid_from: "2026-03-01", valid_to: PREDECESSOR_END }, then expect(outcome.recorded.status).toBe("active");
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      `NODE` is a fixture with `status: "active"`. No test exercises a refusal for a node that is not active.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      the test "holds the edit's information fragment, and for a correction every provenance of the superseded attribute and no other"
+    evidence: >-
+      correction: [FRAGMENT_ID, OLD_FRAGMENT_ID, OLDER_FRAGMENT_ID],
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      the two tests of the "supersession time of the attribute a correction supersedes" group
+    evidence: >-
+      expect(outcome.predecessor.superseded_at).toEqual(EDITED_AT);
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      the "an organization's active cnpj with no validity, corrected to another cnpj" group
+    evidence: >-
+      expect(outcome.predecessor.valid_to ?? null).toBeNull(); expect(outcome.recorded.value).toBe(NEW_CNPJ);
+looked_past: >-
+  The scenario's third outcome, that the change is reported with the effect correction, has no assertion in this file, and that gap in coverage belongs to a test review, not to this pass.
+candidates_opened:
+  - domain/knowledge-base/live-assertion-status
