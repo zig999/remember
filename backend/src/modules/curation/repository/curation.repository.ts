@@ -195,6 +195,28 @@ export async function loadItemsForUpdate(
   return res.rows;
 }
 
+export interface AttributesOfKeyFilter {
+  readonly nodeId: string;
+  readonly attributeKeyId: string;
+  readonly statuses: readonly AssertionStatus[];
+}
+
+export async function loadAttributeIdsOfKeyForUpdate(
+  client: PoolClient,
+  filter: AttributesOfKeyFilter
+): Promise<string[]> {
+  const res = await client.query<{ id: string }>(
+    `SELECT id
+       FROM node_attribute
+      WHERE node_id = $1
+        AND attribute_key_id = $2
+        AND status = ANY($3::assertion_status[])
+      FOR UPDATE`,
+    [filter.nodeId, filter.attributeKeyId, Array.from(filter.statuses)]
+  );
+  return res.rows.map((row) => row.id);
+}
+
 export async function confirmItem(
   client: PoolClient,
   itemKind: ItemKind,
