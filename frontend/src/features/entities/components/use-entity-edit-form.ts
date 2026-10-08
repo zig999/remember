@@ -7,12 +7,14 @@ import {
   buildFormValues,
   type EntityFormValues,
 } from "./entity-form-schema";
+import { useEntityReview, type EntityReviewState } from "./use-entity-review";
 import { zodIssueResolver } from "./zod-issue-resolver";
 
 export interface EntityEditForm {
   readonly form: UseFormReturn<EntityFormValues>;
   readonly valueTypesAccepted: boolean;
   readonly changed: readonly boolean[];
+  readonly review: EntityReviewState;
 }
 
 export function useEntityEditForm(
@@ -50,5 +52,13 @@ export function useEntityEditForm(
     [held, attributeKeys, node.attributes],
   );
 
-  return { form, valueTypesAccepted, changed };
+  const review = useEntityReview(
+    held,
+    changed,
+    values,
+    attributeKeys,
+    valueTypesAccepted,
+  );
+
+  return { form, valueTypesAccepted, changed, review };
 }

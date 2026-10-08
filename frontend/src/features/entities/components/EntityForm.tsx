@@ -8,6 +8,7 @@ import {
   outsideCatalogGroupsOf,
 } from "./entity-form-schema";
 import { OutsideCatalogValues } from "./entity-outside-catalog-values";
+import { EntityReview } from "./entity-review";
 import { useEntityEditForm } from "./use-entity-edit-form";
 
 export interface EntityFormProps {
@@ -20,7 +21,7 @@ function holdSubmission(event: FormEvent<HTMLFormElement>): void {
 }
 
 export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
-  const { form, valueTypesAccepted, changed } = useEntityEditForm(
+  const { form, valueTypesAccepted, changed, review } = useEntityEditForm(
     node,
     attributeKeys,
   );
@@ -61,6 +62,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
         />
       ))}
       <OutsideCatalogValues groups={outsideCatalog} />
+      <EntityReview review={review} />
     </form>
   );
 };
