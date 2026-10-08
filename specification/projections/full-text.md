@@ -1988,7 +1988,7 @@ operations:
 - edit-entity
 answers:
 - operation: edit-entity
-  accepted: 'HTTP 200 carrying, with no envelope, `{ node_id, action_id, applied }`, `applied` listing one `{ attribute_key, effect, item_id, predecessor_id }` per change in the order given, `item_id` and `predecessor_id` null where the effect has none'
+  accepted: 'Over REST, `POST /api/v1/nodes/{node_id}/edit` with the edited node''s identity in the path and a JSON body carrying the edit''s `reason` and `changes`, answered HTTP 200 carrying, with no envelope, `{ node_id, action_id, applied }`, `node_id` the edited node''s identity, `action_id` the identity of the curation action the edit recorded, `applied` listing one `{ attribute_key, effect, item_id, predecessor_id }` per change in the order given, `item_id` and `predecessor_id` null where the effect has none'
   refusals:
   - rule: rules/knowledge-base/entity-edit-reason-length
     answer: &format 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details: { issues: [{ path, message }] }`, each path joined by ".", HTTP 422 over REST'
@@ -2012,8 +2012,12 @@ answers:
     answer: &incoherent 'error code BUSINESS_TEMPORAL_INCOHERENT, HTTP 422 over REST'
   - rule: rules/knowledge-base/validity-start-before-end
     answer: *incoherent
+  - rule: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    answer: *incoherent
   - rule: rules/knowledge-base/entity-edit-names-a-live-attribute
     answer: &conflict 'error code BUSINESS_ENTITY_EDIT_CONFLICT naming the attribute key and, where it has one, the item, HTTP 409 over REST'
+  - rule: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    answer: *conflict
   - rule: rules/knowledge-base/entity-edit-adds-no-second-current-value
     answer: *conflict
   - when: Another operation changed an attribute the edit names first.
@@ -2047,6 +2051,14 @@ entries:
   unstated: The material says an edit is refused on conflict without naming the codes or statuses of any refusal.
   decided: HTTP 409 for BUSINESS_NODE_NOT_ACTIVE, BUSINESS_ENTITY_EDIT_CONFLICT and BUSINESS_ENTITY_EDIT_DISPUTED, HTTP 422 for BUSINESS_ENTITY_EDIT_NO_CHANGES and the validation codes the curation surface already uses
   why: A conflict is a state of the store that the owner can retry and so takes 409 as the curation surface does for a lost race, while a request that is wrong in itself takes 422.
+- field: answers.0.accepted
+  unstated: No node and no material names the HTTP method or path of the edit-entity operation, or says whether the edited node's identity travels in the path or in the body; the scope names only the operation and the contract.
+  decided: POST /api/v1/nodes/{node_id}/edit, with the edited node's identity in the path and a JSON body carrying the edit's reason and changes
+  why: An edit acts on one node, which the knowledge base already addresses at /api/v1/nodes/{id}. It does not replace the node's representation. It is an action, under a reason, that adds new attribute versions, so it is a POST on that node's address with the identity in the path, in the same way entity-match resolution is a node-addressed POST.
+- field: answers.0.accepted
+  unstated: The accepted answer names the fields `node_id` and `action_id` but no node and no material says what each one identifies. The path carries the edited node's identity, and rules/knowledge-base/entity-edit-records-curation-action says an accepted edit records one curation action, but neither ties either answer field to that node or to that action.
+  decided: '`node_id` is the edited node''s identity, the same one the path carries, and `action_id` is the identity of the curation action the accepted edit recorded under rules/knowledge-base/entity-edit-records-curation-action'
+  why: The edit acts on exactly one node and records exactly one curation action, so these are the two identities the answer can name. The curation contract already uses the same names for the node it acted on and the action it recorded, so a caller of either surface reads the fields the same way.
 ---
 
 === contracts/knowledge-base/ingestion
@@ -17809,6 +17821,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+---
+type: invariant
+statement: "A curation action kind MUST be written with each hyphen of its enumeration value as an underscore wherever a curation action records it and wherever a listing of curation actions filters by it."
+constrains:
+- domain/knowledge-base/curation-action-kind
+---
+
+## Description
+
+How the kind of a curation action is spelled when the action is recorded and when a listing of curation actions is filtered by that kind, so edit-entity is written edit_entity and resolve-entity-match is written resolve_entity_match. This rule does not decide which kind an action records. The rules that record each curation action decide that. It also does not decide what a listing answers when its filter names a kind outside the closed set. The contract contracts/knowledge-base/compliance-audit decides that.
+
+=== rules/knowledge-base/a-curation-action-kind-is-written-with-underscores.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for how a curation action kind is spelled where a curation action is recorded or where a listing of curation actions filters by kind, and nothing says whether edit-entity is written with its hyphen or as edit_entity.
+  decided: invariant
+  why: The back end already records the seven existing curation action kinds in their underscore form (resolve_entity_match, merge_nodes, confirm_item, correct_item and the rest) and filters listings by that same form, so edit-entity is written edit_entity.
+---
+
 === rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
 ---
 type: invariant
@@ -18217,6 +18250,27 @@ entries:
   unstated: How many candidates a review pairs with the new node
   decided: The ten most similar nodes at or above the floor
   why: The resolver fetches ten candidates by similarity before filtering by the floor, so no more are ever paired.
+---
+
+=== rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+---
+type: invariant
+statement: "An edit effect MUST cross the wire with each hyphen of its enumeration value written as an underscore."
+constrains:
+- domain/knowledge-base/edit-effect
+---
+
+## Description
+
+How the effect of each applied change is spelled in the answer to an entity edit, so first-value is written first_value. This rule does not decide which effect a change records. The rules that record each change decide that, and the contract contracts/knowledge-base/entity-editing decides the shape of the answer.
+
+=== rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for how an edit effect value is spelled on the wire, and nothing says whether first-value crosses with its hyphen or as first_value.
+  decided: invariant
+  why: An edit effect crosses the wire with each hyphen written as an underscore, as node statuses and assertion flags already do, because the element schema keeps enumeration values in kebab-case with code forms derived and the back end's wire spellings use underscores.
 ---
 
 === rules/knowledge-base/approximate-match-similarity
@@ -20524,6 +20578,56 @@ entries:
   why: The form names the attribute it started from, so a change naming none for a held key was made from a form opened before that value existed.
 ---
 
+=== rules/knowledge-base/entity-edit-change-check-order
+---
+type: invariant
+statement: A change of an entity edit is checked for a well-formed change, then for an attribute key the catalog holds for the edited node's type, then for a value that reads as the key's value type, then for a value among the key's allowed values, then for its validity, then against the edited node's attributes of its key, and the edit is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+---
+
+## Description
+
+Covers which check refuses one change of an entity edit when that change fails more than one. The condition of each check belongs to its own rule, and what the edit answers for each belongs to contracts/knowledge-base/entity-editing. This rule does not order the checks of the edit as a whole, which are its reason and its knowledge node.
+
+=== rules/knowledge-base/entity-edit-change-check-order.log
+---
+entries:
+- field: type
+  unstated: No node and no material names an order for the checks of one change of an entity edit. The intake scope is silent on it, and every other operation with refusals that can overlap has a check-order rule of its own. So a change with an unknown key that also names an attribute that is not live could answer either BUSINESS_UNKNOWN_ATTRIBUTE_KEY or BUSINESS_ENTITY_EDIT_CONFLICT.
+  decided: invariant
+  why: A change whose key, value or validity is wrong is wrong in itself, and reloading the form cannot make it acceptable. So it is refused for that before it is held against the node's attributes, whose conflict invites the owner to reload and retry. The key comes first among those checks because the value and validity checks read the key's value type, allowed values and temporality, as an attribute proposal's checks already do.
+- field: statement
+  unstated: No node and no material says which check comes first when a change's value for a key that has allowed values both fails to read as the key's value type and is none of the allowed values. The rule put both checks in one step, so the change could be refused with BUSINESS_INVALID_ATTRIBUTE_VALUE naming the value type and the value, or with BUSINESS_INVALID_ATTRIBUTE_VALUE naming the attribute key, the value and the allowed values.
+  decided: The value-type check comes first, and the allowed-values check comes right after it, before the validity check.
+  why: A key's allowed values are themselves values of its value type. A value that does not read as that type fails before it can be compared with them.
+---
+
+=== rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+---
+type: invariant
+statement: "A set change that names an attribute whose status is active or uncertain and that carries a supersession time MUST NOT state a value other than that attribute's own."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+Covers a set change that states a new value for an active or uncertain attribute that already carries a supersession time. This rule does not cover the following cases. A set change that states the attribute's own value is rules/knowledge-base/entity-edit-unchanged-records-nothing's. An attribute whose status is disputed is rules/knowledge-base/entity-edit-leaves-disputes-to-curation's. An attribute whose status is not a live status is rules/knowledge-base/entity-edit-names-a-live-attribute's. A live attribute with a validity end and no supersession time is rules/knowledge-base/entity-edit-ended-attribute-correction's.
+
+=== rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for a set change that states a new value for an attribute whose status is active or uncertain and that carries a supersession time. The succession and correction rules reach only a current attribute, the ended-attribute correction reaches only one with no supersession time, and no rule refuses it.
+  decided: invariant
+  why: An attribute that carries a supersession time is no longer what the system holds, so a new value typed against it comes from a form loaded before that attribute was withdrawn, and the edit is refused as a conflict rather than overwrite what was recorded since.
+---
+
 === rules/knowledge-base/entity-edit-changes-something
 ---
 type: invariant
@@ -20547,6 +20651,29 @@ entries:
   why: A correction that changes nothing is already refused, and a note recorded for no change would be provenance for nothing.
 ---
 
+=== rules/knowledge-base/entity-edit-check-order
+---
+type: invariant
+statement: An entity edit is checked for a well-formed request, its reason's length and every change's form included, then for an existing knowledge node, then for an active one, then change by change in the order given, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+Covers which check refuses an entity edit that fails more than one, across its request, its knowledge node and its changes. The order of the checks inside one change belongs to rules/knowledge-base/entity-edit-change-check-order. The condition of each check belongs to its own rule. What the edit answers for each refusal belongs to contracts/knowledge-base/entity-editing.
+
+=== rules/knowledge-base/entity-edit-check-order.log
+---
+entries:
+- field: type
+  unstated: No node and no material orders the checks of an entity edit as a whole. The intake scope does not cover it, and rules/knowledge-base/entity-edit-change-check-order orders only the checks inside one change. So an edit naming an absent or non-active node that also has a malformed body, an out-of-bounds reason or a refused change could answer RESOURCE_NOT_FOUND, BUSINESS_NODE_NOT_ACTIVE, VALIDATION_INVALID_FORMAT or a change's own code. An edit whose changes fail different checks could also be refused for any of them.
+  decided: invariant
+  why: A malformed request is wrong whatever node it names, and the format refusal reports all its issues in one answer, while every later check reads first the edited node and then one change. So the node is checked between the form and the changes, and the changes are taken in the order given, which is the only order the edit carries.
+---
+
 === rules/knowledge-base/entity-edit-correction
 ---
 type: policy
@@ -20564,10 +20691,58 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+---
+type: invariant
+statement: "A set change to a temporal key that states a validity end and no validity start MUST state that end after today."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+Covers a set change that states a validity end and leaves its start to the default. A change that states both a start and an end is held by rules/knowledge-base/validity-start-before-end. The default start itself is set by rules/knowledge-base/entity-edit-start-defaults-to-today.
+
+=== rules/knowledge-base/entity-edit-defaulted-start-precedes-end.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for a set change to a temporal key that states a validity end on or before today and no validity start. The scope material is silent on it. rules/knowledge-base/validity-start-before-end holds only a change that states both dates, and rules/knowledge-base/entity-edit-start-defaults-to-today would record such a change with a start on or after its own end.
+  decided: invariant
+  why: 'A start defaulted to today ahead of an end on or before today records a period that is empty or reversed, so the edit is refused as temporally incoherent, the way a stated start after a stated end already is: error code BUSINESS_TEMPORAL_INCOHERENT, HTTP 422 over REST.'
+---
+
+=== rules/knowledge-base/entity-edit-ended-attribute-correction
+---
+type: policy
+statement: "A set change that names an attribute with a live status, a validity end and no supersession time and states a value other than its own supersedes it and is recorded as a new active attribute that names it as the one it supersedes, with the effect correction, whatever its key."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/edit-effect
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/live-assertion-status
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+Covers a new value set on an attribute whose period has already ended. This rule does not decide the new attribute's validity. That validity is the change's own: rules/knowledge-base/entity-edit-start-defaults-to-today covers a temporal key, and rules/knowledge-base/stable-key-change-states-no-validity covers a key that is not temporal.
+
+=== rules/knowledge-base/entity-edit-ended-attribute-correction.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for a set change that states a new value for an attribute with a live status, a validity end and no supersession time. Such an attribute is not current, so the succession and correction rules do not reach it, and no rule refuses it.
+  decided: policy
+  why: An attribute whose validity has already ended holds no value in effect for a new one to succeed, so changing its value rewrites what was recorded for its period, which is a correction whatever its key.
+---
+
 === rules/knowledge-base/entity-edit-first-value
 ---
 type: invariant
-statement: "A set change that names no attribute, made to a key of which the edited node holds no attribute with a live status, is recorded as a new active attribute with the effect first-value."
+statement: "A set change that names no attribute, made to a key of which the edited node holds no attribute with a live status, is recorded as a new active attribute that names no attribute as the one it supersedes, with the effect first-value."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/edit-effect
@@ -20578,6 +20753,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/entity-edit-first-value.log
+---
+entries:
+- field: statement
+  unstated: No node and no material says whether a first value names an earlier attribute as the one it supersedes. The node can hold superseded or deleted attributes of the same key. The succession and correction rules name a superseded attribute, and the first-value rule names none.
+  decided: A first value is recorded as a new active attribute that names no attribute as the one it supersedes, whatever superseded or deleted attributes of its key the node holds.
+  why: A first value takes the place of no held value. A superseded or deleted attribute already has its successor or its rejection, so naming it again would give it a second lineage it does not have.
+---
 
 === rules/knowledge-base/entity-edit-leaves-disputes-to-curation
 ---
@@ -20683,6 +20867,29 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/entity-edit-note-confidence
+---
+type: policy
+statement: "The information fragment an entity edit records is recorded at confidence 1.0."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/information-fragment
+consistency: eventual
+---
+
+## Description
+
+This rule sets the confidence of the note an entity edit records. What that note holds is set by rules/knowledge-base/entity-edit-note. The run that holds it is set by rules/knowledge-base/entity-edit-note-run. The confidence of the attributes the edit records is set by rules/knowledge-base/entity-edit-new-attribute-state.
+
+=== rules/knowledge-base/entity-edit-note-confidence.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule giving the confidence recorded on the information fragment that holds an entity edit's reason.
+  decided: policy
+  why: The owner states the reason directly, and the system records what the owner states directly at confidence 1.0, so the fragment holding that reason carries confidence 1.0.
+---
+
 === rules/knowledge-base/entity-edit-note-content
 ---
 type: invariant
@@ -20696,10 +20903,35 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/entity-edit-note-run
+---
+type: policy
+statement: "The information fragment an entity edit records, and the raw information that fragment is anchored in, are recorded under the LLM run that the same entity edit opened."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/information-fragment
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/llm-run
+consistency: eventual
+---
+
+## Description
+
+This rule governs which run holds the note an entity edit records. The model and prompt version of that run are set by rules/knowledge-base/entity-edit-run, and what the note holds is set by rules/knowledge-base/entity-edit-note.
+
+=== rules/knowledge-base/entity-edit-note-run.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule saying which LLM run holds the information fragment an entity edit records and the raw information that fragment is anchored in.
+  decided: policy
+  why: An information fragment refers to exactly one LLM run and an LLM run to exactly one raw information, and an entity edit opens exactly one run, so the note it records and that note's raw information belong to the run the same edit opened.
+---
+
 === rules/knowledge-base/entity-edit-note-source
 ---
 type: policy
-statement: "The raw information an entity edit records has source type other and records in its metadata that it is an operator note and the identity of the edited knowledge node."
+statement: "The raw information an entity edit records has source type other and records in its metadata operator_note set to true and node_id holding the identity of the edited knowledge node."
 constrains:
 - domain/knowledge-base/entity-edit
 - domain/knowledge-base/raw-information
@@ -20719,6 +20951,31 @@ entries:
   unstated: The material asks for a raw information of manual origin without saying which source type holds it.
   decided: Source type other, with the metadata recording an operator note and the edited node.
   why: Source type is a closed set stored as an enumeration, and a directed ingestion already marks its origin in metadata instead of widening it.
+- field: statement
+  unstated: The rule says the metadata records that the raw information is an operator note and the edited node's identity, but no node and no material names the metadata keys or the value that marks an operator note.
+  decided: The key operator_note set to true marks the operator note, and the key node_id holds the edited knowledge node's identity.
+  why: The one metadata mark the specification already names, compliance_deleted set to true, is a snake_case key set to true, and the edit operation already carries the edited node's identity as node_id in its path and its answer.
+---
+
+=== rules/knowledge-base/entity-edit-null-field-is-not-stated
+---
+type: invariant
+statement: "An attribute change's value, item, validity start or validity end sent as null MUST count as not stated."
+constrains:
+- domain/knowledge-base/attribute-change
+---
+
+## Description
+
+This rule governs how a null value, item, validity start or validity end in a change is read. It does not govern whether a change must or may state each of them. That belongs to rules/knowledge-base/entity-edit-value-matches-the-kind, rules/knowledge-base/entity-edit-removal-names-an-attribute and rules/knowledge-base/stable-key-change-states-no-validity.
+
+=== rules/knowledge-base/entity-edit-null-field-is-not-stated.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for how an attribute change reads a value, item, validity start or validity end sent as null; the edit-entity contract refuses a field "null where it may not be" without saying which fields may be null.
+  decided: invariant
+  why: An optional field of an attribute change sent as null counts as not stated and is accepted, because these four fields are optional on the attribute-change element and the specification's other owner write, the correction, already reads a null field as not stated.
 ---
 
 === rules/knowledge-base/entity-edit-provenance
@@ -20749,7 +21006,7 @@ entries:
 === rules/knowledge-base/entity-edit-reason-length
 ---
 type: invariant
-statement: "An entity edit's reason MUST hold between 1 and 1000 characters once trimmed."
+statement: "An entity edit's reason MUST hold between 1 and 1000 UTF-16 code units once trimmed."
 constrains:
 - domain/knowledge-base/entity-edit
 ---
@@ -20765,12 +21022,37 @@ entries:
   unstated: The material requires a reason without bounding it.
   decided: Between 1 and 1000 characters once trimmed.
   why: The reason is recorded as a curation action reason, which holds at most 1000 characters, and a blank one is refused as in every other curation request.
+- field: statement
+  unstated: The unit the 1000 limit on an entity edit's trimmed reason is counted in. The statement says only "characters", and the intake scope does not mention it. Unicode code points and UTF-16 code units give different counts when the reason holds characters outside the Basic Multilingual Plane, such as an emoji.
+  decided: The trimmed reason is counted in UTF-16 code units and holds between 1 and 1000 of them.
+  why: The reason is one whole text bounded as a single field the owner sends. The specification counts whole-text lengths in UTF-16 code units (content-length, original-input-length, document-context-read-first) and keeps Unicode code points for positions and sizes inside chunks, which is not what this limit measures.
+---
+
+=== rules/knowledge-base/entity-edit-reason-trimmed
+---
+type: invariant
+statement: "An entity edit records its reason trimmed of surrounding whitespace."
+constrains:
+- domain/knowledge-base/entity-edit
+---
+
+## Description
+
+Governs the form the reason takes wherever an entity edit records it: the note's content, the information fragment's text and the curation action's reason. It does not decide how long the reason may be; that belongs to rules/knowledge-base/entity-edit-reason-length.
+
+=== rules/knowledge-base/entity-edit-reason-trimmed.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule saying whether an entity edit records its reason trimmed of surrounding whitespace or exactly as the owner sent it.
+  decided: invariant
+  why: An entity edit records its reason trimmed of surrounding whitespace, because the reason is already accepted or refused by its trimmed length, and the surrounding whitespace says nothing about why the owner made the edit.
 ---
 
 === rules/knowledge-base/entity-edit-records-curation-action
 ---
 type: policy
-statement: "An accepted entity edit records one curation action of kind edit-entity on target kind node at the edited node's identity, with its reason as the reason and its applied changes as the payload."
+statement: "An accepted entity edit records one curation action of kind edit-entity on target kind node at the edited node's identity, with its reason as the reason and as the payload an object whose `applied` field lists one `{ attribute_key, effect, item_id, predecessor_id }` per applied change in the order given, each effect written with an underscore for each hyphen and `item_id` and `predecessor_id` null where the effect has none."
 constrains:
 - domain/knowledge-base/entity-edit
 - domain/knowledge-base/applied-change
@@ -20784,10 +21066,19 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/entity-edit-records-curation-action.log
+---
+entries:
+- field: statement
+  unstated: No node and no material gives the form of an edit-entity curation action's payload. Four things are open. Is it a bare list or an object holding the list under a named field? Which field names does each applied change carry? Is an effect written with hyphens or underscores? Is a missing item or predecessor identity written as null or left out?
+  decided: An object whose `applied` field lists one `{ attribute_key, effect, item_id, predecessor_id }` per applied change in the order given. Each effect is written with an underscore for each hyphen. `item_id` and `predecessor_id` are null where the effect has none.
+  why: The payload keeps the same `applied` list, with the same field names and nulls, that the edit-entity answer already gives the owner. It is written as an object of named fields, with each enumeration value's hyphens as underscores, because that is the form every other curation action kind records its payload in.
+---
+
 === rules/knowledge-base/entity-edit-removal
 ---
 type: policy
-statement: "A remove change rejects the attribute it names, marking it deleted and stamping its supersession time, with the effect removal."
+statement: "A remove change rejects the attribute it names, marking it deleted and giving it the moment of the edit as its supersession time, with the effect removal."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/edit-effect
@@ -20813,6 +21104,15 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/entity-edit-removal.log
+---
+entries:
+- field: statement
+  unstated: The rule says a remove change stamps the rejected attribute's supersession time, but neither the intake scope nor any node says which moment that time holds.
+  decided: The moment of the edit.
+  why: The owner's removal ends what the knowledge base holds at the moment the edit is saved, and the note for the same edit records that moment, so it is when the attribute stopped being known.
+---
+
 === rules/knowledge-base/entity-edit-run
 ---
 type: policy
@@ -20836,10 +21136,35 @@ entries:
   why: An information fragment and a new attribute need a run, and the directed ingestion names its own model and version for the same reason.
 ---
 
+=== rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+---
+type: policy
+statement: "An attribute an entity edit records for a key that is not temporal holds no validity start, no validity end and no validity-start basis."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/valid-from-basis
+consistency: eventual
+---
+
+## Description
+
+Governs the validity held by the attribute an entity edit records for a key that is not temporal, whatever the edit's effect. What a change to such a key may state is governed by rules/knowledge-base/stable-key-change-states-no-validity, and the start and basis recorded for a temporal key by rules/knowledge-base/entity-edit-start-defaults-to-today and rules/knowledge-base/entity-edit-stated-start-is-stated.
+
+=== rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for the validity start, validity end and validity-start basis of an attribute an entity edit records for a key that is not temporal.
+  decided: policy
+  why: An attribute of a key that is not temporal holds no validity, so a start, an end or a basis recorded on it would make a correction read as a change in the world.
+---
+
 === rules/knowledge-base/entity-edit-start-defaults-to-today
 ---
 type: policy
-statement: "A set change to a temporal key that states no validity start is recorded with today as its start and the basis received."
+statement: "A set change to a temporal key that states no validity start is recorded with today, the UTC calendar date of the moment of the edit, as its start and the basis received."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/attribute-key
@@ -20859,6 +21184,34 @@ entries:
   unstated: The material defaults the start to today for keys that require one without saying what a temporal key that does not require one gets.
   decided: Today with the basis received for every temporal key.
   why: The owner decided the start defaults to today when none is stated, and email, phone and website are temporal.
+- field: statement
+  unstated: No node and no material says which calendar day counts as today when an entity edit records an unstated validity start, or in which time zone the moment of the edit is read as a date. The owner's time zone is held only for chat turns (rules/chat/owner-time-zone-default), and the scope names none for the knowledge base.
+  decided: Today is the UTC calendar date of the moment of the edit.
+  why: The knowledge base reads the day it compares validity against as the UTC calendar date, so a start read in any other zone could fall after that day and leave a value just saved by the owner not yet in effect.
+---
+
+=== rules/knowledge-base/entity-edit-stated-end-is-held
+---
+type: policy
+statement: "A new attribute recorded from an entity edit's set change holds as its validity end the validity end the change states, and holds no validity end when the change states none."
+constrains:
+- domain/knowledge-base/entity-edit
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+This rule governs the validity end of the attribute that an entity edit records. It does not govern the validity end given to the attribute that the edit supersedes. That end belongs to rules/knowledge-base/entity-edit-succession-closes-the-previous.
+
+=== rules/knowledge-base/entity-edit-stated-end-is-held.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule for the validity end of an attribute that an entity edit records. The scope material is silent on it, and the nodes say only how the start is set and how the superseded attribute is closed.
+  decided: policy
+  why: The form offers the owner an optional validity end for a temporal field, and dates are never invented. So the new attribute holds exactly the end the owner typed, or no end when the owner typed none.
 ---
 
 === rules/knowledge-base/entity-edit-stated-start-is-stated
@@ -20895,7 +21248,7 @@ None.
 === rules/knowledge-base/entity-edit-succession-closes-the-previous
 ---
 type: policy
-statement: "An entity edit's succession gives the attribute it supersedes a validity end at the new attribute's validity start, and leaves it no validity end when that start falls on or before the superseded attribute's start."
+statement: "An entity edit's succession gives the attribute it supersedes a validity end at the new attribute's validity start, and leaves it no validity end only when the superseded attribute holds a validity start and the new start falls on or before it."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/node-attribute
@@ -20906,6 +21259,15 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/entity-edit-succession-closes-the-previous.log
+---
+entries:
+- field: statement
+  unstated: No node and no material says whether an entity edit's succession gives a validity end to a superseded attribute that holds no validity start. The standing statement leaves the superseded attribute with no validity end when the new start falls on or before the superseded attribute's start, and an attribute with no start gives that comparison nothing to compare against.
+  decided: The superseded attribute is given a validity end at the new attribute's validity start. It is left with no validity end only when it holds a validity start and the new start falls on or before that start. Under entity-edit-supersession-time, an attribute given that end keeps its supersession time unset.
+  why: The as-of reads already treat validity with no start as holding on every date before its end, so the new start always falls inside the superseded attribute's period. Closing it there keeps the period it held visible in an as-of read. Leaving it open would make it count as current next to its successor, or force a supersession time that hides it from that period.
+---
+
 === rules/knowledge-base/entity-edit-succession.log
 ---
 entries:
@@ -20915,16 +21277,44 @@ entries:
   why: The owner decided the effect follows the key being temporal, and email and phone are temporal.
 ---
 
+=== rules/knowledge-base/entity-edit-supersession-time
+---
+type: policy
+statement: "An entity edit gives the attribute it supersedes the moment of the supersession as its supersession time, and leaves its supersession time unset only when the edit itself gives that attribute a validity end."
+constrains:
+- domain/knowledge-base/attribute-change
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+It governs the supersession time of the attribute that an entity edit's correction or succession supersedes. Whether that attribute is given a validity end, and which one, is entity-edit-succession-closes-the-previous's. The supersession time of an attribute that a remove change rejects is entity-edit-removal's.
+
+=== rules/knowledge-base/entity-edit-supersession-time.log
+---
+entries:
+- field: type
+  unstated: No node and no material names a rule that sets the supersession time of the attribute an entity edit supersedes. Each standing rule says only whether that attribute gets a validity end.
+  decided: policy
+  why: A superseded attribute with no validity end needs a supersession time to stop counting as current. One closed with a validity end must stay unstamped, because the as-of view would otherwise hide it during the period it held.
+- field: statement
+  unstated: No node and no material says what supersession time an entity edit gives an attribute that already had a validity end when the edit superseded it by correction. The edit neither leaves that attribute without a validity end nor gives it one, so neither case of the standing statement reaches it.
+  decided: The edit gives that attribute the moment of the supersession as its supersession time. Only an attribute that the edit itself gives a validity end keeps its supersession time unset.
+  why: A correction declares the old value wrong for the period it held. An unstamped attribute would still show as that period's value in an as-of read, beside or instead of the value that corrected it.
+---
+
 === rules/knowledge-base/entity-edit-unchanged-records-nothing
 ---
 type: policy
-statement: "A set change whose value equals the value of the attribute it names, or, naming none, of an attribute of a key that allows multiple current values whose status is active or uncertain, is reported with the effect unchanged and records nothing."
+statement: "A set change whose value is, character for character, the value of the attribute it names when that attribute's status is a live status, or, naming none, the value of an attribute of a key that allows multiple current values whose status is active or uncertain, is reported with the effect unchanged and records nothing."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/attribute-key
 - domain/knowledge-base/edit-effect
 - domain/knowledge-base/node-attribute
 - domain/knowledge-base/assertion-status
+- domain/knowledge-base/live-assertion-status
 consistency: eventual
 ---
 
@@ -20939,6 +21329,14 @@ entries:
   unstated: The material says an equal value writes nothing and also that reaffirming does not duplicate, which differ about provenance.
   decided: An equal value is reported unchanged and records nothing, not even provenance.
   why: The owner who types a value already held asserts nothing new, and adding the note as provenance would claim a source for a fact the note never stated.
+- field: statement
+  unstated: No node and no material says whether a set change's value counts as one an attribute already holds by its literal text or by a canonical form for the key's value type, such as numeric value for a number or the system's normalization for text.
+  decided: Values are compared as literal text, character for character, so a value differing from the held one only in case, accents, spacing or numeric notation is not unchanged.
+  why: A value differing from the held one only in case, accents, spacing or notation is what the owner types to correct how the held value is written, and comparing canonical forms would report that correction as unchanged and refuse the edit as changing nothing.
+- field: statement
+  unstated: No node and no material says whether a set change that names a superseded or deleted attribute and states that attribute's own value is reported unchanged or refused as a conflict. This rule put no status condition on a named attribute, while rules/knowledge-base/entity-edit-names-a-live-attribute refuses every change naming an attribute that is not live, and no node orders an effect against that check.
+  decided: The unchanged effect applies to a named attribute only when its status is a live status, so a change naming a superseded or deleted attribute is refused as a conflict whatever value it states.
+  why: A superseded or deleted value is no longer held by the node, so a change that repeats it comes from a form opened before another change replaced it, and that is what the conflict tells the owner to reload.
 ---
 
 === rules/knowledge-base/entity-edit-value-matches-the-kind
@@ -25113,6 +25511,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/unrecorded-temporality-is-not-temporal
+---
+type: invariant
+statement: An attribute key whose temporality is not recorded is not temporal.
+constrains:
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+Governs how an attribute key that records no temporality is read. Which catalog attribute keys are temporal is governed by rules/knowledge-base/temporal-attribute-keys.
+
+=== rules/knowledge-base/unrecorded-temporality-is-not-temporal.log
+---
+entries:
+- field: type
+  unstated: No node and no material says how to read an attribute key whose temporality is not recorded. The intake scope does not mention it. The attribute key element declares is_temporal as a boolean without marking it required, and rules/knowledge-base/temporal-attribute-keys lists the temporal catalog keys without covering a key that records no value.
+  decided: invariant
+  why: An attribute key whose temporality is not recorded is not temporal, because a temporal key gets a validity start the owner never stated (today, with the basis received), so reading a missing flag as temporal would invent a date, and dates are never invented.
+---
+
 === rules/knowledge-base/unused-resolution-fields-ignored
 ---
 type: invariant
@@ -25902,6 +26321,33 @@ involves:
 ## Description
 
 None.
+
+=== scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+---
+subject: rules/knowledge-base/entity-edit-changes-something
+given:
+- "a person is an active knowledge node"
+when:
+- "the owner edits the person with a reason and an empty list of changes"
+then:
+- "the edit is refused as changing nothing, not as a malformed request"
+- "nothing of the edit is recorded"
+involves:
+- domain/knowledge-base/entity-edit
+---
+
+## Description
+
+An edit that carries no change at all is refused for changing nothing. What the edit answers for that refusal belongs to contracts/knowledge-base/entity-editing.
+
+=== scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing.log
+---
+entries:
+- field: subject
+  unstated: No node and no material names such a scenario. None says whether an entity edit with an empty list of changes is malformed or well-formed but changing nothing. The domain element declares changes required and many with no minimum. The contract's format refusal lists a missing, null, wrongly typed, out-of-set or ill-formed field, and an empty list is none of these.
+  decided: rules/knowledge-base/entity-edit-changes-something
+  why: An empty list is present and of the declared type, so the request is well formed. An edit carrying no change records no change with an effect other than unchanged, so it is refused for changing nothing, with BUSINESS_ENTITY_EDIT_NO_CHANGES and HTTP 422, and not with VALIDATION_INVALID_FORMAT.
+---
 
 === scenarios/knowledge-base/backdated-start-supersedes-without-an-end
 ---

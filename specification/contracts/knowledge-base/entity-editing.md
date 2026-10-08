@@ -5,7 +5,7 @@ operations:
 - edit-entity
 answers:
 - operation: edit-entity
-  accepted: 'HTTP 200 carrying, with no envelope, `{ node_id, action_id, applied }`, `applied` listing one `{ attribute_key, effect, item_id, predecessor_id }` per change in the order given, `item_id` and `predecessor_id` null where the effect has none'
+  accepted: 'Over REST, `POST /api/v1/nodes/{node_id}/edit` with the edited node''s identity in the path and a JSON body carrying the edit''s `reason` and `changes`, answered HTTP 200 carrying, with no envelope, `{ node_id, action_id, applied }`, `node_id` the edited node''s identity, `action_id` the identity of the curation action the edit recorded, `applied` listing one `{ attribute_key, effect, item_id, predecessor_id }` per change in the order given, `item_id` and `predecessor_id` null where the effect has none'
   refusals:
   - rule: rules/knowledge-base/entity-edit-reason-length
     answer: &format 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details: { issues: [{ path, message }] }`, each path joined by ".", HTTP 422 over REST'
@@ -29,8 +29,12 @@ answers:
     answer: &incoherent 'error code BUSINESS_TEMPORAL_INCOHERENT, HTTP 422 over REST'
   - rule: rules/knowledge-base/validity-start-before-end
     answer: *incoherent
+  - rule: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    answer: *incoherent
   - rule: rules/knowledge-base/entity-edit-names-a-live-attribute
     answer: &conflict 'error code BUSINESS_ENTITY_EDIT_CONFLICT naming the attribute key and, where it has one, the item, HTTP 409 over REST'
+  - rule: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    answer: *conflict
   - rule: rules/knowledge-base/entity-edit-adds-no-second-current-value
     answer: *conflict
   - when: Another operation changed an attribute the edit names first.

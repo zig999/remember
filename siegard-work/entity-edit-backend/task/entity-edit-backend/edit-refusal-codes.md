@@ -1,0 +1,29 @@
+---
+title: Register the entity edit's refusal codes
+summary: The error codes the entity-editing contract adds, each rendered with the HTTP status the contract gives it.
+rationale: Planning cut the shared error table away from the tasks that raise its codes. The table is one interface consumed by every refusing task, and changing it in the same task as its consumers would cross two layers at once.
+sources:
+- intake/scope.md
+objective: Each refusal code the entity-editing contract names renders over REST with the status the contract gives it.
+criteria:
+- BUSINESS_NODE_NOT_ACTIVE renders as HTTP 409 over REST.
+- BUSINESS_ENTITY_EDIT_CONFLICT renders as HTTP 409 over REST.
+- BUSINESS_ENTITY_EDIT_DISPUTED renders as HTTP 409 over REST.
+- BUSINESS_ENTITY_EDIT_NO_CHANGES renders as HTTP 422 over REST.
+- BUSINESS_UNKNOWN_ATTRIBUTE_KEY raised by an entity edit renders as HTTP 422 over REST.
+implements:
+- contracts/knowledge-base/entity-editing
+- constraints/expected-refusals-not-logged-as-errors
+---
+## What it is
+The error codes the entity-editing contract adds, each rendered with the HTTP status the contract gives it.
+
+## Notes
+UNDERDETERMINED, from the specification — The objective covers every refusal code that contracts/knowledge-base/entity-editing names, but the criteria cover only five of them. The contract also gives an HTTP status to six more codes. VALIDATION_INVALID_FORMAT is 422, with message "Request payload failed validation." and details.issues. RESOURCE_NOT_FOUND is 404. BUSINESS_INVALID_ATTRIBUTE_VALUE is 422. BUSINESS_TEMPORAL_INCOHERENT is 422, and it also answers a refused write from a store uniqueness guard. SYSTEM_SERVICE_UNAVAILABLE is 503, with its fixed message. SYSTEM_INTERNAL_ERROR is 500, with its fixed message and the cause withheld. No criterion checks any of these six. The summary is narrower than the objective, since it speaks only of the codes the contract "adds". Either the criteria grow to match the objective, or the objective shrinks to the five codes. Implementation that meets every criterion and that the specification refuses: An implementation registers the five named codes at 409/409/409/422/422 but leaves BUSINESS_INVALID_ATTRIBUTE_VALUE unregistered on the edit surface, so it falls through to HTTP 500. It also lets a store uniqueness-guard refusal during an edit surface as SYSTEM_INTERNAL_ERROR rather than BUSINESS_TEMPORAL_INCOHERENT 422. Every criterion still passes.
+Decision, beyond the covers — stand: specification is a read-only neighbour this task consults, and its fact is held by that node; this task changes none of it and the epic does not claim it.
+UNDERDETERMINED, from the specification — BUSINESS_UNKNOWN_ATTRIBUTE_KEY gets a different status on each surface. contracts/knowledge-base/entity-editing answers it with HTTP 422. contracts/knowledge-base/retrieval, which is not a candidate, answers it with HTTP 404. contracts/knowledge-base/ingestion, also not a candidate, answers it with HTTP 200 carrying `{ ok: false, error }`. Criterion 5 limits the 422 to an error raised by an entity edit, but no criterion keeps the other surfaces at their statuses. The retrieval and ingestion statuses live outside the candidates. Guarding them means either a criterion here that only checks they are unchanged, or the epic's claim growing. Implementation that meets every criterion and that the specification refuses: An implementation changes the single code-to-status entry for BUSINESS_UNKNOWN_ATTRIBUTE_KEY to 422 for every surface. Criterion 5 then passes, while an unknown attribute key on the retrieval surface now answers 422 instead of the 404 that contracts/knowledge-base/retrieval states.
+Decision, beyond the covers — stand: contracts/knowledge-base/ingestion, contracts/knowledge-base/retrieval, specification is a read-only neighbour this task consults, and its fact is held by that node; this task changes none of it and the epic does not claim it.
+UNDERDETERMINED, from the specification — In contracts/knowledge-base/entity-editing, each answer is more than a code and a status. BUSINESS_NODE_NOT_ACTIVE names the node and its current status. BUSINESS_ENTITY_EDIT_CONFLICT names the attribute key and, where it has one, the item. BUSINESS_ENTITY_EDIT_DISPUTED names the attribute key and the item. BUSINESS_UNKNOWN_ATTRIBUTE_KEY names the key and the node type. The criteria check only the HTTP status. If the code that raises each refusal fills these details, the answer belongs to those tasks. If the errors are defined here, nothing here checks it. Implementation that meets every criterion and that the specification refuses: An implementation defines the four errors with the right codes and statuses but carries no details, or details without the node's status or the item. Every criterion still passes.
+Decision, beyond the covers — stand: specification is a read-only neighbour this task consults, and its fact is held by that node; this task changes none of it and the epic does not claim it.
+UNDERDETERMINED, from the specification — constraints/expected-refusals-not-logged-as-errors states that "A refusal for a business or validation cause is never logged at error level, except a failure to build the model provider at the start of a chat turn." These new codes are business refusals, so they fall under that constraint. No criterion checks the level they are logged at when rendered. Implementation that meets every criterion and that the specification refuses: An implementation maps the five codes to their statuses, but the error handler logs each one at error level, as it would an unclassified failure. Every criterion still passes.
+Decision, beyond the covers — stand: specification is a read-only neighbour this task consults, and its fact is held by that node; this task changes none of it and the epic does not claim it.

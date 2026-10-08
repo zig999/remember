@@ -1,6 +1,6 @@
 ---
 type: invariant
-statement: "A set change that names no attribute, made to a key of which the edited node holds no attribute with a live status, is recorded as a new active attribute with the effect first-value."
+statement: "A set change that names no attribute, made to a key of which the edited node holds no attribute with a live status, is recorded as a new active attribute that names no attribute as the one it supersedes, with the effect first-value."
 constrains:
 - domain/knowledge-base/attribute-change
 - domain/knowledge-base/edit-effect
