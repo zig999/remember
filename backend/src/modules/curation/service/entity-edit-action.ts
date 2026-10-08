@@ -22,7 +22,7 @@ export interface EditActionInput {
   readonly applied: readonly AppliedChange[];
 }
 
-interface AppliedEntry {
+export interface AppliedEntry {
   readonly attribute_key: string;
   readonly effect: string;
   readonly item_id: string | null;
@@ -33,7 +33,7 @@ function storedEffect(effect: EditEffect): string {
   return effect.replace(ENUMERATION_HYPHEN, STORED_SEPARATOR);
 }
 
-function appliedEntry(change: AppliedChange): AppliedEntry {
+export function appliedEntry(change: AppliedChange): AppliedEntry {
   return {
     attribute_key: change.attribute_key,
     effect: storedEffect(change.effect),

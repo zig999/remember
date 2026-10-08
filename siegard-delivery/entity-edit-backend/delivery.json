@@ -2,6 +2,21 @@
   "contract_version": "siegard-delivery/2",
   "nodes": [
     {
+      "id": "implementation/entity-edit-backend/apply-entity-edit",
+      "kind": "implementation",
+      "file": "implementation/entity-edit-backend/apply-entity-edit.md",
+      "title": "Apply an entity edit as one whole",
+      "summary": "editEntityService opens one transaction, checks and records each change of an edit in the order given through the already delivered check, decision and record helpers, refuses an edit that changes nothing, and answers node_id, action_id and one applied entry per change.",
+      "task": "task/entity-edit-backend/apply-entity-edit",
+      "unmet": [
+        "A change whose valid_from is not written YYYY-MM-DD and whose key the catalog does not hold for the edited node's type is refused with VALIDATION_INVALID_FORMAT.",
+        "An edit carrying a change whose valid_from is not written YYYY-MM-DD and naming an identity at which no knowledge node is held is refused with VALIDATION_INVALID_FORMAT.",
+        "An edit whose body has no reason and that names an identity at which no knowledge node is held is refused with VALIDATION_INVALID_FORMAT.",
+        "An edit whose first change names a key the catalog does not hold for the edited node's type and whose second change's kind is neither set nor remove is refused with VALIDATION_INVALID_FORMAT.",
+        "An edit whose reason holds 1001 characters once trimmed and that names a node whose status is merged is refused with VALIDATION_INVALID_FORMAT."
+      ]
+    },
+    {
       "id": "implementation/entity-edit-backend/assign-change-effect",
       "kind": "implementation",
       "file": "implementation/entity-edit-backend/assign-change-effect.md",
@@ -120,6 +135,14 @@
       "title": "Refuse a change made from a stale form",
       "summary": "A per-change check, written against the edited node's held attributes, refuses a change that names no live attribute of its key, or one that sets a value on a supersession-time attribute, or one that adds a second current value to a single-current key, all as BUSINESS_ENTITY_EDIT_CONFLICT.",
       "task": "task/entity-edit-backend/refuse-stale-change"
+    },
+    {
+      "id": "proof/entity-edit-backend/apply-entity-edit",
+      "kind": "proof",
+      "file": "proof/entity-edit-backend/apply-entity-edit.md",
+      "title": "Proof for applying an entity edit as one whole",
+      "summary": "Unit tests over an in-memory transactional fake of pg prove that editEntityService answers node_id, action_id and one underscore-spelled applied entry per change. They also prove the edit writes its note, run, attributes and action together, and the order in which the checks refuse it.",
+      "task": "task/entity-edit-backend/apply-entity-edit"
     },
     {
       "id": "proof/entity-edit-backend/assign-change-effect",
@@ -243,6 +266,120 @@
     }
   ],
   "edges": [
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "contracts/knowledge-base/entity-editing",
+      "kind": "encodes",
+      "at": "nodes[0]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict",
+      "kind": "encodes",
+      "at": "nodes[10]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-unchanged-records-nothing",
+      "kind": "encodes",
+      "at": "nodes[11]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-first-value",
+      "kind": "encodes",
+      "at": "nodes[12]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-removal",
+      "kind": "encodes",
+      "at": "nodes[13]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-succession",
+      "kind": "encodes",
+      "at": "nodes[14]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-records-curation-action",
+      "kind": "encodes",
+      "at": "nodes[15]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-reason-trimmed",
+      "kind": "encodes",
+      "at": "nodes[16]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-note",
+      "kind": "encodes",
+      "at": "nodes[17]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "constraints/entity-edit-is-atomic",
+      "kind": "encodes",
+      "at": "nodes[1]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "domain/knowledge-base/entity-edit",
+      "kind": "encodes",
+      "at": "nodes[2]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "domain/knowledge-base/applied-change",
+      "kind": "encodes",
+      "at": "nodes[3]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "domain/knowledge-base/edit-effect",
+      "kind": "encodes",
+      "at": "nodes[4]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores",
+      "kind": "encodes",
+      "at": "nodes[5]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-changes-something",
+      "kind": "encodes",
+      "at": "nodes[6]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing",
+      "kind": "encodes",
+      "at": "nodes[7]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-check-order",
+      "kind": "encodes",
+      "at": "nodes[8]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "rules/knowledge-base/entity-edit-change-check-order",
+      "kind": "encodes",
+      "at": "nodes[9]"
+    },
+    {
+      "from": "implementation/entity-edit-backend/apply-entity-edit",
+      "to": "task/entity-edit-backend/apply-entity-edit",
+      "kind": "implements",
+      "at": "the path"
+    },
     {
       "from": "implementation/entity-edit-backend/assign-change-effect",
       "to": "domain/knowledge-base/edit-effect",
@@ -997,6 +1134,12 @@
       "from": "implementation/entity-edit-backend/refuse-stale-change",
       "to": "task/entity-edit-backend/refuse-stale-change",
       "kind": "implements",
+      "at": "the path"
+    },
+    {
+      "from": "proof/entity-edit-backend/apply-entity-edit",
+      "to": "implementation/entity-edit-backend/apply-entity-edit",
+      "kind": "proves",
       "at": "the path"
     },
     {
