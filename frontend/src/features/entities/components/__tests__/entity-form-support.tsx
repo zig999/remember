@@ -1,7 +1,7 @@
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { EntityForm } from "../EntityForm";
+import { act } from "react";
+import type { Root } from "react-dom/client";
 import type { AttributeKey, NodeAttribute, NodeRead } from "../../types";
+import { mountFormInRouter, type FormRouter } from "./entity-form-router-support";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -66,17 +66,28 @@ export function nodeHolding(attributes: readonly NodeAttribute[]): NodeRead {
   };
 }
 
+export interface RoutedForm {
+  readonly container: HTMLElement;
+  readonly router: FormRouter;
+}
+
+export async function renderRoutedForm(
+  node: NodeRead,
+  attributeKeys: readonly AttributeKey[],
+): Promise<RoutedForm> {
+  const { root, container, router } = await mountFormInRouter(
+    node,
+    attributeKeys,
+  );
+  placements.push({ root, container });
+  return { container, router };
+}
+
 export async function renderForm(
   node: NodeRead,
   attributeKeys: readonly AttributeKey[],
 ): Promise<HTMLElement> {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  placements.push({ root, container });
-  await act(async () => {
-    root.render(createElement(EntityForm, { node, attributeKeys }));
-  });
+  const { container } = await renderRoutedForm(node, attributeKeys);
   return container;
 }
 

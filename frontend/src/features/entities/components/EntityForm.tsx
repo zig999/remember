@@ -43,6 +43,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
           key={group.attributeKey.key}
           attributeKey={group.attributeKey}
           disputed={group.disputed}
+          heldValues={group.heldValues}
           fields={group.fields}
           changed={changed}
           control={control}

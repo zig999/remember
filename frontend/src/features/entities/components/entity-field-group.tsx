@@ -4,14 +4,16 @@ import { Plus, X } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
-import type { AttributeKey } from "../types";
+import type { AttributeKey, NodeAttribute } from "../types";
 import { ClosedChoice } from "./entity-closed-choice";
+import { DisputedValues } from "./entity-disputed-values";
 import type { EntityFormValues, GroupField } from "./entity-form-schema";
 import { ValidityFields } from "./entity-validity-fields";
 
 export interface EntityFieldGroupProps {
   readonly attributeKey: AttributeKey;
   readonly disputed: boolean;
+  readonly heldValues: readonly NodeAttribute[];
   readonly fields: readonly GroupField[];
   readonly changed: readonly boolean[];
   readonly control: Control<EntityFormValues>;
@@ -22,6 +24,7 @@ export interface EntityFieldGroupProps {
 export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
   attributeKey,
   disputed,
+  heldValues,
   fields,
   changed,
   control,
@@ -60,6 +63,9 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
           {key}
         </Label>
       )}
+      {disputed ? (
+        <DisputedValues attributeKey={key} values={heldValues} />
+      ) : null}
       {fields.map(({ index, id }, position) => (
         <div key={id} className="flex items-start gap-xs">
           <div className="flex min-w-0 flex-1 flex-col gap-xs">

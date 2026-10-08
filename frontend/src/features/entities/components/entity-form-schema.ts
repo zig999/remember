@@ -51,7 +51,25 @@ export interface GroupField {
 export interface FieldGroup {
   readonly attributeKey: AttributeKey;
   readonly disputed: boolean;
+  readonly heldValues: readonly NodeAttribute[];
   readonly fields: readonly GroupField[];
+}
+
+const HELD_ATTRIBUTE_STATUSES: readonly string[] = [
+  "active",
+  "uncertain",
+  DISPUTED_ATTRIBUTE_STATUS,
+];
+
+export function heldAttributesOf(
+  attributes: readonly NodeAttribute[],
+  key: string,
+): NodeAttribute[] {
+  return attributes.filter(
+    (attribute) =>
+      attribute.attributeKey === key &&
+      HELD_ATTRIBUTE_STATUSES.includes(attribute.status),
+  );
 }
 
 export function isDisputedKey(
@@ -135,11 +153,19 @@ export function buildFieldGroups(
   attributeKeys: readonly AttributeKey[],
   fields: readonly IdentifiedFieldValues[],
 ): readonly FieldGroup[] {
-  return attributeKeys.map((attributeKey) => ({
-    attributeKey,
-    disputed: isDisputedKey(node.attributes, attributeKey.key),
-    fields: fields.flatMap((field, index) =>
-      field.attributeKey === attributeKey.key ? [{ index, id: field.id }] : [],
-    ),
-  }));
+  return attributeKeys.map((attributeKey) => {
+    const disputed = isDisputedKey(node.attributes, attributeKey.key);
+    return {
+      attributeKey,
+      disputed,
+      heldValues: disputed
+        ? heldAttributesOf(node.attributes, attributeKey.key)
+        : [],
+      fields: fields.flatMap((field, index) =>
+        field.attributeKey === attributeKey.key
+          ? [{ index, id: field.id }]
+          : [],
+      ),
+    };
+  });
 }
