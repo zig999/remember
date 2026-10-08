@@ -130,6 +130,10 @@ async function advance(ms = 0): Promise<void> {
   });
 }
 
+async function settle(): Promise<void> {
+  await advance(100);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   useAuthStore.getState().clear();
@@ -205,7 +209,7 @@ describe("the pending curation read answered 401", () => {
   });
 
   it("shows 0 pending, not the total shown before, when the repeated read's answer has no total", async () => {
-    stubFetch({
+    const sent = stubFetch({
       pending: (_authorization, attempt) =>
         attempt === 1 ? reply(200, { total: 5 }) : reply(401),
     });
@@ -214,7 +218,11 @@ describe("the pending curation read answered 401", () => {
     await advance();
     expect(shown()).toBe(5);
     await advance(20_000);
-    expect(shown()).toBe(0);
+    await settle();
+    expect({ pendingReads: count(sent, "pending"), shown: shown() }).toEqual({
+      pendingReads: 3,
+      shown: 0,
+    });
   });
 });
 
@@ -260,6 +268,7 @@ describe("the pending curation read", () => {
       shown: shown(),
     };
     await advance(20_000);
+    await settle();
     expect({ withoutToken, withToken, withoutTotal: shown() }).toEqual({
       withoutToken: { requests: 0, shown: 0 },
       withToken: { request: `${PENDING_URL} Bearer held.token`, shown: 5 },
