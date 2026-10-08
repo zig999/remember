@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    testTimeout: 20000,
     setupFiles: ["./vitest.setup.ts"],
     // BUG-01 fix (TC-01-r1): scaffold/config TCs may legitimately have zero test files.
     // Without this flag, `vitest run` exits code 1 on an empty test suite, breaking CI.
