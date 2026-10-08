@@ -16,6 +16,11 @@ const CurationPage = lazy(() =>
     default: m.CurationPage,
   })),
 );
+const EntityPage = lazy(() =>
+  import("@/features/entities/components/EntityPage").then((m) => ({
+    default: m.EntityPage,
+  })),
+);
 const IngestWorkspace = lazy(() =>
   import("@/features/ingest/components/IngestWorkspace").then((m) => ({
     default: m.IngestWorkspace,
@@ -156,6 +161,27 @@ export const curationRoute = createRoute({
   ),
 });
 
+export const entityRoute = createRoute({
+  getParentRoute: () => protectedLayoutRoute,
+  path: "/entities/$nodeId",
+  preload: false,
+  component: () => (
+    <Suspense
+      fallback={
+        <div
+          className="m-auto text-xs text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          Carregando formulário…
+        </div>
+      }
+    >
+      <EntityPage />
+    </Suspense>
+  ),
+});
+
 export const historyRoute = createRoute({
   getParentRoute: () => protectedLayoutRoute,
   path: "/history",
@@ -183,6 +209,7 @@ export const routeTree = RootRoute.addChildren([
     searchRoute,
     ingestRoute,
     curationRoute,
+    entityRoute,
     historyRoute,
     notFoundRoute,
   ]),
