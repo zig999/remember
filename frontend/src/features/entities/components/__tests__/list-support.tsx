@@ -117,7 +117,7 @@ export function nodesListing(
           node_type: item.type,
           canonical_name: item.name,
           status: item.status,
-          merged_into: null,
+          merged_into_node_id: null,
         })),
       },
     }),

@@ -27,26 +27,27 @@ const NODE_TYPES_WIRE = {
   ],
 };
 
+const ACTIVE_NODE_WIRE = {
+  id: "n-1",
+  node_type: "Project",
+  canonical_name: "Projeto Apollo",
+  status: "active",
+  merged_into_node_id: null,
+};
+
+const MERGED_NODE_WIRE = {
+  id: "n-2",
+  node_type: "Person",
+  canonical_name: "Maria Oliveira",
+  status: "merged",
+  merged_into_node_id: "n-1",
+};
+
 const LISTING_WIRE = {
   total: 57,
   limit: 20,
   offset: 0,
-  items: [
-    {
-      id: "n-1",
-      node_type: "Project",
-      canonical_name: "Projeto Apollo",
-      status: "active",
-      merged_into: null,
-    },
-    {
-      id: "n-2",
-      node_type: "Person",
-      canonical_name: "Maria Oliveira",
-      status: "merged",
-      merged_into: "n-1",
-    },
-  ],
+  items: [ACTIVE_NODE_WIRE, MERGED_NODE_WIRE],
 };
 
 function accepted(result: unknown) {
@@ -130,6 +131,22 @@ describe("node listing read", () => {
         expect.arrayContaining(Object.values(wire)),
       ),
     );
+  });
+
+  it("reads an entry's merged_into_node_id member as the identity the listed node was merged into", async () => {
+    stubFetch(accepted({ ...LISTING_WIRE, items: [MERGED_NODE_WIRE] }));
+    const state = await settled(mountQuery(() => useNodeListing({})));
+    expect(itemsOf(state.data)).toMatchObject([
+      { id: "n-2", mergedInto: "n-1" },
+    ]);
+  });
+
+  it("reads an entry whose merged_into_node_id member is null as a node merged into none", async () => {
+    stubFetch(accepted({ ...LISTING_WIRE, items: [ACTIVE_NODE_WIRE] }));
+    const state = await settled(mountQuery(() => useNodeListing({})));
+    expect(itemsOf(state.data)).toMatchObject([
+      { id: "n-1", mergedInto: null },
+    ]);
   });
 
   it("returns the total the knowledge base reports, not the size of the page", async () => {

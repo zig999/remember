@@ -31,7 +31,7 @@ export const ACCEPTED_WIRE: EditAcceptedWire = {
   applied: [
     {
       attribute_key: "status_text",
-      effect: "created",
+      effect: "first_value",
       item_id: "i-1",
       predecessor_id: null,
     },

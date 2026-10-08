@@ -29,7 +29,7 @@ const KEYS_WIRE = {
       key: "status_text",
       value_type: "text",
       is_temporal: true,
-      allows_multiple: false,
+      allows_multiple_current: false,
       requires_valid_from: true,
       description: "Situação do projeto",
       version: 2,
@@ -45,7 +45,7 @@ const KEYS_WIRE = {
       key: "inicio_previsto",
       value_type: "date",
       is_temporal: false,
-      allows_multiple: true,
+      allows_multiple_current: true,
       requires_valid_from: false,
       description: "Data prevista de início",
       version: 1,
@@ -60,7 +60,7 @@ function keyNamed(key: string) {
     key,
     value_type: "text",
     is_temporal: false,
-    allows_multiple: false,
+    allows_multiple_current: false,
     requires_valid_from: false,
     description: key,
     version: 1,
@@ -100,24 +100,44 @@ describe("attribute-key read", () => {
     ).toEqual([[["node_type", "Ação & Co"]]]);
   });
 
-  it("returns each attribute key with its key, value type, whether it is temporal, whether it allows multiple current values and its description", async () => {
+  it("returns each attribute key with its key, value type, whether it is temporal and its description", async () => {
     const { state } = await readKeys("Project", accepted(KEYS_WIRE));
     expect(state.data).toMatchObject([
       {
         key: "status_text",
         valueType: "text",
         isTemporal: true,
-        allowsMultiple: false,
         description: "Situação do projeto",
       },
       {
         key: "inicio_previsto",
         valueType: "date",
         isTemporal: false,
-        allowsMultiple: true,
         description: "Data prevista de início",
       },
     ]);
+  });
+
+  it("reads an entry whose allows_multiple_current member is true as a key that allows multiple current values", async () => {
+    const { state } = await readKeys(
+      "Project",
+      accepted({
+        total: 1,
+        items: [{ ...keyNamed("tag"), allows_multiple_current: true }],
+      }),
+    );
+    expect(state.data).toMatchObject([{ key: "tag", allowsMultiple: true }]);
+  });
+
+  it("reads an entry whose allows_multiple_current member is false as a key that does not allow multiple current values", async () => {
+    const { state } = await readKeys(
+      "Project",
+      accepted({
+        total: 1,
+        items: [{ ...keyNamed("status"), allows_multiple_current: false }],
+      }),
+    );
+    expect(state.data).toMatchObject([{ key: "status", allowsMultiple: false }]);
   });
 
   it("returns an attribute key the catalog closes with its allowed values", async () => {

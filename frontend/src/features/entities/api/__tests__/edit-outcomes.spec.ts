@@ -42,11 +42,40 @@ describe("edit outcome", () => {
       applied: [
         {
           attributeKey: "status_text",
-          effect: "created",
+          effect: "first_value",
           itemId: "i-1",
           predecessorId: null,
         },
       ],
+    });
+  });
+
+  it.each([
+    "first_value",
+    "addition",
+    "succession",
+    "correction",
+    "removal",
+    "unchanged",
+  ])("reads an applied change answered with the effect %s as that effect", async (effect) => {
+    stubFetch(
+      answers(() =>
+        jsonResponse({
+          ...ACCEPTED_WIRE,
+          applied: [
+            {
+              attribute_key: "status_text",
+              effect,
+              item_id: null,
+              predecessor_id: null,
+            },
+          ],
+        }),
+      ),
+    );
+    expect(await outcomeOf(mountEdit(), SOME_VARIABLES)).toMatchObject({
+      kind: "accepted",
+      applied: [{ effect }],
     });
   });
 

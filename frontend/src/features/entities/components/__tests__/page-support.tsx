@@ -109,7 +109,7 @@ export function keysAnswer(): Promise<Response> {
             key: "status_text",
             value_type: "text",
             is_temporal: false,
-            allows_multiple: false,
+            allows_multiple_current: false,
             description: null,
           },
         ],

@@ -47,7 +47,7 @@ export function toListedNode(wire: ListedNodeWire): ListedNode {
     nodeType: wire.node_type,
     canonicalName: wire.canonical_name,
     status: wire.status,
-    mergedInto: wire.merged_into,
+    mergedInto: wire.merged_into_node_id,
   };
 }
 
@@ -113,7 +113,7 @@ export function toAttributeKey(wire: AttributeKeyWire): AttributeKey {
     key: wire.key,
     valueType: wire.value_type,
     isTemporal: wire.is_temporal,
-    allowsMultiple: wire.allows_multiple,
+    allowsMultiple: wire.allows_multiple_current,
     description: wire.description,
     allowedValues:
       wire.valid_values === undefined

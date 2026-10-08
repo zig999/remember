@@ -15,7 +15,7 @@ export interface ListedNodeWire {
   readonly node_type: string;
   readonly canonical_name: string;
   readonly status: string;
-  readonly merged_into: string | null;
+  readonly merged_into_node_id: string | null;
 }
 
 export interface NodeListingWire {
@@ -117,7 +117,7 @@ export interface AttributeKeyWire {
   readonly key: string;
   readonly value_type: string;
   readonly is_temporal: boolean;
-  readonly allows_multiple: boolean;
+  readonly allows_multiple_current: boolean;
   readonly description: string | null;
   readonly valid_values?: readonly AllowedValueWire[];
 }
