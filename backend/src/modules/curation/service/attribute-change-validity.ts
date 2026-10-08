@@ -5,7 +5,7 @@ import { BusinessError } from "./errors.js";
 const TEMPORAL_INCOHERENT_CODE = "BUSINESS_TEMPORAL_INCOHERENT";
 const ISO_DATE_LENGTH = 10;
 
-function utcCalendarDateOf(moment: Date): string {
+export function utcCalendarDateOf(moment: Date): string {
   return moment.toISOString().slice(0, ISO_DATE_LENGTH);
 }
 

@@ -5,6 +5,7 @@ import type {
   AssertionStatus,
   ItemKind,
   NodeStatus,
+  ValidFromSource,
 } from "../dto/enums.dto.js";
 
 export interface KnowledgeNodeLockedRow {
@@ -467,6 +468,53 @@ export async function insertCorrectedRow(
   const row = res.rows[0];
   if (!row) {
     throw new InvariantError("insertCorrectedRow returned no row for attribute");
+  }
+  return row.id;
+}
+
+export interface NewAttributeArgs {
+  readonly nodeId: string;
+  readonly attributeKeyId: string;
+  readonly valueType: "date" | "number" | "text" | "bool";
+  readonly value: string;
+  readonly validFrom: string | null;
+  readonly validTo: string | null;
+  readonly validFromSource: ValidFromSource | null;
+  readonly status: AssertionStatus;
+  readonly confidence: number;
+  readonly createdByRunId: string;
+}
+
+export async function insertNewAttribute(
+  client: PoolClient,
+  args: NewAttributeArgs
+): Promise<string> {
+  const res = await client.query<{ id: string }>(
+    `INSERT INTO node_attribute
+       (node_id, attribute_key_id, value_type, value,
+        valid_from, valid_to, status, confidence,
+        valid_from_source, created_by_run_id)
+     VALUES ($1, $2, $3::attribute_value_type, $4,
+             $5::date, $6::date,
+             $7::assertion_status, $8,
+             $9::valid_from_source, $10)
+     RETURNING id`,
+    [
+      args.nodeId,
+      args.attributeKeyId,
+      args.valueType,
+      args.value,
+      args.validFrom,
+      args.validTo,
+      args.status,
+      args.confidence,
+      args.validFromSource,
+      args.createdByRunId,
+    ]
+  );
+  const row = res.rows[0];
+  if (!row) {
+    throw new InvariantError("insertNewAttribute returned no row");
   }
   return row.id;
 }
