@@ -20,7 +20,7 @@ const UNKNOWN_ATTRIBUTE_KEY_CODE = "BUSINESS_UNKNOWN_ATTRIBUTE_KEY";
 const INVALID_ATTRIBUTE_VALUE_CODE = "BUSINESS_INVALID_ATTRIBUTE_VALUE";
 const ALLOWED_VALUES_SEPARATOR = ", ";
 
-function resolveAttributeKey(
+export function resolveAttributeKey(
   catalog: CatalogSnapshot,
   nodeType: NodeTypeRow,
   attributeKeyName: string
