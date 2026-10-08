@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AttributeKey, NodeAttribute, NodeRead } from "../types";
+import { valueTypeMessage } from "./entity-value-types";
 
 export const DISPUTED_ATTRIBUTE_STATUS = "disputed";
 
@@ -13,6 +14,25 @@ export const attributeFieldSchema = z.object({
 export const entityFormSchema = z.object({
   fields: z.array(attributeFieldSchema),
 });
+
+export function buildEntityFormSchema(attributeKeys: readonly AttributeKey[]) {
+  const valueTypes = new Map(
+    attributeKeys.map(
+      (attributeKey) => [attributeKey.key, attributeKey.valueType] as const,
+    ),
+  );
+  return z.object({
+    fields: z.array(attributeFieldSchema).superRefine((fields, ctx) => {
+      fields.forEach((field, index) => {
+        const valueType = valueTypes.get(field.attributeKey);
+        if (valueType === undefined) return;
+        const message = valueTypeMessage(valueType, field.value);
+        if (message === null) return;
+        ctx.addIssue({ code: "custom", message, path: [index, "value"] });
+      });
+    }),
+  });
+}
 
 export type AttributeFieldValues = z.infer<typeof attributeFieldSchema>;
 export type EntityFormValues = z.infer<typeof entityFormSchema>;

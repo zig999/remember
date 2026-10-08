@@ -56,20 +56,45 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
         </Label>
       )}
       {fields.map(({ index, id }, position) => (
-        <div key={id} className="flex items-center gap-xs">
+        <div key={id} className="flex items-start gap-xs">
           <Controller
             control={control}
             name={`fields.${index}.value`}
-            render={({ field }) => (
-              <Input
-                {...field}
-                id={`entity-field-${id}`}
-                type="text"
-                aria-label={numbered ? `${key} (valor ${position + 1})` : undefined}
-                aria-describedby={hasHelp ? helpId : undefined}
-                data-testid={`entity-field-${key}`}
-              />
-            )}
+            render={({ field, fieldState }) => {
+              const message = fieldState.error?.message;
+              const errorId = `entity-error-${id}`;
+              const described = [
+                hasHelp ? helpId : null,
+                message === undefined ? null : errorId,
+              ]
+                .filter((reference) => reference !== null)
+                .join(" ");
+              return (
+                <div className="flex min-w-0 flex-1 flex-col gap-xs">
+                  <Input
+                    {...field}
+                    id={`entity-field-${id}`}
+                    type="text"
+                    aria-label={
+                      numbered ? `${key} (valor ${position + 1})` : undefined
+                    }
+                    aria-invalid={message === undefined ? undefined : true}
+                    aria-describedby={described === "" ? undefined : described}
+                    data-testid={`entity-field-${key}`}
+                  />
+                  {message === undefined ? null : (
+                    <p
+                      id={errorId}
+                      role="alert"
+                      data-testid={`entity-error-${key}`}
+                      className="text-xs text-destructive"
+                    >
+                      {message}
+                    </p>
+                  )}
+                </div>
+              );
+            }}
           />
           {listed ? (
             <Button

@@ -1,15 +1,9 @@
-import { useEffect, useMemo, type FC, type FormEvent } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useMemo, type FC, type FormEvent } from "react";
+import { useFieldArray } from "react-hook-form";
 import type { AttributeKey, NodeRead } from "../types";
 import { EntityFieldGroup } from "./entity-field-group";
-import {
-  buildFieldGroups,
-  buildFormValues,
-  emptyField,
-  entityFormSchema,
-  type EntityFormValues,
-} from "./entity-form-schema";
+import { buildFieldGroups, emptyField } from "./entity-form-schema";
+import { useEntityEditForm } from "./use-entity-edit-form";
 
 export interface EntityFormProps {
   readonly node: NodeRead;
@@ -21,17 +15,8 @@ function holdSubmission(event: FormEvent<HTMLFormElement>): void {
 }
 
 export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
-  const values = useMemo(
-    () => buildFormValues(node, attributeKeys),
-    [node, attributeKeys],
-  );
-
-  const form = useForm<EntityFormValues>({
-    resolver: zodResolver(entityFormSchema),
-    defaultValues: values,
-    mode: "onBlur",
-  });
-  const { control, reset } = form;
+  const { form, valueTypesAccepted } = useEntityEditForm(node, attributeKeys);
+  const { control } = form;
   const { fields, append, remove } = useFieldArray({
     control,
     name: "fields",
@@ -41,16 +26,13 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
     [node, attributeKeys, fields],
   );
 
-  useEffect(() => {
-    reset(values);
-  }, [reset, values]);
-
   return (
     <form
       aria-label="Formulário de edição"
       noValidate
       onSubmit={holdSubmission}
       data-testid="entity-form"
+      data-value-types-accepted={valueTypesAccepted}
       className="flex flex-col gap-md"
     >
       {groups.map((group) => (
