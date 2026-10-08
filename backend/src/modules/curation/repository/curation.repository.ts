@@ -544,6 +544,27 @@ export async function supersedeAttributeAtEdit(
   return res.rowCount ?? 0;
 }
 
+export interface AttributeRejectionArgs {
+  readonly attributeId: string;
+  readonly rejectedAt: Date;
+}
+
+export async function rejectAttributeAtEdit(
+  client: PoolClient,
+  args: AttributeRejectionArgs
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE node_attribute
+        SET status = 'deleted',
+            superseded_at = $2::timestamptz
+      WHERE id = $1
+        AND status IN ('active', 'uncertain', 'disputed')
+      RETURNING id`,
+    [args.attributeId, args.rejectedAt]
+  );
+  return res.rowCount ?? 0;
+}
+
 export async function copyProvenance(
   client: PoolClient,
   itemKind: ItemKind,
