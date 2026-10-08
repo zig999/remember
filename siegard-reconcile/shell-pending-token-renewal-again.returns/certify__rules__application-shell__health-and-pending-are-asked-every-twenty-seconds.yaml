@@ -1,0 +1,54 @@
+certified:
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    state: partial
+    tests:
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: asks the health and the pending total every 20 seconds when the reads succeed
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: asks each every 20 seconds, retries no failure except the one repeat after a renewed token, and sends the health without the token
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: repeats neither a health read that fails by network error nor a pending read answered 500 before the next interval, and asks the identity provider for nothing
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: is not asked again before the next 20-second interval when it fails without a 401
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: is not repeated at once after the request fails
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: carries no Authorization header while a token is held
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: does not ask the identity provider for a token when it is answered 401
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: asks the identity provider once with the session cookie and repeats the read with the fresh token
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: does not ask the identity provider a second time when the repeated read is also answered 401
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: does not send a third pending read before the next interval when the repeated read is also answered 401
+    why: >-
+      Most of the fact is pinned. The 20-second period is pinned for both reads: at 19,999 ms
+      there is one read of each, at 20,000 ms there are two, and the 40-second timeline adds a
+      third. That period keeps holding after failures. Health is never sent with the token and
+      never triggers a token renewal. A pending read answered 401 gets exactly one repeat after
+      a renewed token, and no second renewal or third read follows. A pending read answered 500
+      is not repeated before the next interval, and neither is a health read that fails with a
+      network error. Those last two cases are also run under the application's own query client
+      (createQueryClient), so a default client-level retry would make that test fail.
+
+      One part is not exercised: a health read that fails because it was answered with an
+      error status. No test answers health with 500, or any other non-2xx status, and then
+      counts the health reads. The test "does not ask the identity provider for a token when it
+      is answered 401" does answer health with 401, but it only asserts that no token was
+      requested. It never counts health reads, so a retry of that health read before the
+      interval would pass it. Every other "no retry" test except the one under the
+      application's own client builds its own QueryClient with retry: false. That means a retry
+      rule that repeats a health read on an HTTP error status but not on a network error would
+      pass the whole set. The same blind spot applies to a pending read answered 401 twice when
+      run under the application's own client: the "no retry" claim for it is asserted only
+      under the test's retry-disabled client.
+    remainder: testable
+    remainder_why: >-
+      Input: a health read answered with an error status (500, and also 401) while the hook
+      runs under the application's own query client, the one built by createQueryClient().
+      Expected result: one health read until 19,999 ms and two at 20,000 ms, which is the same
+      shape the pending-500 test already asserts. A matching assertion that a pending read
+      answered 401 on both the first read and its repeat produces exactly two pending reads
+      before 20,000 ms under createQueryClient() would close the renewal path under the real
+      client too.

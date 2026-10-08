@@ -1,0 +1,40 @@
+read:
+  - node: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+    held_at: >-
+      The first describe block, "the pending curation read answered 401", lines 170-241, asserts the node's fact. The first and third tests in that block carry the ask-once and credentials parts.
+    evidence: >-
+      `]).toEqual([`pending:Bearer ${STALE}`, "token:include", `pending:Bearer ${FRESH}`]);` and `expect(count(sent, "token")).toBe(1);`
+  - node: scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown
+    held_at: >-
+      The tests at lines 171-195 follow the scenario's given, when and then. They stub the pending read answered 401 for the stale token, then check the single token ask, the repeated read, and the footer total.
+    evidence: >-
+      `authorization === `Bearer ${STALE}` ? reply(401) : reply(200, { total: 7 })` and `expect(shown()).toBe(7);`
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: >-
+      The last describe block, "the shell reads", lines 337-383, and the 19_999 and 20_000 ms interval assertions at lines 205-212, 245-257 and 313-335 assert the 20-second cadence, the no-retry rule and the unauthenticated health read.
+    evidence: >-
+      `atInterval: { health: 2, pending: 2, token: 0 },` and `healthAuthorizations: [null, null, null],`
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: >-
+      The test at lines 267-292, "is the queue listing with limit 1 and the token as bearer, made only with a token, and an answer without a total counts as 0", asserts the whole rule. The test at lines 259-265 asserts that no request is made without a token.
+    evidence: >-
+      `withoutToken: { requests: 0, shown: 0 },` and `withToken: { request: `${PENDING_URL} Bearer held.token`, shown: 5 },` and `withoutTotal: 0,`
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: >-
+      Covered in part. The file asserts the read-pending-curation request address and bearer (`PENDING_URL`, line 32), the total-less answer counting as 0 (lines 226-241), and the read-health request with no bearer and `{ database: "ok" }` (lines 86, 296-303). The health refusal answer "verificando…" is not asserted. The file declares no shape of its own; it stubs `fetch` against the contract's addresses.
+    evidence: >-
+      `const PENDING_URL = `${urls.bff}/api/v1/curation/queue?limit=1`;` and `expect(read?.authorization).toBeNull();`
+  - node: domain/application-shell/application-shell
+    held_at: nowhere
+    evidence: >-
+      The file declares no type, interface or schema for the aggregate. `Sent`, `Script` and `Placement` are test fixtures, and the file only reads `useHealth()` and `useCurationCount()`, whose shapes live in `../use-shell-status`.
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      `router: { navigate: vi.fn(() => Promise.resolve()) },` is mocked, but no assertion reads it, the stored token or the session_expired reason. The only failed-renewal-adjacent case, `stubFetch({ pending: () => reply(401) })` with `expect(count(sent, "token")).toBe(1);`, checks the single ask and not the session ending.
+  - node: scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+    held_at: nowhere
+    evidence: >-
+      No test stubs the token request as refused, for example `token: () => reply(401)`. The token script entry is never overridden, so the provider never holds "no session for the owner".
+looked_past: >-
+  The file stubs the identity provider's GET /token with `credentials: "include"` and a `{ token }` body, and uses `20_000`/`19_999` ms timings. Both are held, in contracts/owner-access/identity-provider and in the 20-second rule, so I filed neither, and the router and toast mocks are test scaffolding, not domain facts.

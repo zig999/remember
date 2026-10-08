@@ -1,0 +1,70 @@
+findings:
+  - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+    where: >-
+      the assertion in the test "keeps the renewed token and does not replace the page" (lines 242-255)
+    evidence: >-
+      token: FRESH,
+    cost: >-
+      The test asserts that the renewal the pending read makes leaves the fresh token in the auth store. None of the shell's nodes in this set says so. The rule says only that the read is asked once more with the fresh token. The only statement that a renewed token is stored is `rules/application-shell/a-refreshed-token-repeats-the-request`, and it constrains the request helper, not the pending read. Because the expectation lives only in the test, the next reader looking for what the pending read does with a renewed token will not find it in the specification. If the behavior changes, the test fails with no node to say which was decided.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether the pending read stores the renewed token. If it does, the sentence belongs in `rules/application-shell/an-expired-token-is-renewed-by-the-pending-read`, or the pending read is declared to go through the request helper whose rule already says so. If it does not, the assertion has no node behind it.
+    node: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+read:
+  - node: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+    held_at: >-
+      the test "keeps the renewed token and does not replace the page", lines 242-255, which exercises the single repeat with the fresh bearer and the redirect-free outcome
+    evidence: >-
+      pending: (authorization) =>
+              authorization === `Bearer ${STALE}` ? reply(401) : reply(200, { total: 7 }),
+  - node: scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown
+    held_at: >-
+      the test "keeps the renewed token and does not replace the page", lines 242-255. It covers the 401 then the repeat with the fresh token, but never asserts the footer total, so that last step is nowhere in this file.
+    evidence: >-
+      expect({ token: useAuthStore.getState().accessToken, redirects: [...redirects] }).toEqual({
+            token: FRESH,
+            redirects: [],
+          });
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: >-
+      the test "is not followed by another pending read or another renewal, at once or at the following intervals", lines 182-196. It asserts no retry after a failure. The 20-second period itself is not asserted anywhere in the file.
+    evidence: >-
+      await advance(60_000);
+          await settle();
+          expect({ pending: count(sent, "pending"), token: count(sent, "token") }).toEqual({
+            pending: 1,
+            token: 1,
+          });
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only fixes the stub answer `reply(200, { total: 0 })` and always calls `hold(STALE)` before mounting. It never exercises the no-token case, the limit-1 request or the total-less answer.
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the contract. It only routes fixtures by URL, in `kindOf`: `if (url.startsWith(`${urls.bff}/api/v1/curation/queue`)) return "pending";` and `reply(200, { database: "ok" })`. The refusal answers 0-pending and the segment hidden are not exercised.
+  - node: domain/application-shell/application-shell
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares none of the aggregate's attributes. It only calls `useCurationCount()` inside `Probe` and observes the auth store and the redirect spy.
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    held_at: >-
+      the describe blocks at lines 151-197 and 199-239. They assert a null stored token and a single replacement with the sign-in address and the reason, for both the 401 and the failed renewal request.
+    evidence: >-
+      token: null,
+            redirects: [SIGN_IN_ADDRESS],
+  - node: scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+    held_at: >-
+      the first test of lines 151-165. It starts from a stale token, a 401 on the pending read and a 401 from the identity provider, then asserts the cleared token and the redirect.
+    evidence: >-
+      pending: () => reply(401),
+            token: () => reply(401, { message: "no session" }),
+looked_past: >-
+  The literal `/sign-in?reason=session_expired` is held by the curation-workspace and ingest-workspace rules, and `GET /token` and its `{ token }` answer by `contracts/owner-access/identity-provider`. All of these are fixtures of a test that restates them as expectations, and I judged none of them a finding. The `__setShellRedirectForTests` hook and the fake-timer and location-spy mechanics are the implementation's choices and not a domain fact.
+candidates_opened:
+  - contracts/owner-access/identity-provider
+  - rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in
+  - rules/application-shell/a-refreshed-token-repeats-the-request

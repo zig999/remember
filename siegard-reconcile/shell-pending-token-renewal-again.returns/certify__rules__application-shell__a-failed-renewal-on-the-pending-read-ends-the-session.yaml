@@ -1,0 +1,25 @@
+certified:
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    state: covered
+    tests:
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: leaves no access token and replaces the page with the sign-in address when the identity provider holds no session
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: leaves no access token and replaces the page with the sign-in address when the renewal request itself fails
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: clears the stored token and replaces the browser page once with the sign-in address when the renewal request itself fails
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: replaces the browser page with the sign-in address and never navigates with a history entry when the identity provider holds no session
+    why: >-
+      Both ways a renewal can fail are tested: the identity provider refusing with 401, and the
+      renewal request itself throwing. For each one, the tests check that the stored token is
+      null and that the page is sent to /sign-in?reason=session_expired exactly once. The two
+      tests that use the real redirect check that the page is replaced (location.replace) rather
+      than navigated with a history entry (location.assign). So the tests would fail if the token
+      survived, the reason changed, or the redirect added a history entry. Two tests in the file
+      go beyond this rule and are not cited here. The first is "is not followed by another
+      pending read or another renewal, at once or at the following intervals". It checks that
+      after a failure there is exactly one pending read and exactly one renewal request, and this
+      rule says nothing about either. The second is "keeps the renewed token and does not replace
+      the page", which tests a successful renewal, a path this rule does not cover. Neither of
+      them changes the state.
