@@ -21,7 +21,7 @@ function holdSubmission(event: FormEvent<HTMLFormElement>): void {
 }
 
 export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
-  const { form, valueTypesAccepted, changed, validityOrder, review } =
+  const { form, valueTypesAccepted, changed, validityOrder, review, save } =
     useEntityEditForm(node, attributeKeys);
   const { control } = form;
   const { fields, append, remove } = useFieldArray({
@@ -61,7 +61,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
         />
       ))}
       <OutsideCatalogValues groups={outsideCatalog} />
-      <EntityReview review={review} />
+      <EntityReview review={review} onConfirm={save.confirm} />
     </form>
   );
 };

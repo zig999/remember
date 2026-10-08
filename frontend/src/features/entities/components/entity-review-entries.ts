@@ -65,6 +65,21 @@ function removedEntry(
   };
 }
 
+export function removedFieldsOf(
+  held: readonly AttributeFieldValues[],
+  baseline: EntityFormValues,
+): readonly AttributeFieldValues[] {
+  const kept = new Set(
+    held.flatMap((field) => (field.itemId === null ? [] : [field.itemId])),
+  );
+  return baseline.fields.filter(
+    (field) =>
+      field.itemId !== null &&
+      field.startedWith !== "" &&
+      !kept.has(field.itemId),
+  );
+}
+
 export function reviewEntriesOf(
   held: readonly AttributeFieldValues[],
   changed: readonly boolean[],
@@ -80,19 +95,14 @@ export function reviewEntriesOf(
       (attributeKey, position) => [attributeKey.key, position] as const,
     ),
   );
-  const kept = new Set(
-    held.flatMap((field) => (field.itemId === null ? [] : [field.itemId])),
-  );
 
   const changedEntries = held.flatMap((field, index) =>
     changed[index] === true
       ? [heldEntry(field, index, keys, attributes)]
       : [],
   );
-  const removedEntries = baseline.fields.flatMap((field) =>
-    field.itemId !== null && field.startedWith !== "" && !kept.has(field.itemId)
-      ? [removedEntry(field, keys, attributes)]
-      : [],
+  const removedEntries = removedFieldsOf(held, baseline).map((field) =>
+    removedEntry(field, keys, attributes),
   );
 
   const rank = (entry: ReviewEntry): number =>

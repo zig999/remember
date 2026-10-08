@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import type { AttributeKey, NodeRead } from "../types";
+import { buildEntityEdit } from "./entity-edit-payload";
 import { changedFlags } from "./entity-field-changed";
 import {
   buildEntityFormSchema,
@@ -9,6 +10,7 @@ import {
 } from "./entity-form-schema";
 import { validityOrderMessages } from "./entity-validity-order";
 import { useEntityReview, type EntityReviewState } from "./use-entity-review";
+import { useUndoableSave, type UndoableSave } from "./use-undoable-save";
 import { zodIssueResolver } from "./zod-issue-resolver";
 
 export interface EntityEditForm {
@@ -18,6 +20,7 @@ export interface EntityEditForm {
   readonly validityOrder: readonly (string | null)[];
   readonly validityOrderAccepted: boolean;
   readonly review: EntityReviewState;
+  readonly save: UndoableSave;
 }
 
 export function useEntityEditForm(
@@ -74,6 +77,17 @@ export function useEntityEditForm(
     validityOrderAccepted,
   );
 
+  const save = useUndoableSave(node.node.id, review, () =>
+    buildEntityEdit(
+      review.reason,
+      held,
+      changed,
+      values,
+      attributeKeys,
+      node.attributes,
+    ),
+  );
+
   return {
     form,
     valueTypesAccepted,
@@ -81,5 +95,6 @@ export function useEntityEditForm(
     validityOrder,
     validityOrderAccepted,
     review,
+    save,
   };
 }

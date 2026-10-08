@@ -1,5 +1,6 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   RouterProvider,
@@ -47,8 +48,15 @@ export async function mountFormInRouter(
   const root = createRoot(container);
   const router = buildRouter(node, attributeKeys);
   await router.load();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   await act(async () => {
-    root.render(<RouterProvider router={router} />);
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
   });
   await act(async () => {
     await new Promise<void>((resolve) => {
