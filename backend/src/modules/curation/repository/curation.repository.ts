@@ -521,6 +521,21 @@ export async function findInformationFragmentById(
   return res.rows[0] ?? null;
 }
 
+export async function acceptInformationFragment(
+  client: PoolClient,
+  fragmentId: string
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE information_fragment
+        SET status = 'accepted'
+      WHERE id = $1
+        AND status = 'proposed'
+      RETURNING id`,
+    [fragmentId]
+  );
+  return res.rowCount ?? 0;
+}
+
 export interface CurationActionInsertArgs {
   readonly action: string;
   readonly target_kind: "node" | "link" | "attribute";
