@@ -19,38 +19,17 @@ criteria:
 - Each node returned carries its identity, node-type name, canonical name, status and the node it was merged into, or null.
 - The node listing returns the total the knowledge base reports.
 - Every request carries the owner's token in the Authorization header as Bearer <token>.
-- A read answered 2xx with a JSON body whose ok is not true is a refused read, not an accepted one.
-- A refused read whose body carries a readable error code fails with the answer's status.
-- 'A refused read whose body carries a readable error code fails with the code read from error.code in the body { ok: false, error: { code, message, details } }.'
-- A refused read whose body carries a readable error code fails with the message read from error.message in that body.
-- A refused read whose body carries a readable error code fails with the details read from error.details in that body.
-- A read cut off after 30000 milliseconds without an answer fails with SYSTEM_TIMEOUT.
-- A SYSTEM_TIMEOUT failure reads "Tempo limite excedido na requisição."
-- A read its caller cancels before an answer fails with SYSTEM_ABORTED.
-- A SYSTEM_ABORTED failure reads "Requisição cancelada."
-- A read that gets no answer for a cause other than the cutoff or a cancellation fails with SYSTEM_NETWORK.
-- A SYSTEM_NETWORK failure reads "Falha de rede ao contactar o servidor."
-- A read whose session refresh fails fails with AUTH_SESSION_EXPIRED.
-- An AUTH_SESSION_EXPIRED failure carries status 401.
-- An AUTH_SESSION_EXPIRED failure reads "Sua sessão expirou. Faça login novamente."
-- A read answered 2xx with a body that is not JSON fails with SYSTEM_INVALID_RESPONSE.
-- A SYSTEM_INVALID_RESPONSE failure carries the answer's status.
-- A SYSTEM_INVALID_RESPONSE failure reads "Resposta do servidor não é JSON válido."
-- A refused read at status 500 or above whose body carries no readable error code fails with SYSTEM_UPSTREAM.
-- A SYSTEM_UPSTREAM failure carries the answer's status.
-- A SYSTEM_UPSTREAM failure reads "Algo deu errado. Tente novamente."
-- A refused read below status 500 whose body carries no readable error code fails with SYSTEM_UNKNOWN.
-- A 401 answer to a read repeated after a refresh, whose body carries no readable error code, fails with SYSTEM_UNKNOWN.
-- A SYSTEM_UNKNOWN failure carries the answer's status.
-- A SYSTEM_UNKNOWN failure reads "Erro desconhecido do servidor."
+- Every read is made through the http function of src/lib/http.ts, not through a fetch wrapper of its own.
+- A failed read fails with the status the http function gives for that answer.
+- A failed read fails with the code the http function gives for that answer.
+- A failed read fails with the message the http function gives for that answer.
+- A failed read fails with the details the http function gives for that answer.
 implements:
 - contracts/entity-workspace/bff-entity-reads
 - contracts/knowledge-base/retrieval
 - rules/entity-workspace/entity-workspace-requests-carry-the-access-token
 - rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
 - rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
-- rules/application-shell/a-request-is-cut-off-after-thirty-seconds
-- rules/application-shell/a-failed-refresh-ends-the-session
 - rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
 ---
 ## What it is
@@ -60,8 +39,8 @@ The two reads the listing screen needs, mapped from the wire to the shape the sc
 It reuses http<T>() and authHeader() as the inventory names them, at src/lib/http.ts and src/features/curation/api/_request.ts, and adds no new fetch wrapper.
 No node states whether the screen pages through more nodes than the default limit of 20, so this task sends no limit and no offset.
 The wire facts say the response item field names were not checked against the backend.
-UNDERDETERMINED, from the specification — No criterion requires the refresh that a first-attempt 401 starts, nor the repeat with the new token, the same options and a fresh cutoff, nor forbids a second refresh, and no task of the epic does. Passes: a client that never refreshes after a first 401.
-UNDERDETERMINED, from the specification — The clauses of the failed-refresh rule that clear the stored token and replace the page with the sign-in address reach no criterion. Passes: a client that fails with AUTH_SESSION_EXPIRED but leaves the stored token and the page in place.
-UNDERDETERMINED, from the specification — No criterion answers the cutoff's own English timeout wording of the shell rule. Passes: a client whose cutoff uses another abort reason and still reports SYSTEM_TIMEOUT in Portuguese.
-REMAINDER, from the specification — The edit clause of the access-token rule belongs to the edit-request task.
-ADVISORY, from the specification — No criterion sends or returns a limit or offset, so the page is whatever the knowledge base answers by default.
+UNDERDETERMINED, from the specification — No criterion requires the refresh that a first-attempt 401 starts, nor the repeat with the new token, the same options and a fresh cutoff. Passes: a read that builds the Authorization header once from the stored token and hands it to the http function as a fixed header, so a repeat after a refresh sends the stale token.
+REMAINDER, from the specification — The edit clauses of the access-token rule and of the 401 rule belong to the edit-request task.
+ADVISORY, from the specification — contracts/entity-workspace/bff-entity-reads states the failures as the application's request helper, backed by rules/application-shell/a-request-is-judged-in-a-fixed-order, outside the candidates, and the criteria pass the helper's failures through without reading them.
+ADVISORY, from the specification — No criterion sends a limit or offset, so the listing returns the knowledge base's first page at its default size.
+Decision, beyond the covers — stand: rules/application-shell/a-request-is-judged-in-a-fixed-order is not claimed by the epic, because the shell's request helper carries it out for every screen and the contract bff-entity-reads cites it, and no task of this epic implements it.
