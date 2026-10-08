@@ -1,9 +1,17 @@
 import type {
   AllowedValue,
   AllowedValueWire,
+  AppliedChange,
+  AppliedChangeWire,
+  AttributeChange,
+  AttributeChangeWire,
   AttributeKey,
   AttributeKeyListWire,
   AttributeKeyWire,
+  EditAccepted,
+  EditAcceptedWire,
+  EntityEdit,
+  EntityEditWire,
   ListedNode,
   ListedNodeWire,
   NodeAlias,
@@ -118,4 +126,48 @@ export function toAttributeKeys(
   wire: AttributeKeyListWire,
 ): readonly AttributeKey[] {
   return wire.items.map(toAttributeKey);
+}
+
+function memberOrNull(member: string | null | undefined): string | null {
+  if (member === undefined || member === null || member.length === 0) {
+    return null;
+  }
+  return member;
+}
+
+function toAttributeChangeWire(change: AttributeChange): AttributeChangeWire {
+  const removes = change.kind === "remove";
+  return {
+    attribute_key: change.attributeKey,
+    kind: change.kind,
+    value: removes ? null : memberOrNull(change.value),
+    item_id: memberOrNull(change.itemId),
+    valid_from: removes ? null : memberOrNull(change.validFrom),
+    valid_to: removes ? null : memberOrNull(change.validTo),
+  };
+}
+
+export function toEntityEditWire(edit: EntityEdit): EntityEditWire {
+  return {
+    reason: edit.reason,
+    changes: edit.changes.map(toAttributeChangeWire),
+  };
+}
+
+export function toAppliedChange(wire: AppliedChangeWire): AppliedChange {
+  return {
+    attributeKey: wire.attribute_key,
+    effect: wire.effect,
+    itemId: wire.item_id,
+    predecessorId: wire.predecessor_id,
+  };
+}
+
+export function toEditAccepted(wire: EditAcceptedWire): EditAccepted {
+  return {
+    kind: "accepted",
+    nodeId: wire.node_id,
+    actionId: wire.action_id,
+    applied: wire.applied.map(toAppliedChange),
+  };
 }
