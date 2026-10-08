@@ -1,59 +1,105 @@
-import { type FC } from "react";
+import { useRef, type FC } from "react";
 import { Controller, type Control } from "react-hook-form";
+import { Plus, X } from "lucide-react";
+import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import type { AttributeKey } from "../types";
-import type { EntityFormValues } from "./entity-form-schema";
+import type { EntityFormValues, GroupField } from "./entity-form-schema";
 
 export interface EntityFieldGroupProps {
   readonly attributeKey: AttributeKey;
-  readonly fieldIndexes: readonly number[];
+  readonly disputed: boolean;
+  readonly fields: readonly GroupField[];
   readonly control: Control<EntityFormValues>;
+  readonly onAdd: () => void;
+  readonly onRemove: (index: number) => void;
 }
 
 export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
   attributeKey,
-  fieldIndexes,
+  disputed,
+  fields,
   control,
+  onAdd,
+  onRemove,
 }) => {
-  const titleId = `entity-title-${attributeKey.key}`;
-  const helpId = `entity-help-${attributeKey.key}`;
+  const addRef = useRef<HTMLButtonElement>(null);
+  const key = attributeKey.key;
+  const titleId = `entity-title-${key}`;
+  const helpId = `entity-help-${key}`;
   const description = attributeKey.description;
   const hasHelp = description !== null && description.length > 0;
-  const firstIndex = fieldIndexes[0];
+  const first = fields[0];
+  const listed = attributeKey.allowsMultiple;
+  const numbered = listed && fields.length > 1;
+
+  const removeField = (index: number): void => {
+    onRemove(index);
+    addRef.current?.focus();
+  };
 
   return (
     <div
       role="group"
       aria-labelledby={titleId}
-      data-testid={`entity-group-${attributeKey.key}`}
+      data-testid={`entity-group-${key}`}
       className="flex flex-col gap-xs"
     >
-      {firstIndex === undefined ? (
+      {first === undefined ? (
         <p id={titleId} className="text-sm font-medium text-foreground">
-          {attributeKey.key}
+          {key}
         </p>
       ) : (
-        <Label id={titleId} htmlFor={`entity-field-${firstIndex}`}>
-          {attributeKey.key}
+        <Label id={titleId} htmlFor={`entity-field-${first.id}`}>
+          {key}
         </Label>
       )}
-      {fieldIndexes.map((index) => (
-        <Controller
-          key={index}
-          control={control}
-          name={`fields.${index}.value`}
-          render={({ field }) => (
-            <Input
-              {...field}
-              id={`entity-field-${index}`}
-              type="text"
-              aria-describedby={hasHelp ? helpId : undefined}
-              data-testid={`entity-field-${attributeKey.key}`}
-            />
-          )}
-        />
+      {fields.map(({ index, id }, position) => (
+        <div key={id} className="flex items-center gap-xs">
+          <Controller
+            control={control}
+            name={`fields.${index}.value`}
+            render={({ field }) => (
+              <Input
+                {...field}
+                id={`entity-field-${id}`}
+                type="text"
+                aria-label={numbered ? `${key} (valor ${position + 1})` : undefined}
+                aria-describedby={hasHelp ? helpId : undefined}
+                data-testid={`entity-field-${key}`}
+              />
+            )}
+          />
+          {listed ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Remover valor ${position + 1} de ${key}`}
+              onClick={() => removeField(index)}
+              data-testid={`entity-remove-${key}`}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
       ))}
+      {listed && !disputed ? (
+        <Button
+          ref={addRef}
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={`Adicionar valor a ${key}`}
+          onClick={onAdd}
+          data-testid={`entity-add-${key}`}
+          className="self-start"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Adicionar valor
+        </Button>
+      ) : null}
       {hasHelp ? (
         <p id={helpId} className="text-xs text-muted-foreground">
           {description}

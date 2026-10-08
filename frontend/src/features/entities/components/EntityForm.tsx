@@ -1,11 +1,12 @@
 import { useEffect, useMemo, type FC, type FormEvent } from "react";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { AttributeKey, NodeRead } from "../types";
 import { EntityFieldGroup } from "./entity-field-group";
 import {
   buildFieldGroups,
   buildFormValues,
+  emptyField,
   entityFormSchema,
   type EntityFormValues,
 } from "./entity-form-schema";
@@ -24,10 +25,6 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
     () => buildFormValues(node, attributeKeys),
     [node, attributeKeys],
   );
-  const groups = useMemo(
-    () => buildFieldGroups(node, attributeKeys, values),
-    [node, attributeKeys, values],
-  );
 
   const form = useForm<EntityFormValues>({
     resolver: zodResolver(entityFormSchema),
@@ -35,6 +32,14 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
     mode: "onBlur",
   });
   const { control, reset } = form;
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "fields",
+  });
+  const groups = useMemo(
+    () => buildFieldGroups(node, attributeKeys, fields),
+    [node, attributeKeys, fields],
+  );
 
   useEffect(() => {
     reset(values);
@@ -52,8 +57,11 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
         <EntityFieldGroup
           key={group.attributeKey.key}
           attributeKey={group.attributeKey}
-          fieldIndexes={group.fieldIndexes}
+          disputed={group.disputed}
+          fields={group.fields}
           control={control}
+          onAdd={() => append(emptyField(group.attributeKey.key))}
+          onRemove={remove}
         />
       ))}
     </form>

@@ -17,10 +17,19 @@ export const entityFormSchema = z.object({
 export type AttributeFieldValues = z.infer<typeof attributeFieldSchema>;
 export type EntityFormValues = z.infer<typeof entityFormSchema>;
 
+export interface IdentifiedFieldValues extends AttributeFieldValues {
+  readonly id: string;
+}
+
+export interface GroupField {
+  readonly index: number;
+  readonly id: string;
+}
+
 export interface FieldGroup {
   readonly attributeKey: AttributeKey;
   readonly disputed: boolean;
-  readonly fieldIndexes: readonly number[];
+  readonly fields: readonly GroupField[];
 }
 
 export function isDisputedKey(
@@ -43,36 +52,63 @@ export function currentAttributeOf(
   );
 }
 
+export function currentAttributesOf(
+  attributes: readonly NodeAttribute[],
+  key: string,
+): NodeAttribute[] {
+  return attributes.filter(
+    (attribute) => attribute.attributeKey === key && attribute.isCurrent,
+  );
+}
+
+export function emptyField(key: string): AttributeFieldValues {
+  return { attributeKey: key, itemId: null, startedWith: "", value: "" };
+}
+
+function fieldStartingFrom(attribute: NodeAttribute): AttributeFieldValues {
+  return {
+    attributeKey: attribute.attributeKey,
+    itemId: attribute.id,
+    startedWith: attribute.value,
+    value: attribute.value,
+  };
+}
+
+function startingFieldsOf(
+  node: NodeRead,
+  attributeKey: AttributeKey,
+): AttributeFieldValues[] {
+  const key = attributeKey.key;
+  if (isDisputedKey(node.attributes, key)) return [];
+  if (attributeKey.allowsMultiple) {
+    const held = currentAttributesOf(node.attributes, key);
+    return held.length > 0 ? held.map(fieldStartingFrom) : [emptyField(key)];
+  }
+  const current = currentAttributeOf(node.attributes, key);
+  return [current === undefined ? emptyField(key) : fieldStartingFrom(current)];
+}
+
 export function buildFormValues(
   node: NodeRead,
   attributeKeys: readonly AttributeKey[],
 ): EntityFormValues {
-  const fields = attributeKeys.flatMap((attributeKey): AttributeFieldValues[] => {
-    if (isDisputedKey(node.attributes, attributeKey.key)) return [];
-    const current = currentAttributeOf(node.attributes, attributeKey.key);
-    const startedWith = current?.value ?? "";
-    return [
-      {
-        attributeKey: attributeKey.key,
-        itemId: current?.id ?? null,
-        startedWith,
-        value: startedWith,
-      },
-    ];
-  });
-  return { fields };
+  return {
+    fields: attributeKeys.flatMap((attributeKey) =>
+      startingFieldsOf(node, attributeKey),
+    ),
+  };
 }
 
 export function buildFieldGroups(
   node: NodeRead,
   attributeKeys: readonly AttributeKey[],
-  values: EntityFormValues,
+  fields: readonly IdentifiedFieldValues[],
 ): readonly FieldGroup[] {
   return attributeKeys.map((attributeKey) => ({
     attributeKey,
     disputed: isDisputedKey(node.attributes, attributeKey.key),
-    fieldIndexes: values.fields.flatMap((field, index) =>
-      field.attributeKey === attributeKey.key ? [index] : [],
+    fields: fields.flatMap((field, index) =>
+      field.attributeKey === attributeKey.key ? [{ index, id: field.id }] : [],
     ),
   }));
 }
