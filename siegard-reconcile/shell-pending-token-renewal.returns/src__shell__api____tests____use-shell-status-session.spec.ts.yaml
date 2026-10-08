@@ -1,0 +1,67 @@
+findings: []
+read:
+  - node: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+    held_at: >-
+      The fixture and the test "a successful renewal on the pending curation read" ("keeps the renewed token and does not replace the page"). This file only asserts the fact and does not implement it. The 401, then one renewal, then a second read with the fresh token is staged in the stubFetch scripts, and the outcome is asserted on the stored token.
+    evidence: |-
+      pending: (authorization) =>
+        authorization === `Bearer ${STALE}` ? reply(401) : reply(200, { total: 7 }),
+      ...
+      token: FRESH,
+      redirects: [],
+  - node: scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown
+    held_at: >-
+      The test "a successful renewal on the pending curation read". It sets up the given and when steps: it holds an expired token, the pending read is answered 401, and the renewal succeeds. It asserts the stored token is renewed and there is no redirect. It does not assert the footer total, and it does not count the two reads.
+    evidence: |-
+      hold(STALE);
+      mountCount();
+      ...
+      expect({ token: useAuthStore.getState().accessToken, redirects: [...redirects] }).toEqual({
+        token: FRESH,
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: >-
+      The test "is not followed by another pending read or another renewal, at once or at the following intervals". It covers only the no-retry-on-failure part. It advances time past the intervals and asserts one pending read and one renewal. The twenty-second period and the repeat after a renewed token are not asserted. This file declares no interval value.
+    evidence: |-
+      await advance(60_000);
+      ...
+      expect({ pending: count(sent, "pending"), token: count(sent, "token") }).toEqual({
+        pending: 1,
+        token: 1,
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: >-
+      nowhere. The file never exercises the no-token case and never asserts limit 1. Its only related content is the default fixture answer `reply(200, { total: 0 })` and the `/api/v1/curation/queue` URL prefix in `kindOf`, and neither states the rule.
+    evidence: |-
+      answer = script.pending ? script.pending(authorization) : reply(200, { total: 0 });
+      ...
+      if (url.startsWith(`${urls.bff}/api/v1/curation/queue`)) return "pending";
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: >-
+      The URL routing in kindOf, and the 401 and renewal-driven answers in the stubFetch scripts. The file only routes by the contract's addresses (`/health`, `/api/v1/curation/queue`) and stages the refusals. It declares no shape of the contract.
+    evidence: |-
+      if (url === `${urls.bff}/health`) return "health";
+      if (url.startsWith(`${urls.bff}/api/v1/curation/queue`)) return "pending";
+  - node: domain/application-shell/application-shell
+    held_at: >-
+      nowhere. The file declares no shape of the aggregate. It only reads the stored token and the redirect target through the hook under test.
+    evidence: |-
+      function Probe(): null {
+        useCurationCount();
+        return null;
+      }
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    held_at: >-
+      The two tests in "a failed renewal on the pending curation read" that assert the cleared token and the redirect, once for the 401 renewal answer and once for the failed renewal request. The sign-in address with the reason is a constant of the test, `SIGN_IN_ADDRESS`, and the node holds the same address and reason.
+    evidence: |-
+      const SIGN_IN_ADDRESS = "/sign-in?reason=session_expired";
+      ...
+      expect({ token: useAuthStore.getState().accessToken, redirects: [...redirects] }).toEqual({
+        token: null,
+        redirects: [SIGN_IN_ADDRESS],
+  - node: scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+    held_at: >-
+      The first test in "a failed renewal on the pending curation read". The identity provider holds no session (the token answer is 401), the pending read is answered 401, and the test asserts the cleared token and the replaced page.
+    evidence: |-
+      pending: () => reply(401),
+      token: () => reply(401, { message: "no session" }),
+looked_past: >-
+  The identity provider's address `${urls.auth}/token` and the answer body `{ token: FRESH }` in the fixtures are held by contracts/owner-access/identity-provider (GET /token, a JSON object with a non-empty string token), a node outside this set. They are test fixtures staging that contract, so I filed no finding for them.

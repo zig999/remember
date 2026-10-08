@@ -1,0 +1,43 @@
+certified:
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    state: partial
+    tests:
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "asks the health and the pending total every 20 seconds when the reads succeed"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "asks each every 20 seconds, retries no failure except the one repeat after a renewed token, and sends the health without the token"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "carries no Authorization header while a token is held"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "does not ask the identity provider for a token when it is answered 401"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "is not repeated at once after the request fails"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "is not asked again before the next 20-second interval when it fails without a 401"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "asks the identity provider once with the session cookie and repeats the read with the fresh token"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "does not ask the identity provider a second time when the repeated read is also answered 401"
+      - file: src/shell/api/__tests__/use-shell-status.spec.ts
+        name: "does not send a third pending read before the next interval when the repeated read is also answered 401"
+    why: >-
+      Several parts of the fact would make these tests fail if they stopped holding.
+      The 20-second interval for both reads is checked: one request each at 19,999 ms and
+      a second at 20,000 ms. The health read is checked to carry no Authorization header
+      while a token is held. A health 401 is checked not to ask for a token. The pending
+      read is checked to get exactly one repeat after one renewal following a 401.
+      The "not retried on failure" part is not checked against the code under test.
+      The test's mount helper builds every QueryClient with `defaultOptions.queries.retry: false`.
+      So for any hook that does not turn off retries itself, the test setup turns them off
+      for it. Suppose the health or pending hook dropped its own no-retry setting and fell
+      back to a client default that retries. Three tests would still pass: "is not repeated
+      at once after the request fails", "is not asked again before the next 20-second
+      interval when it fails without a 401", and the no-retry part of the timeline test.
+      They catch only a hook that sets a retry count explicitly.
+    remainder: testable
+    remainder_why: >-
+      Mount useHealth and useCurationCount under a QueryClient whose default allows retries,
+      such as the application's own client configuration, not `retry: false`. Make the health
+      read fail with a network error and the pending read fail with a 500, then advance
+      19,999 ms. The expected result is exactly one health request and one pending request,
+      with no request to the identity provider.

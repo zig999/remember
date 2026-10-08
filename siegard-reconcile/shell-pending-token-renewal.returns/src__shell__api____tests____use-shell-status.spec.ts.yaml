@@ -1,0 +1,41 @@
+findings: []
+read:
+  - node: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+    held_at: >-
+      The first spec of the describe block "the pending curation read answered 401" (line 156), with the one-renewal spec that follows it (line 182).
+    evidence: >-
+      expect(sent.map((s) => s.kind === "token" ? `token:${s.credentials}` : `${s.kind}:${s.authorization}`)).toEqual([`pending:Bearer ${STALE}`, "token:include", `pending:Bearer ${FRESH}`]); and expect(count(sent, "token")).toBe(1); when the repeated read is also answered 401
+  - node: scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown
+    held_at: >-
+      The spec "shows the total of the repeated read's answer" (line 171).
+    evidence: >-
+      authorization === `Bearer ${STALE}` ? reply(401) : reply(200, { total: 7 }) ... expect(shown()).toBe(7);
+  - node: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+    held_at: >-
+      The describe block "the shell reads" (lines 308-354) and the interval specs at lines 190, 230 and 298.
+    evidence: >-
+      await advance(19_999); const beforeInterval = counts(sent); await advance(1); ... beforeInterval: { health: 1, pending: 1, token: 0 }, atInterval: { health: 2, pending: 2, token: 0 }; healthAuthorizations: [null, null, null]
+  - node: rules/application-shell/the-pending-total-needs-a-token
+    held_at: >-
+      The spec "is the queue listing with limit 1 and the token as bearer, made only with a token, and an answer without a total counts as 0" (line 252), with "is not made while no access token is held" (line 244).
+    evidence: >-
+      withoutToken: { requests: 0, shown: 0 }, withToken: { request: `${PENDING_URL} Bearer held.token`, shown: 5 }, withoutTotal: 0
+  - node: contracts/application-shell/bff-shell-reads
+    held_at: >-
+      The URL constant and the fetch stub's default answers, with the specs that read them (lines 19, 54-59, 73-77, 281-305).
+    evidence: >-
+      const PENDING_URL = `${urls.bff}/api/v1/curation/queue?limit=1`; answer = script.health ? script.health(attempt) : reply(200, { database: "ok" }); expect(read?.authorization).toBeNull();
+  - node: domain/application-shell/application-shell
+    held_at: nowhere
+    evidence: >-
+      The file declares only test scaffolding shapes (`interface Sent`, `interface Script`, `interface Placement`), none of them an attribute of the aggregate such as health or curation_pending. The shapes it reads are declared in the hook file.
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      No spec makes the identity provider answer 401 to GET /token. `token` is only ever scripted to answer `reply(200, { token: FRESH })`, and nothing asserts the stored token is cleared or the page replaced with the sign-in address and session_expired.
+  - node: scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+    held_at: nowhere
+    evidence: >-
+      The file has no case with a failing renewal. The only mention of useAuthStore after setup is `useAuthStore.getState().setToken(token)` in `hold` and `.clear()` in the hooks.
+looked_past: >-
+  The file stubs GET /token with the browser's credentials included, which is held by a node of the owner-access sign-in contracts outside this pack, so it is not a fact the test originates. No spec covers the failed-renewal outcome, which is a test-coverage matter and not this judgment's.

@@ -1,0 +1,29 @@
+certified:
+  - node: scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+    state: partial
+    tests:
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: leaves no access token and replaces the page with the sign-in address when the identity provider holds no session
+    why: >-
+      The test sets up the scenario's given and when: a held token, a pending curation read
+      answered 401, and the identity provider's token endpoint answering 401 "no session". It
+      checks both outcomes by observation. The stored accessToken must be null. The redirect sink
+      must receive exactly one entry, "/sign-in?reason=session_expired". So the cleared token,
+      the sign-in address and the session_expired reason would all fail this test if they
+      stopped holding. The part left unexercised is that the page is replaced. The test swaps the
+      production redirect for a recorder through __setShellRedirectForTests and only checks which
+      URL was handed to that recorder. It would still pass if the production redirect
+      navigated with a history entry instead of replacing the page, or did not navigate at all.
+      The sibling test in the same file, "when the renewal request itself fails", has a different
+      given: the renewal request fails on the network rather than the provider holding no
+      session. It goes through the same recorder, so it closes nothing here. The two remaining
+      tests in the file bear on other facts: one checks that no further reads or renewals follow,
+      the other covers the successful renewal.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Use the same given: an expired held token, the
+      pending read answered 401, and the identity provider answering with no session. Leave the
+      production redirect in place, with no test recorder installed. Expect the page's location
+      to be replaced, not navigated with a history entry, with "/sign-in?reason=session_expired".
+      For example, a spy on window.location.replace that receives exactly that address while
+      location.assign is never called.

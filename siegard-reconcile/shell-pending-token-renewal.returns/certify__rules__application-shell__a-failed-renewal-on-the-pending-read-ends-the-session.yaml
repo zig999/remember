@@ -1,0 +1,27 @@
+certified:
+  - node: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+    state: partial
+    tests:
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: leaves no access token and replaces the page with the sign-in address when the identity provider holds no session
+      - file: src/shell/api/__tests__/use-shell-status-session.spec.ts
+        name: leaves no access token and replaces the page with the sign-in address when the renewal request itself fails
+    why: >-
+      The two named tests cover two ways a renewal can fail on the pending curation read: the
+      identity provider answers 401, or the renewal request rejects. Each test asserts both halves
+      together: the stored access token ends up null, and the shell's redirect gets exactly
+      "/sign-in?reason=session_expired". So clearing the token, the sign-in address and the reason
+      session_expired are all exercised. Replacing the page is not. Both tests swap the shell's
+      redirect for a capturing function through __setShellRedirectForTests, so the tests only check
+      the address the shell passes to that function. The function the shell uses when no test
+      swaps it is never run. If it stopped replacing the page (it navigated another way or did
+      nothing), the fact would stop holding and both tests would still pass. The test "is not
+      followed by another pending read or another renewal, at once or at the following intervals"
+      and the test "keeps the renewed token and does not replace the page" check other facts (no
+      retry after the failure, and the success path). They are not cited here.
+    remainder: testable
+    remainder_why: >-
+      Give one input with the redirect seam not swapped: the pending curation read answers 401 and
+      the renewal fails. Expect one result: the stored token is cleared and the page is replaced
+      with "/sign-in?reason=session_expired". The check is that the browser's page-replacing
+      navigation (for example a spied window.location.replace) is called once with that address.
