@@ -1,0 +1,307 @@
+findings: []
+read:
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The file only builds a fake pool that answers `FROM curation_action` reads and throws on any other SQL. It runs no edit write operation: `throw new Error(`fake client: unknown SQL: ${text.slice(0, 200)}`)`.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The app is built with `mcp: buildMcpServer(silentLogger)`, but the file calls no MCP tool and states nothing about which tools exist.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file only supplies a valid token, `headers: { authorization: `Bearer ${token}` }`. It never sends a missing, expired or foreign token, so it asserts no authentication outcome.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      `LOG_LEVEL: "silent"` and `const silentLogger = pino({ level: "silent" });`. The file asserts nothing about log levels.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      No test provokes an unexpected failure. The only status codes asserted are 200 and 422.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      The fake pool always answers. `PG_STATEMENT_TIMEOUT_MS: 10_000` is only an environment fixture value, and no test makes the store unreachable.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      The `describe` blocks "Audit listing action filter spelled with a hyphen" and "Reading one curation action of kind edit_entity". They assert the list-curation-actions closed-set refusal and the read-curation-action 200 fields. The conformance behavior lives in production code, not here.
+    evidence: >-
+      `expect(res.statusCode).toBe(422); expect(res.json().error.code).toBe("VALIDATION_INVALID_FORMAT");` and `expect(res.json()).toEqual({ id: EDIT_ENTITY_ACTION_ID, action: res.json().action, target_kind: "node", target_id: NODE_ID, payload, reason: "renamed", created_at: "2026-10-01T12:00:00.000Z" });`
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file never calls `POST /api/v1/nodes/{node_id}/edit`. Its only requests are `method: "GET"` against `AUDIT_ACTIONS_URL`.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      No shape with `attribute_key`, `effect`, `item_id` or `predecessor_id` is declared. The fixture payloads are `{}` and `{ changed: { name: "Acme Ltda" } }`.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares and uses no assertion status. It reads only `CurationActionStoredRow`.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no change shape with `kind`, `value`, `item_id`, `valid_from` or `valid_to`.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      The file mentions neither `set` nor `remove` as a change kind.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute key shape. `interface CurationActionStoredRow` is the only entity row declared.
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      `interface CurationActionStoredRow`, which declares the stored shape of a curation action.
+    evidence: >-
+      `interface CurationActionStoredRow { id: string; action: string; target_kind: string; target_id: string | null; payload: Record<string, unknown>; reason: string | null; created_at: Date; }`
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      No filter shape is declared. The filter is only exercised through the query strings `?action=edit_entity` and `?action=edit-entity`.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      No enumeration is declared. Kinds appear only as string literals in fixture rows, `action: "merge_nodes"` and `action: "compliance_delete"`, and the interface types `action` as `string`.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      The interface types `target_kind: string`. No enumeration is declared, and the fixtures only pass literals such as `target_kind: "raw_information"`.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      No effect value such as first_value or succession appears in the file.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file declares no `reason` and `changes` shape and sends no edit. The only edit-related data is the fixture row `action: "edit_entity"`.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares and uses no live-status value.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no node attribute row. `NODE_ID` is only a fixture target identity.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file declares and uses no node status.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no value type enumeration.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: >-
+      The fixture and the two filter tests assert the underscore spelling of the kind. The behavior that records and filters by it lives in production code.
+    evidence: >-
+      `action: "edit_entity"` in `curationActionRow`, `${AUDIT_ACTIONS_URL}?action=edit_entity` answered 200 with `expect(res.json().total).toBe(1);`, and `${AUDIT_ACTIONS_URL}?action=edit-entity` answered 422 `VALIDATION_INVALID_FORMAT`.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      No node status or assertion flag is read or asserted in the file.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      No edit effect is spelled anywhere in the file.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file never names an attribute key. The fixture payload `{ changed: { name: "Acme Ltda" } }` is passed through unjudged.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file states no allowed values and sends no value for judgment.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file sends and judges no attribute value.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file derives no currency. It has no `valid_to` and no `superseded_at` for attributes.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      No change is recorded and no `addition` effect appears.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      No set change is made and no conflict is asserted.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      No edit is sent, so no check order is exercised.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      No supersession time is stated for attributes. Only `created_at` of a curation action appears.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      No edit is sent, so no changes-nothing refusal is exercised.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      No edit is sent.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      No `correction` effect and no superseding attribute appear.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      No validity dates are stated or judged.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      No attribute with a validity end appears.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      No `first_value` effect appears.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      No disputed attribute appears.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      No attribute is named by any request.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      `NODE_ID` is only a fixture `target_id`, and no node status is held.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      No attribute or confidence is recorded.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      No raw information, chunk or fragment is recorded. The fake pool answers only `FROM curation_action`.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      No fragment confidence appears.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      No raw content is built or asserted.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run appears.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      No source type or metadata appears.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      No change payload is sent.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance appears.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The only reason values are fixture `reason: "renamed"` and `reason: null` in stored rows. No reason length is judged.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      No reason is trimmed or asserted as trimmed.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action. It reads pre-seeded rows, with `payload: {}` by default and `{ changed: { name: "Acme Ltda" } }` in one test.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      No remove change and no `removal` effect appear.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      No remove change appears.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      No model `operator` or prompt version appears.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      No attribute validity appears.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      No default start or basis appears.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      No validity end appears.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      No validity start or basis appears.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      No `succession` effect appears.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      No superseded attribute appears.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      No supersession time appears.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      No `unchanged` effect appears.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      No change is sent.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      No change is sent.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      No attribute key temporality appears.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      No validity period appears.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      No edit with an empty list of changes is sent. All requests are `method: "GET"`.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      No project status or validity start appears.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      No attribute is named and no conflict is asserted.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      No email attribute or remove change appears.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      No cnpj attribute or correction appears.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      No deadline attribute or today default appears.
+looked_past: >-
+  Three things are fixture data or the route address, and no judgment of a domain fact. First, the audit route path `/api/v1/audit/curation-actions`, which no node states for list-curation-actions or read-curation-action; the production route holds it. Second, the fixture payload `{ changed: { name: "Acme Ltda" } }` on an edit_entity row, which differs in shape from the `applied` payload an entity edit records but is only passed through by the read. Third, the fixture `target_kind: "raw_information"`, whose wire spelling no node in this set states.

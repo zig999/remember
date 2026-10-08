@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-new-attribute.spec.ts
+        name: >-
+          holds no validity start, no validity end and no basis, whether or not the change states a validity
+    why: >-
+      The fact applies "whatever the edit's effect". The offered proof only records attributes
+      through recordNewAttribute, which is the first-value-or-addition effect. For that effect,
+      the test covers a key that is not temporal both when the change states no validity and when
+      it states a start and an end. In both cases it checks that the recorded attribute holds no
+      validity start, no validity end and no validity-start basis. Nothing in the proof records
+      the attribute an entity edit makes when it replaces a value already held for a key that is
+      not temporal. The proof also has no test of an addition to such a key that allows several
+      current values. Those effects are not tested.
+
+      The test's fake client also has a weak spot. It reads a column only when the INSERT binds it
+      to a $N parameter, and it drops any value written into the SQL text itself, such as a
+      literal or a date computed from now(). If an implementation wrote a validity start or basis
+      that way, the test would still pass.
+    remainder: testable
+    remainder_why: >-
+      One input: an entity edit that replaces the held value of a key that is not temporal, once
+      with no stated validity and once stating a start and an end. One expected result: the
+      attribute the edit records holds no validity start, no validity end and no validity-start
+      basis. The check must read those columns as stored, including any value written directly
+      into the SQL rather than passed as a parameter.

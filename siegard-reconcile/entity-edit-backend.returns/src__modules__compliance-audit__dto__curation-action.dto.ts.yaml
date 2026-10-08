@@ -1,0 +1,346 @@
+findings:
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      TargetKindSchema, the last enumeration member (line 22)
+    evidence: >-
+      "raw_information",
+    cost: >-
+      The curation-target-kind node holds this member as `raw-information`. The only rule that writes hyphens as underscores for curation actions, a-curation-action-kind-is-written-with-underscores, covers the action kind and nothing else. The target-kind filter value a listing accepts is therefore decided only in this schema. The next reader looks in the specification for how `raw-information` is spelled on the wire and finds the hyphen form. A client that follows the node and sends `raw-information` is refused as outside the closed set.
+    kind: unstated
+    correction: >-
+      The analysis should decide the wire spelling of a curation target kind. It could add a rule beside a-curation-action-kind-is-written-with-underscores, or extend that rule to the target kind. The file would then hold a fact a node states.
+    node: domain/knowledge-base/curation-target-kind
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      ListCurationActionsQuerySchema, CurationActionSchema and CurationActionIdParamSchema hold the list and read curation-action request and answer shapes. The compliance-deletion operations are not in this file.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50), ... target_id: UuidSchema.optional(), created_from: z.string().datetime({ offset: true }).optional(), ... items: z.array(CurationActionSchema)
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      CurationActionSchema, which declares id, action, target_kind, target_id, payload, reason and created_at.
+    evidence: >-
+      payload: z.record(z.string(), z.unknown()), reason: z.string().max(1000).nullable(), created_at: z.string(),
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      ListCurationActionsQuerySchema, which declares action, target_kind, target_id, created_from, created_to, limit and offset.
+    evidence: >-
+      action: CurationActionNameSchema.optional(), target_kind: TargetKindSchema.optional(), created_to: z.string().datetime({ offset: true }).optional(),
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      CurationActionNameSchema, an enumeration of the eight kinds.
+    evidence: >-
+      z.enum(["resolve_entity_match", "merge_nodes", "resolve_dispute", "confirm_item", "reject_item", "correct_item", "compliance_delete", "edit_entity"])
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      TargetKindSchema, an enumeration of the five kinds. The last member is spelled with an underscore, not as the node writes it (see the finding).
+    evidence: >-
+      z.enum(["node", "link", "attribute", "fragment", "raw_information"])
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: >-
+      CurationActionNameSchema, which is the filter vocabulary of the listing and spells each kind with underscores.
+    evidence: >-
+      "resolve_entity_match", ... "edit_entity",
+  - node: rules/knowledge-base/audit-page-defaults
+    held_at: >-
+      The limit and offset fields of ListCurationActionsQuerySchema.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/audit-window-ordered
+    held_at: >-
+      The superRefine of ListCurationActionsQuerySchema.
+    evidence: >-
+      if (Date.parse(value.created_from) >= Date.parse(value.created_to)) {
+  - node: rules/knowledge-base/curation-action-reason-length
+    held_at: >-
+      The reason field of CurationActionSchema.
+    evidence: >-
+      reason: z.string().max(1000).nullable(),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      The limit field of ListCurationActionsQuerySchema.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      The offset field of ListCurationActionsQuerySchema.
+    evidence: >-
+      offset: z.coerce.number().int().min(0).default(0),
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      This file declares only listing and read schemas, for example `export const CurationActionIdParamSchema = z.object({`. It has no write operation.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The file has no tool surface. It declares only `ListCurationActionsQuerySchema`, `CurationActionSchema` and `CurationActionListSchema`.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file holds schemas only and has no authentication code, for example `import { UuidSchema } from "./compliance-delete.dto.js";`.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file has no logging. Its only import besides zod is `UuidSchema`.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      The file declares no failure answer. Its one refusal marker is `message: "VALIDATION_OUT_OF_RANGE"`, which is a validation refusal, not an internal failure.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      The file has no store access, for example `export const CurationActionListSchema = z.object({`.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      This file has no edit-entity route or schema. The only mention of editing is the enumeration member `"edit_entity",`.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no applied-change shape. `payload: z.record(z.string(), z.unknown()),` is opaque.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no assertion status. `action: z.string(),` is the nearest enumeration-like field.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute-change shape. The nearest declaration is `target_kind: z.string(),`.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      No set or remove enumeration is declared. The file declares only `TargetKindSchema` and `CurationActionNameSchema`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute-key shape. It holds only curation-action schemas.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      The file declares no edit-effect enumeration. The payload is `z.record(z.string(), z.unknown())`.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file declares no entity-edit shape. It declares `ListCurationActionsQuerySchema` and `CurationActionSchema`.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no live assertion status. There is no matching enumeration.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no node-attribute shape. The nearest declaration is `target_kind: z.string(),`.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no node-status enumeration. `"node",` appears only as a target kind.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no value-type enumeration. There is no date, number, text or bool.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file carries no node status or assertion flag. The only enumerations are the curation action and target kinds.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file carries no edit effect. `payload: z.record(z.string(), z.unknown()),` is opaque.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute-key check. It holds only listing and read schemas.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no allowed-values check. It holds only listing and read schemas.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file has no value parsing. The only datetime check is `created_from: z.string().datetime({ offset: true }).optional(),`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file derives no current state. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file records no edit effect. `action: z.string(),` is a plain read field.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      The file has no write path. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no change checks. Its only refinement is the window `superRefine`.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute handling. It holds only curation-action schemas.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      The file has no edit check. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no entity-edit check order. Its only refinement is `.superRefine((value, ctx) => {` over the listing window.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file has no correction logic. The only related text is `"correct_item",` in the action enumeration.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      The file has no validity handling. The only date logic is the window comparison `Date.parse(value.created_from) >= Date.parse(value.created_to)`.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute handling. It holds only curation-action schemas.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file has no write path. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file has no dispute handling. The only related text is `"resolve_dispute",` in the action enumeration.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute handling. It holds only curation-action schemas.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file has no node status check. `"node",` appears only as a target kind.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information or fragment. `"fragment",` is only a target kind.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The file records no fragment. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information content. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no LLM run. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information metadata. `payload: z.record(z.string(), z.unknown()),` is opaque.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The file has no change shape. `target_id: UuidSchema.nullable(),` is a read field, not an edit field.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The edit's reason is not declared in this file. The only reason is the read field `reason: z.string().max(1000).nullable(),`, which is curation-action-reason-length's.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      The file trims nothing. `reason: z.string().max(1000).nullable(),` is a read field.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      This file declares the read shape of a curation action, not the recording of one. It declares `payload: z.record(z.string(), z.unknown()),`.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file has no removal logic. The only related text is `"reject_item",` in the action enumeration.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      The file has no change shape. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute validity. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file defaults no start date. Its only date fields are `created_from` and `created_to`.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      The file records no validity end. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      The file records no validity start basis. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file has no succession logic. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      The file closes no validity period. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file sets no supersession time. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no unchanged-effect logic. It holds only listing and read schemas.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file has no change shape. It holds only listing and read schemas.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file has no change shape. It holds only listing and read schemas.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file reads no attribute-key temporality. It holds only listing and read schemas.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start-before-end check. The ordering check is over the listing window, which is audit-window-ordered's, so it states no validity fact.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no edit path. It holds only listing and read schemas.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      The file has no succession behavior. It holds only listing and read schemas.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      The file has no conflict behavior. It holds only listing and read schemas.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      The file has no removal behavior. It holds only listing and read schemas.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The file has no correction behavior. It holds only listing and read schemas.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The file has no default-start behavior. It holds only listing and read schemas.
+looked_past: >-
+  The window refusal here is `message: "VALIDATION_OUT_OF_RANGE"` on an issue. The contract's answer text for that refusal is not stated in this file, and the mapping from issue to answer lives in another file outside this set, so I did not judge it.

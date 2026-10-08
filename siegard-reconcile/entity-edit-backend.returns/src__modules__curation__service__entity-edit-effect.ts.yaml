@@ -1,0 +1,401 @@
+read:
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      nowhere. The file does not declare the enumeration. It imports the type `AssertionStatus` and uses it to type `VALUE_HOLDING_STATUSES`.
+    evidence: >-
+      import type { AssertionStatus } from "../dto/enums.dto.js";
+  - node: domain/knowledge-base/attribute-change
+    held_at: >-
+      nowhere. The file does not declare the shape. It imports `AttributeChange` and reads `kind`, `value` and `item_id`.
+    evidence: >-
+      import type { AttributeChange, EditEffect } from "../dto/edit-entity.dto.js";
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: >-
+      nowhere. The file only compares `change.kind` with the literal "remove".
+    evidence: >-
+      if (change.kind === "remove") {
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere. The file imports `AttributeKeyRow` and reads `is_temporal`, `allows_multiple_current` and `key` from it.
+    evidence: >-
+      import type { AttributeKeyRow } from "../../ingestion/catalog/catalog.js";
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: >-
+      nowhere. The live statuses are imported as `LIVE_STATUSES` from entity-edit-attributes.js. This file only filters by them.
+    evidence: >-
+      return LIVE_STATUSES.includes(held.status);
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere. The file does not declare the shape. It reads `value`, `status`, `valid_to`, `superseded_at` and `id` from the imported `ItemLockedRow`.
+    evidence: >-
+      import type { ItemLockedRow } from "../repository/curation.repository.js";
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      `isCurrent` in entity-edit-effect.ts.
+    evidence: >-
+      return held.valid_to === null && held.superseded_at === null;
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: >-
+      the last statement of `effectOfUnnamedSet`. It is reached only when the key allows multiple current values and a live attribute exists.
+    evidence: >-
+      return holdsValue(live, value) ? "unchanged" : "addition";
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      the `isCurrent(named)` branch of `effectOfNamedSet`. A key that is not temporal yields correction.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: >-
+      the `hasEndWithoutSupersession(named)` branch of `effectOfNamedSet`, which sits before the temporal test, so it applies whatever the key.
+    evidence: >-
+      if (hasEndWithoutSupersession(named)) {
+          return "correction";
+        }
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      the first branch of `effectOfUnnamedSet`.
+    evidence: >-
+      if (live.length === 0) {
+          return "first-value";
+        }
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      the first branch of `decideChangeEffect` returns the effect removal. Marking the attribute deleted and giving it a supersession time is not in this file.
+    evidence: >-
+      if (change.kind === "remove") {
+          return "removal";
+        }
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      the `isCurrent(named)` branch of `effectOfNamedSet`. A temporal key yields succession.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: >-
+      the first branch of `effectOfNamedSet`, for a named attribute, and the ternary in `effectOfUnnamedSet` with `holdsValue`, for an unnamed one. `VALUE_HOLDING_STATUSES` fixes active and uncertain.
+    evidence: >-
+      if (value === named.value) {
+          return "unchanged";
+        }
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: >-
+      nowhere. This file only returns the effect removal for a remove change. It marks nothing deleted and does not scope the change to one attribute.
+    evidence: >-
+      if (change.kind === "remove") {
+          return "removal";
+        }
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      the effect decision only, in the `isCurrent(named)` branch of `effectOfNamedSet`. Superseding the earlier attribute and recording the new one happen elsewhere.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: constraints/entity-edit-is-atomic
+    held_at: >-
+      nowhere. The file runs no transaction and writes nothing.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: >-
+      nowhere. The file exposes no tool surface.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      nowhere. The file is a pure decision function with no network entry point.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      nowhere. The file logs nothing.
+    evidence: >-
+      throw new InvariantError("decideChangeEffect: a set change states no value");
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      nowhere. The file throws `InvariantError` for states earlier checks must have excluded, and does not build any answer.
+    evidence: >-
+      throw new InvariantError(
+            `decideChangeEffect: attribute '${change.item_id}' is not a live attribute of key '${attributeKey.key}'`
+          );
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      nowhere. The file does no store access.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      nowhere. The contract concerns compliance deletion and audit reads, none of which this file touches.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      nowhere. The file does not shape the answer or the refusals of the edit. It only decides one change's effect.
+    evidence: >-
+      ): EditEffect {
+  - node: domain/knowledge-base/applied-change
+    held_at: >-
+      nowhere. The file does not declare the shape. It returns only the effect.
+    evidence: >-
+      ): EditEffect {
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      nowhere. The file records no curation action.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      nowhere. The file does no listing.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      nowhere. The file does not mention curation action kinds.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      nowhere. The file does not mention curation target kinds.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      nowhere. The enumeration is declared in the imported `EditEffect` of edit-entity.dto.js. This file returns its values as literals.
+    evidence: >-
+      import type { AttributeChange, EditEffect } from "../dto/edit-entity.dto.js";
+  - node: domain/knowledge-base/entity-edit
+    held_at: >-
+      nowhere. The file does not declare the shape.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere. The file does not touch node status.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere. The file does not read the value type.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: >-
+      nowhere. The file records and filters no action kind.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: >-
+      nowhere. The file neither writes statuses to the wire nor writes flags.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: >-
+      nowhere. The file returns the hyphenated enumeration values. The wire spelling is applied elsewhere.
+    evidence: >-
+      return "first-value";
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere. The file receives an already resolved `AttributeKeyRow` and does not check the key against the node type.
+    evidence: >-
+      attributeKey: AttributeKeyRow,
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere. The file does not check allowed values.
+    evidence: >-
+      if (change.value === undefined) {
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere. The file does not parse values. It compares them as strings.
+    evidence: >-
+      if (value === named.value) {
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: >-
+      nowhere. The file does not refuse the edit. `effectOfUnnamedSet` throws an `InvariantError` only as a guard for the state the refusal must have excluded.
+    evidence: >-
+      if (!attributeKey.allows_multiple_current) {
+          throw new InvariantError(
+            `decideChangeEffect: key '${attributeKey.key}' allows one current value and an attribute is already live`
+          );
+        }
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: >-
+      nowhere. The file orders no checks.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: >-
+      nowhere. The file does not refuse the edit. The final `throw` in `effectOfNamedSet` is an `InvariantError` guard for the state the refusal must have excluded, and the same-value case returns unchanged before it.
+    evidence: >-
+      throw new InvariantError(
+          `decideChangeEffect: attribute '${named.id}' carries a supersession time and its value cannot be changed`
+        );
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: >-
+      nowhere. The file returns the effect unchanged per change. It does not count the changes of the edit.
+    evidence: >-
+      return holdsValue(live, value) ? "unchanged" : "addition";
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: >-
+      nowhere. The file orders no checks.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: >-
+      nowhere. The file does not look at validity dates of the change.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: >-
+      nowhere. The file does not refuse a disputed attribute. It filters by `LIVE_STATUSES`, which includes disputed, and refusal is not in it.
+    evidence: >-
+      const live = attributesOfKey.filter(isLive);
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: >-
+      nowhere. The file does not refuse the edit. The `named === undefined` branch throws an `InvariantError` guard for the state the refusal must have excluded.
+    evidence: >-
+      const named = live.find((held) => held.id === change.item_id);
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: >-
+      nowhere. The file does not read the node.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: >-
+      nowhere. The file records no note.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: >-
+      nowhere. The file records no fragment.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: >-
+      nowhere. The file records no raw information.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: >-
+      nowhere. The file opens no run.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: >-
+      nowhere. The file records no raw information.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: >-
+      nowhere. The file reads `change.value` and `change.item_id` only as absent (`undefined`). Reading a null as not stated is not done here.
+    evidence: >-
+      if (change.item_id === undefined) {
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      nowhere. The file records no provenance.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: >-
+      nowhere. The file does not read the reason.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: >-
+      nowhere. The file does not read the reason.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: >-
+      nowhere. The file records no curation action.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: >-
+      nowhere. The file does not refuse a remove change that names no attribute. A remove change returns removal without reading `item_id`.
+    evidence: >-
+      if (change.kind === "remove") {
+          return "removal";
+        }
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: >-
+      nowhere. The file opens no run.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: >-
+      nowhere. The file records no attribute validity.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: >-
+      nowhere. The file does not set a validity start or a basis.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: >-
+      nowhere. The file records no validity end.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: >-
+      nowhere. The file records no validity start or basis.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: >-
+      nowhere. The file only decides the effect. It gives no validity end to a superseded attribute.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      nowhere. The file sets no supersession time.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: >-
+      nowhere. The file does not refuse the edit. The `undefined` check on a set change's value throws an `InvariantError` guard for the state the refusal must have excluded.
+    evidence: >-
+      if (change.value === undefined) {
+          throw new InvariantError("decideChangeEffect: a set change states no value");
+        }
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: >-
+      nowhere. The file does not read the validity of the change.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: >-
+      the ternary `attributeKey.is_temporal ? "succession" : "correction"` in `effectOfNamedSet`. A falsy `is_temporal` is read as not temporal. The reading of the row itself is in catalog.js.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere. The file does not compare validity dates.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: >-
+      nowhere. The file decides one change's effect and does not see the list of changes.
+    evidence: >-
+      export function decideChangeEffect(
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: >-
+      nowhere. The file decides only that the effect is succession. The earlier attribute's validity end is not computed here.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: >-
+      nowhere. The refusal as a conflict is not in this file. Its `named === undefined` branch throws an `InvariantError` guard for the state the refusal must have excluded.
+    evidence: >-
+      if (named === undefined) {
+          throw new InvariantError(
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: >-
+      the effect decision only, in the `isCurrent(named)` branch of `effectOfNamedSet`, which yields succession for a temporal key. The start of today, the basis received and the earlier deadline's end are not computed here.
+    evidence: >-
+      return attributeKey.is_temporal ? "succession" : "correction";
+looked_past: >-
+  The three guard `InvariantError` throws state no refusal, and the file's helpers (`isLive`, `holdsValue`) are structure choices outside this judgment.

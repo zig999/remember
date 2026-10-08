@@ -1,0 +1,324 @@
+findings:
+  - file: src/__tests__/integration/curation/edit-entity.routes.spec.ts
+    where: >-
+      namedBy(), lines 124-130, used by the it.each over PATH_NODES (lines 206-219)
+    evidence: >-
+      `return answer.node_id ?? answer.error?.details?.node_id;`
+    cost: >-
+      The test fixes the wire key `details.node_id` as the place a refusal names the node. The contract says only that the refusal is "naming the node". A reader who looks in the specification for where the refused node's identity travels finds no key, and the test is then the only place that decides it. A later change of that key would fail here with no node to say which side was decided.
+    kind: unstated
+    correction: >-
+      Give the entity-editing contract the key under which BUSINESS_NODE_NOT_ACTIVE and RESOURCE_NOT_FOUND carry the node's identity in `details`. Alternatively, have the test assert only what the contract states.
+    node: contracts/knowledge-base/entity-editing
+read:
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The only failure injected is `failInsert: { table: "node_attribute", code: STATEMENT_TIMEOUT_CODE }`. The test asserts status and code, not that nothing of the edit was recorded.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: >-
+      describe "the language-model tool surfaces", lines 366-384
+    evidence: >-
+      `expect({ listed: names.length > 0, editing: names.filter((name) => EDIT_TOOL_NAME.test(name)) }).toEqual({ listed: true, editing: [] });`
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      describe "a request without a valid owner bearer token", lines 343-364, and REFUSED_CREDENTIALS
+    evidence: >-
+      `}).toEqual({ status: 401, connections: 0, store: world.untouched });`
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      No assertion in the file reads a log level or a logger.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      No test drives an unexpected failure. The only failure injected is the statement timeout.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      describe "an edit whose statement times out", lines 325-341
+    evidence: >-
+      `{ status: 503, code: UNAVAILABLE_CODE }` for `failInsert: { table: "node_attribute", code: STATEMENT_TIMEOUT_CODE }`
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file touches no compliance deletion and no curation-action listing.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      the describes "an accepted entity edit over REST" (lines 161-203) and "a shape refusal over REST" (lines 293-323)
+    evidence: >-
+      `expect(Object.keys(acceptedOf(answer)).sort()).toEqual(["action_id", "applied", "node_id"]);` and `{ status: 422, code: FORMAT_CODE }`
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      `identitiesOf` only reads `attribute_key`, `item_id` and `predecessor_id` from entries. The shape is declared elsewhere.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no assertion status.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      `const SET_PHASE = { attribute_key: "phase", kind: "set", value: PHASE_VALUE };` passes a value along and declares no shape.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      The literal `kind: "set"` in SET_PHASE only passes a value along.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file only names the key "phase" and declares no attribute-key shape.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      `onlyRow(world.store.curationAction)["reason"]` reads one field of a row declared elsewhere.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing filter.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      The file never writes or asserts a curation action kind.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      The file never writes or asserts a curation target kind.
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      describe "the edit effect enumeration", lines 278-291. It asserts the values of `EditEffectSchema`, which is declared in the dto file.
+    evidence: >-
+      `expect(values).toEqual(["addition", "correction", "first-value", "removal", "succession", "unchanged"]);`
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      `const FIRST_VALUE_EDIT = editOf([setChange("phase", PHASE_VALUE)]);` builds a payload from helpers declared in another file.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no assertion status.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file never declares or reads a node-attribute shape. The test fixtures hold the rows.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      `["a node in needs_review", NEEDS_REVIEW_NODE_ID]` is a label only. No status enumeration is declared.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no value type.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file asserts no kind of the recorded curation action.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      `"a node in needs_review"` is a test label. No status is asserted on the wire.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: >-
+      the it "writes every effect with an underscore for each hyphen of its enumeration value", lines 244-261
+    evidence: >-
+      `"first_value", "unchanged", "succession", "removal", "addition", "correction"`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      No test sends an attribute key the node type does not hold.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      No test sends a value outside the allowed values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      No test sends a value that does not parse. The one malformed field is a date: `valid_from: NOT_A_DATE`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file holds no currency check.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      "addition" appears only as an expected effect in the list asserted on lines 253-260. No fixture or condition for it is in this file.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      No test drives that conflict.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      No test sends a change that fails more than one check.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      No test drives that conflict.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      No test sends an empty list of changes.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      No test sends a request that fails more than one check.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      "correction" appears only as an expected effect string on line 259.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      No test states a validity end without a start.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      No test drives a live attribute that already has a validity end.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      the it "writes the effect of a first value as first_value", lines 190-202
+    evidence: >-
+      `expect(acceptedOf(answer).applied.map((entry) => entry.effect)).toEqual(["first_value"]);`
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      No test names a disputed attribute.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      No test names a superseded attribute.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: >-
+      the it.each over PATH_NODES, lines 206-219. It asserts only that the answer names the node whose identity the path carries, for the needs_review node as well. It does not assert the refusal's code or status.
+    evidence: >-
+      `["a node in needs_review", NEEDS_REVIEW_NODE_ID]` ... `expect(namedBy(answer.body)).toBe(pathNodeId);`
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the status or confidence of a recorded attribute.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the raw information, chunk or fragment.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the fragment's confidence.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the raw information's content.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the run that holds the note.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the raw information's source type or metadata.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      No test sends a null field.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      No assertion reads provenance.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      No test sends a reason outside 1 to 1000 code units.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      The reason is `REASON`, and the assertion compares the recorded reason to `REASON` unchanged. No whitespace-padded reason is sent.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: >-
+      the it "takes the reason of the recorded curation action from the reason field of the JSON body", lines 221-228. It asserts the reason only, not the kind, target or payload.
+    evidence: >-
+      `expect(onlyRow(world.store.curationAction)["reason"]).toBe(REASON);`
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      "removal" appears only as an expected effect string on line 257.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      No test sends a remove change without an item.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the run's model or prompt version.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      No assertion reads a recorded attribute's validity.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      No assertion reads a recorded start or its basis.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      No assertion reads a recorded validity end.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      No assertion reads a recorded start basis.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      "succession" appears only as an expected effect string on line 258.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      No assertion reads the superseded attribute's validity end.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      No assertion reads a supersession time.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      "unchanged" appears only as an expected effect string on line 255. No assertion reads what was recorded.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      No test sends a set change without a value or a remove change with one.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      No test states a validity on a key that is not temporal.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file holds no temporality of any key.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      No test sends a start at or after an end.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      No test sends an empty `changes` list.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      No test states a backdated validity start.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      No test names a superseded attribute.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      No assertion reads which attribute a removal marks deleted.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      No test edits a key that is not temporal and asserts its supersession.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      No test asserts a defaulted start or the closing of the earlier deadline.
+looked_past: >-
+  The 401 status the test expects for a refused credential is held by contracts/knowledge-base/access, a node outside this set that the specification root holds, so I reported nothing for it. The test helper imports and the `vi.mock` forwarding are build mechanics for another judgment.

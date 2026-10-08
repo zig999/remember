@@ -1,0 +1,330 @@
+findings:
+  - file: src/modules/curation/service/edit-entity.service.ts
+    where: >-
+      lazyNote(), line 86, together with the removal branch of recordChange(), lines 204-211. scope.noteOf is called only from writeNewAttribute(), line 178.
+    evidence: >-
+      `recorded ??= recordOperatorNote(client, input);` and, in the removal branch, `await recordRemoval(scope.client, {` with `attributeId: removedId,` and `editedAt: scope.editedAt,`. The only call of the note is `note: await scope.noteOf(),` inside writeNewAttribute.
+    cost: >-
+      The node says an accepted entity edit records one raw information, one raw chunk and one accepted information fragment whose text is the reason. This file records them only when a change writes a new attribute. An edit made only of remove changes, such as the scenario that empties one email, is accepted. It rejects the attribute and records its curation action, but it records no note. recordRemoval is handed only `attributeId` and `editedAt`, and recordEditAction only `nodeId`, `reason` and `applied`. Neither receives the note or `scope.noteOf`. The removal then has no raw information, chunk or fragment behind its reason. The decision log of entity-edit-removal says "the note for the same edit records that moment", which assumes the note exists for a removal. A reader who trusts the node will not find the case where the code skips it.
+    kind: contradicts
+    correction: >-
+      Make the note unconditional for an accepted edit. Either call scope.noteOf() once an edit is known to change something, before recordEditAction, or drop the laziness. Also state in the specification where the LLM run opens, if an edit that records no note is intended.
+    node: rules/knowledge-base/entity-edit-note
+read:
+  - node: constraints/entity-edit-is-atomic
+    held_at: >-
+      editEntityService(), lines 275-277, the whole write inside one transaction
+    evidence: >-
+      `return await withTransaction(deps.pool, (client) =>
+      editWithin(deps, client, nodeId, body)
+      );`
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      assertSomethingChanged() (no-changes refusal) and the catch of editEntityService() (uniqueness guard refusal). The other refusals and the answer shape are raised or built in other files.
+    evidence: >-
+      `const NO_CHANGES_CODE = "BUSINESS_ENTITY_EDIT_NO_CHANGES";` and `if (isPgUniqueViolation(err)) { throw new TemporalIncoherentError({ node_id: nodeId }); }`
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      The file only imports `import type { AppliedChange, AppliedEntry } from "./entity-edit-action.js";` and declares no shape of its own for it.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      `EditEffect` is imported from "../dto/edit-entity.dto.js". The file declares no enumeration.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      `EditEntityBody` is imported from "../dto/edit-entity.dto.js" and this file declares no shape for it.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      `applied: applied.map(appliedEntry),` only delegates the spelling to appliedEntry in entity-edit-action.js.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: >-
+      checkChange(), lines 130-139, the order of the calls
+    evidence: >-
+      `resolveAttributeKey(...)`, then `checkChangeAgainstCatalog(...)`, then `checkChangeValidity(attributeKey, change, scope.editedAt);`, then `await checkChangeAgainstHeldAttributes(scope.client, target, change);`
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: >-
+      assertSomethingChanged(), lines 228-235
+    evidence: >-
+      `if (applied.every((change) => change.effect === UNCHANGED_EFFECT)) { throw new BusinessError(NO_CHANGES_CODE,`
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: >-
+      editWithin(), lines 243-245, the active node loaded first and then the changes in the order given
+    evidence: >-
+      `const node = await loadActiveNodeForEdit(client, nodeId);` then `const applied = await applyChanges(scope, body.changes);` with `for (const change of changes) {`
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The effect is decided in `effect: decideChangeEffect(attributeKey, change, attributes),` in another file. This file writes the first value through `return recordNewAttribute(scope.client, input);` without deciding it.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: >-
+      lazyNote(), line 86, reached only from writeNewAttribute(). It records no note for an edit that writes no new attribute, which is the finding.
+    evidence: >-
+      `recorded ??= recordOperatorNote(client, input);`
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      `reason: body.reason,` and `openEditScope(client, deps.catalog, node, body.reason)` pass the reason through untouched. No trim appears in the file.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: >-
+      editWithin(), lines 247-251, the call that records the action and returns its id. The kind and payload are built in entity-edit-action.js.
+    evidence: >-
+      `const actionId = await recordEditAction(client, { nodeId: node.id, reason: body.reason, applied, });`
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      recordChange(), removal branch, lines 204-211
+    evidence: >-
+      `await recordRemoval(scope.client, { attributeId: removedId, editedAt: scope.editedAt, });` followed by `return { ...applied, item_id: null, predecessor_id: removedId };`
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      writeNewAttribute(), the succession branch, lines 181-184
+    evidence: >-
+      `if (checked.effect === "succession") { const predecessor = predecessorOf(change, checked); return recordSuccession(scope.client, { ...input, predecessor });`
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: >-
+      recordChange(), unchanged branch, lines 201-203. The condition that yields unchanged is in decideChangeEffect.
+    evidence: >-
+      `if (checked.effect === UNCHANGED_EFFECT) { return { ...applied, item_id: null, predecessor_id: null }; }`
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: >-
+      assertSomethingChanged(), inside the transaction, so nothing is recorded. An empty list passes `every` vacuously.
+    evidence: >-
+      `if (applied.every((change) => change.effect === UNCHANGED_EFFECT)) {`
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      This file only calls `await checkChangeAgainstHeldAttributes(scope.client, target, change);`. The conflict is decided in entity-edit-attributes.js.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The file is a service function with no MCP or tool registration.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The service takes `deps`, `nodeId` and `body` and does no authentication.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The only log statement is `deps.logger.info(` on success, with message `curation_edit_entity_ok`. The file logs no refusal.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      `throw err;` rethrows unexpected causes, and the fixed message is chosen elsewhere.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      The catch handles only `isPgUniqueViolation(err)` and rethrows the rest. The unavailable mapping is not in this file.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance deletion or audit listing.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      No enumeration is declared in this file.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      `AttributeChange` is only imported from "../dto/edit-entity.dto.js".
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      No kind enumeration is declared. The file only reads `change.kind` in an error message.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute key shape. `resolveAttributeKey` returns it from the catalog module.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      No shape is declared. recordEditAction is imported from "./entity-edit-action.js".
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no curation action listing.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      No kind enumeration is declared. `const EDIT_OPERATION = "edit_entity";` only labels the log line.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      No target kind enumeration is declared. `const ATTRIBUTE_ITEM_KIND = "attribute";` is an argument to a repository lookup.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      `LIVE_STATUSES` is imported from "./entity-edit-attributes.js" and used as `statuses: LIVE_STATUSES,`. It is not declared here.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No attribute shape is declared. `ItemLockedRow` is imported from the repository.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      No enumeration is declared. The active check is in loadActiveNodeForEdit.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      No enumeration is declared in this file.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The action kind is recorded inside recordEditAction (entity-edit-action.js). This file passes no kind.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file emits no node status or assertion flag.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      `checkChangeAgainstCatalog(scope.catalog, scope.nodeType, change);` delegates the check to attribute-change-catalog.js.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The check is delegated to `checkChangeAgainstCatalog`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The check is delegated to `checkChangeAgainstCatalog`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      No currentness test appears in the file.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      Addition is decided in `decideChangeEffect(...)`. The file writes it through `recordNewAttribute(scope.client, input)`.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeAgainstHeldAttributes(scope.client, target, change)`.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeAgainstHeldAttributes`.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      writeNewAttribute(), the correction branch, lines 185-188. Which changes are corrections is decided in decideChangeEffect.
+    evidence: >-
+      `if (checked.effect === "correction") { const predecessor = predecessorOf(change, checked); return recordCorrection(scope.client, { ...input, predecessor });`
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeValidity(attributeKey, change, scope.editedAt);`.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The effect is decided in `decideChangeEffect`. The file only dispatches on `checked.effect`.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeAgainstHeldAttributes`.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      The file loads live attributes with `statuses: LIVE_STATUSES,`. The refusal is in `checkChangeAgainstHeldAttributes`.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      `const node = await loadActiveNodeForEdit(client, nodeId);` delegates the check to entity-edit-node.js.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The state and confidence are set in recordNewAttribute, recordSuccession and recordCorrection. This file passes `note` and `editedAt` only.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The confidence is set in recordOperatorNote (entity-edit-note.js).
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      This file passes `{ nodeId: node.id, reason, editedAt }` to recordOperatorNote, and the content is built there.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The run is handled in recordOperatorNote. This file opens no LLM run.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      Source type and metadata are set in recordOperatorNote, not here.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The file tests `change.item_id === undefined` and `change.item_id ?? null`. A null-as-not-stated rule would be applied at the DTO.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance. The recorders do.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The file has no length check on `body.reason`.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      `namedItemOf` throws only `new InvariantError(` for a change with no item. The refusal is the DTO's.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file contains neither "operator" nor "operator-edit-v1". The run is opened elsewhere.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      Validity is written in the recorders. The file passes `change` and `editedAt`.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file only fixes the moment, with `const editedAt = new Date();`. The default start is applied in the recorders and `checkChangeValidity`.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      The validity end is written in the recorders. The file passes `change` through.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      The validity start and basis are written in the recorders.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      The closing of the predecessor is in recordSuccession. The file passes `{ ...input, predecessor }`.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The supersession time is written in the recorders. The file passes `editedAt: scope.editedAt`.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file has no check of value against kind.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeValidity(attributeKey, change, scope.editedAt);`.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file never reads an attribute key's temporality.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      Delegated to `checkChangeValidity`.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      The period closing is in recordSuccession. The file only calls `recordSuccession(scope.client, { ...input, predecessor })`.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: >-
+      recordChange(), removal branch, which rejects only the named attribute id
+    evidence: >-
+      `attributeId: removedId,` with `return { ...applied, item_id: null, predecessor_id: removedId };`
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The correction is recorded in recordCorrection. The file only dispatches to it.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The default start and the closing of the earlier deadline are in other files. The file fixes `editedAt` only.
+looked_past: >-
+  The no-changes BusinessError message "The edit changes no attribute of the node." is worded by the code alone and the contract names only the code, but it is wording and not a domain fact, so I did not report it.

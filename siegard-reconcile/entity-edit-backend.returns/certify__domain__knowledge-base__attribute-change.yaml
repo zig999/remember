@@ -1,0 +1,41 @@
+certified:
+  - node: domain/knowledge-base/attribute-change
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: "requires an attribute key and a kind, types each stated field strictly and leaves value, item, validity start and validity end optional"
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: "accepts exactly the change kinds set and remove"
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: "requires a change to state a value exactly when its kind is set"
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: "requires a remove change to name an attribute and asks no such thing of a set change"
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: "reads a null value, item, validity start or validity end exactly as the same field left out"
+    why: >-
+      The shape of the change is exercised as accept/refuse outcomes. The tests check that
+      attribute_key is a required string and that kind is required and limited to set and
+      remove. They check that value and item_id are strings. They check that valid_from and
+      valid_to are refused unless written YYYY-MM-DD. They check that value, item_id and the
+      validity fields may be left out. But the tests never read what a change carries. outcomeOf
+      only records accepted or refused. "set stating every field" is accepted, but nothing is
+      read back from what was parsed. nullableProjection compares two parses with each other,
+      not with what the change stated. So a schema that accepted a change and then dropped or
+      altered its value, its item_id (the current attribute it replaces or removes) or its
+      validity would still pass every test. The node says the change carries one field of the
+      entity form to the knowledge base, and that part is unexercised: no test in the offered
+      proof follows a change past parsing. The date typing is only exercised by format. Nothing
+      submits a well-formed impossible date such as 2024-13-45. Over-assertion, for a reader to
+      route: the proof asserts more than this node states. The node types item_id as a plain
+      string, but the test refuses "not-an-identifier". The node lists value and item_id as
+      optional with no condition, but the tests require value exactly when kind is set, require
+      item_id on remove, and refuse a value on remove. Those may be facts of another node. They
+      are not this node's. The reason, top-level body, refusal-message and issue-path tests in
+      the same file concern the edit body around the change, not this value object.
+    remainder: testable
+    remainder_why: >-
+      Input: a set change that states attribute_key, kind, value, item_id, valid_from and
+      valid_to. Expected result: the parsed change (and the edit applied from it) carries each
+      of those exactly as stated. Do the same for a remove change: it should carry its item_id
+      and its validity. Then one input of a YYYY-MM-DD string that is not a real date for
+      valid_from, expected to be refused.

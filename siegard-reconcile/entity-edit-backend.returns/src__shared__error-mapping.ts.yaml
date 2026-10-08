@@ -1,0 +1,401 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      codeToHttpStatus, the RESOURCE_ALREADY_EXISTS entry (line 55)
+    evidence: >-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      The code and its status exist only in this table. A reader who looks in the specification for what an
+      "already exists" refusal answers finds no node that names the code or its status. The table becomes the place
+      where that decision lives.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the code and its status a node (a contract refusal), or the entry would have to
+      go if no operation answers it.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      codeToHttpStatus, the BUSINESS_UNKNOWN_ATTRIBUTE_KEY entry (line 66)
+    evidence: >-
+      BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+    cost: >-
+      The entity-edit contract says this refusal is HTTP 422 over REST. This table, the only place a code is
+      turned into a status, says 404. Unless the edit route overrides the status, an edit that names a key the
+      catalog does not hold answers a status the contract does not give. The retrieval contract (not in this node
+      set) states 404 for the same code, so one code holds two statuses in the specification and one slot in the
+      code.
+    kind: contradicts
+    correction: >-
+      The code-to-status table cannot hold both statuses. Either the edit route sets 422 for this operation, or the
+      specification settles which operation owns the code's status.
+    node: contracts/knowledge-base/entity-editing
+  - file: src/shared/error-mapping.ts
+    where: >-
+      codeToHttpStatus, the BUSINESS_CHAT_INGEST_DISABLED entry (line 99)
+    evidence: >-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      A refusal code and its HTTP status that no node in the specification holds. A reader looking in the
+      specification for when chat ingestion is disabled, and what it answers, finds nothing. The decision lives only
+      in this table.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the code a node, probably in the chat conversations contract, or the entry
+      would have to go if nothing answers it.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      renderErrorEnvelope, the logLevel derivation (line 120), together with the codeToHttpStatus entries
+      BUSINESS_CHAT_DISABLED and BUSINESS_CHAT_INGEST_DISABLED (lines 94 and 99)
+    evidence: >-
+      const logLevel: "warn" | "error" = statusCode >= 500 ? "error" : "warn";
+      — applied to BUSINESS_CHAT_DISABLED: 503, and to BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      The constraint says a refusal for a business cause is never logged at error level, except a failure to build
+      the model provider at the start of a chat turn. Every BUSINESS_* code mapped to 5xx is logged at error. That
+      includes the chat-disabled refusals, which are plain business refusals and not provider-build failures. A
+      switched-off chat surface therefore raises error-level log noise that the owner decided it should not.
+    kind: contradicts
+    correction: >-
+      The log level would have to follow the cause of the refusal, not the status. Only the provider-build failure
+      at a chat turn's start may be error, and the other BUSINESS_ and VALIDATION_ codes stay at warn whatever
+      their status.
+    node: constraints/expected-refusals-not-logged-as-errors
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      codeToHttpStatus plus renderErrorEnvelope and toMcpToolResult, one mapping and one envelope shared by both transports
+    evidence: >-
+      export function toMcpToolResult(envelope: ErrorEnvelope): McpToolErrorResult
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      renderErrorEnvelope's logLevel derivation (line 120), which departs from the node for business codes mapped to 5xx (see the finding)
+    evidence: >-
+      const logLevel: "warn" | "error" = statusCode >= 500 ? "error" : "warn";
+  - node: constraints/failures-answer-one-envelope
+    held_at: >-
+      ErrorEnvelope and renderErrorEnvelope, where details is carried only when given
+    evidence: >-
+      details === undefined ? { code, message } : { code, message, details }
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      codeToHttpStatus (the ingestion codes) with the shared envelope and MCP rendering
+    evidence: >-
+      SYSTEM_LLM_PROVIDER_UNAVAILABLE: 502,
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      internalError(), a fixed message with no cause
+    evidence: >-
+      return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
+  - node: constraints/mcp-failure-is-tool-error
+    held_at: >-
+      toMcpToolResult
+    evidence: >-
+      content: [{ type: "text", text: JSON.stringify(envelope.error) }],
+      isError: true,
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      codeToHttpStatus (the retrieval codes) with the shared envelope and MCP rendering
+    evidence: >-
+      BUSINESS_RAW_INFORMATION_DELETED: 410,
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      isPgUnavailable with its SQLSTATE and errno sets, and serviceUnavailableError()
+    evidence: >-
+      return PG_UNAVAILABLE_SQLSTATES.has(code) || PG_UNAVAILABLE_ERRNOS.has(code);
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      codeToHttpStatus and the fixed messages of serviceUnavailableError() and internalError(). Every status and message agrees with the contract except BUSINESS_UNKNOWN_ATTRIBUTE_KEY (see the finding).
+    evidence: >-
+      BUSINESS_NODE_NOT_ACTIVE: 409,
+      BUSINESS_ENTITY_EDIT_CONFLICT: 409,
+      BUSINESS_ENTITY_EDIT_NO_CHANGES: 422,
+      BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      the file declares only error envelopes, a status table and MCP rendering, with no transaction: export function mapped(
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      the file declares no tool surface: export interface McpToolErrorResult
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      the file maps the AUTH_* codes to statuses (AUTH_TOKEN_EXPIRED: 401,) but authenticates no one
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      codeToHttpStatus carries VALIDATION_REQUIRED_FIELD, VALIDATION_OUT_OF_RANGE, VALIDATION_INVALID_FORMAT and RESOURCE_NOT_FOUND at the statuses the contract gives. The compliance-delete message "Unexpected internal error." is not in this file.
+    evidence: >-
+      VALIDATION_OUT_OF_RANGE: 422,
+      RESOURCE_NOT_FOUND: 404,
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      no shape of an applied change is declared in the file: export interface ErrorEnvelope
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      no enumeration of assertion statuses is declared: export interface MappedError
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      no shape of an attribute change is declared: export interface ErrorEnvelope
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      no enumeration of change kinds is declared: export interface MappedError
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      no shape of an attribute key is declared. The file only maps BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      no shape of a curation action is declared: export interface ErrorEnvelope
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      no shape of a filter is declared: export interface MappedError
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      no enumeration of action kinds is declared: export interface MappedError
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      no enumeration of target kinds is declared: export interface MappedError
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      no enumeration of edit effects is declared: export interface MappedError
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      no shape of an entity edit is declared: export interface ErrorEnvelope
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      no enumeration of live statuses is declared: export interface MappedError
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      no shape of a node attribute is declared: export interface ErrorEnvelope
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      no enumeration of node statuses is declared: export interface MappedError
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      no enumeration of value types is declared: export interface MappedError
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      the file does not spell or record an action kind: export function mapped(
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      the file writes no status or flag onto the wire: export function mapped(
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      the file writes no effect onto the wire: export function mapped(
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      the file checks no key against a node type. It only maps the refusal's status: BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      the file checks no allowed values. It only maps BUSINESS_INVALID_ATTRIBUTE_VALUE: 422,
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      the file parses no value. It only maps BUSINESS_INVALID_ATTRIBUTE_VALUE: 422,
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      the file derives no currency: export function isPgUniqueViolation(
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      the file records no attribute: export function mapped(
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      the file checks no attribute. It only maps BUSINESS_ENTITY_EDIT_CONFLICT: 409,
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      the file orders no checks: export function mapped(
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      the file checks no attribute. It only maps BUSINESS_ENTITY_EDIT_CONFLICT: 409,
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      the file counts no changes. It only maps BUSINESS_ENTITY_EDIT_NO_CHANGES: 422,
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      the file orders no checks: export function mapped(
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      the file records no correction: export function mapped(
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      the file checks no dates. It only maps BUSINESS_TEMPORAL_INCOHERENT: 422,
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      the file records no correction: export function mapped(
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      the file records no attribute: export function mapped(
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      the file checks no status. It only maps BUSINESS_ENTITY_EDIT_DISPUTED: 409,
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      the file checks no attribute. It only maps BUSINESS_ENTITY_EDIT_CONFLICT: 409,
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      the file checks no node. It only maps BUSINESS_NODE_NOT_ACTIVE: 409,
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      the file records no attribute: export function mapped(
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      the file records no note: export function mapped(
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      the file records no fragment: export function mapped(
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      the file records no raw information: export function mapped(
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      the file opens no run: export function mapped(
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      the file records no raw information: export function mapped(
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      the file reads no change field: export function mapped(
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      the file records no provenance: export function mapped(
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      the file checks no reason. It only maps VALIDATION_INVALID_FORMAT: 422,
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      the file records no reason: export function mapped(
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      the file records no action: export function mapped(
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      the file rejects no attribute: export function mapped(
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      the file checks no change. It only maps VALIDATION_INVALID_FORMAT: 422,
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      the file opens no run: export function mapped(
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      the file records no attribute: export function mapped(
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      the file defaults no date: export function mapped(
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      the file records no validity: export function mapped(
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      the file records no validity: export function mapped(
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      the file records no succession: export function mapped(
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      the file closes no period: export function mapped(
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      the file sets no supersession time: export function mapped(
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      the file reports no effect: export function mapped(
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      the file checks no change. It only maps VALIDATION_INVALID_FORMAT: 422,
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      the file checks no validity. It only maps BUSINESS_TEMPORAL_INCOHERENT: 422,
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      the file reads no temporality: export function mapped(
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      the file compares no dates. It only maps BUSINESS_TEMPORAL_INCOHERENT: 422,
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: >-
+      codeToHttpStatus carries the refusal the scenario names, reached through the contract. The emptiness check itself is not in this file.
+    evidence: >-
+      BUSINESS_ENTITY_EDIT_NO_CHANGES: 422,
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      the file records no supersession: export function mapped(
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: >-
+      codeToHttpStatus carries the conflict refusal's status. The check that raises it is not in this file.
+    evidence: >-
+      BUSINESS_ENTITY_EDIT_CONFLICT: 409,
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      the file rejects no attribute: export function mapped(
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      the file records no correction: export function mapped(
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      the file defaults no date: export function mapped(
+looked_past: >-
+  The status table holds one status per code, while the curation contract (BUSINESS_INVALID_TARGET_NODE at 422 and at 409) and the ingestion contract (HTTP 200 with `{ ok: false, error }` for propose-* refusals) state per-operation statuses for codes in it, and compliance-audit gives "Unexpected internal error." where internalError() says "Internal server error." — those belong to nodes outside this set and other routes' judgments.

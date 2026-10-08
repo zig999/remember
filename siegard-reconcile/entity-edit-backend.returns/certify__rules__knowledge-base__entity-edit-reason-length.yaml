@@ -1,0 +1,21 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-reason-length
+    state: covered
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: holds a reason to between 1 and 1000 UTF-16 code units once trimmed, refusing outside it with VALIDATION_INVALID_FORMAT
+    why: >-
+      Not a gap. The test checks every edge of the rule against EditEntityBodySchema
+      and asserts the whole table of results. An empty reason and a spaces-only reason
+      (zero after trimming) are refused, and one character is accepted. A thousand
+      characters with a space on each side are accepted, so the limit is counted after
+      trimming. A thousand and one are refused. Five hundred characters outside the
+      BMP (1000 UTF-16 code units) are accepted, and five hundred and one (1002) are
+      refused. Nine hundred and ninety-nine characters plus one outside the BMP (1000
+      code points, 1001 code units) are refused, so the length must be counted in
+      UTF-16 code units rather than code points or bytes. The test asserts more than
+      the node states, which a reader may want to look at. Every refusal is pinned to
+      the error code VALIDATION_INVALID_FORMAT through mapZodError, and this node
+      names no refusal code. So the test would also fail if that code changed while
+      the length rule still held. The test also checks the rule only at the body
+      schema, not through a route or service entry point.

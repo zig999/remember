@@ -1,0 +1,320 @@
+findings:
+  - file: src/__tests__/integration/curation/edit-entity-contract.routes.spec.ts
+    where: >-
+      CONTRACT_ROWS, the `details` objects the expected refusals pin, lines 285, 293-296, 303-306, 313-316, 323-327, 361-364, 393, 403-406 and 425-428.
+    evidence: |-
+      expected: refusedWith(404, NOT_FOUND_CODE, { node_id: ABSENT_NODE_ID }),
+      expected: refusedWith(409, NOT_ACTIVE_CODE, { node_id: NEEDS_REVIEW_NODE_ID, status: "needs_review" }),
+      expected: refusedWith(422, UNKNOWN_KEY_CODE, { attribute_key: UNCATALOGUED_KEY, node_type: "Project" }),
+      expected: refusedWith(422, INVALID_VALUE_CODE, { value_type: "date", value: "not-a-date" }),
+      allowed_values: expect.arrayContaining([PHASE_VALUE, OTHER_PHASE_VALUE]),
+    cost: >-
+      The test fixes the wire field names of each refusal's `details`. Those names are `node_id`, `status`, `attribute_key`, `node_type`, `value_type`, `value`, `allowed_values` and `item_id`. The contract says only that the refusal "names" the node, the key and the node type, and so on, and it gives no field name. So a client of the edit route would look in the contract for the shape of `details`, find none, and have to read this test to learn it. A change of a name would be decided here and never reach the contract.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the field names of each entity-edit refusal's `details` a home in contracts/knowledge-base/entity-editing. Alternatively, the test would assert only the code and the HTTP status, which the contract does state.
+    node: contracts/knowledge-base/entity-editing
+read:
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The file asserts only answers of the edit route, for example `describe("the answers the entity-editing contract states", ...)`. No assertion covers the edit taking effect as one transaction.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      `sendEdit(site, { nodeId: scenario.node ?? NODE_ID, payload: scenario.body })` only reaches the REST route. No tool surface of the language model is exercised.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      `sendEdit(site, { nodeId: ..., payload: scenario.body })` states no bearer token and no authentication row.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      the final describe, lines 596-608, over REFUSED_BY_THE_CALLER (the 4xx rows of CONTRACT_ROWS)
+    evidence: >-
+      `expect({ status: answer.status, errorLogs: errorLogsOf(site) }).toEqual({ status: scenario.expected.status, errorLogs: [] });`
+  - node: constraints/internal-failure-withholds-cause
+    held_at: the last row of CONTRACT_ROWS, lines 469-478
+    evidence: >-
+      `expected: refusedAs(500, { code: INTERNAL_CODE, message: INTERNAL_MESSAGE })`, for `failInsert: { table: "node_attribute", code: UNEXPECTED_STORE_CODE }`
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: the two 503 rows of CONTRACT_ROWS, lines 445-468
+    evidence: >-
+      `expected: refusedAs(503, { code: UNAVAILABLE_CODE, message: UNAVAILABLE_MESSAGE })` for `unreachable: true` and for `code: STATEMENT_TIMEOUT_CODE`
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file's routes are `sendEdit(...)` only. No compliance-delete route or listing is exercised.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: CONTRACT_ROWS, lines 184-479
+    evidence: >-
+      `status: 200, body: { node_id: NODE_ID, action_id: expect.any(String), applied: [...] }` and `const FORMAT_REFUSAL = refusedAs(422, { code: FORMAT_CODE, message: FORMAT_MESSAGE, details: { issues: ISSUE_SHAPE } });`. The 404, 409, 422, 503 and 500 rows carry the codes and statuses the contract states.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      `function appliedAs(attributeKey: string, effect: string, itemId: unknown, predecessorId: unknown): object` builds an expectation. It declares no shape of the element.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      `status: "disputed"` appears only as a world value. No enumeration is declared.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      `const SET_PHASE = { attribute_key: "phase", kind: "set", value: PHASE_VALUE };` is a literal. No type or schema is declared.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      `kind: "set"` and `kind: "remove"` appear as literals only. No enumeration is declared.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      `const UNCATALOGUED_KEY = "nonexistent";`. No attribute-key shape is declared.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      `action_id: expect.any(String)` only passes the identity along. No shape is declared.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      No curation action listing is exercised in the file.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      No kind of curation action is named in the file.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      No target kind is named in the file.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      `appliedAs("phase", "first_value", RECORDED, null)` uses the effects as string literals. No enumeration is declared.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      `function rawEdit(...changes: object[]): object { return { reason: REASON, changes }; }` builds a request body. No shape is declared.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      No enumeration of live statuses is declared in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      `heldAttribute({ id: NICKNAME_HELD_ID, ..., superseded_at: SUPERSEDED_AT })` is a world helper imported from another file. No shape is declared here.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      `status: "merged"` and `status: "needs_review"` appear as literals. No enumeration is declared.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      `value_type: "date"` appears as a literal in an expected `details`. No enumeration is declared.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      No curation action kind is recorded or filtered in the file.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: the NOT_ACTIVE row of CONTRACT_ROWS, lines 288-298
+    evidence: >-
+      `status: "needs_review"`. This covers the node status only. No assertion flag is asserted.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: the accepted row of CONTRACT_ROWS, lines 186-204
+    evidence: >-
+      `appliedAs("phase", "first_value", RECORDED, null)`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: the unknown-key row, lines 299-308
+    evidence: >-
+      `body: editOf([setChange(UNCATALOGUED_KEY, "x")]), expected: refusedWith(422, UNKNOWN_KEY_CODE, ...)`
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: the allowed-values row, lines 319-329
+    evidence: >-
+      `body: editOf([setChange("phase", OUTSIDE_THE_DOMAIN)]), expected: refusedWith(422, INVALID_VALUE_CODE, {...})`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: the value-type row, lines 309-318
+    evidence: >-
+      `body: editOf([setChange("deadline", "not-a-date")]), expected: refusedWith(422, INVALID_VALUE_CODE, { value_type: "date", value: "not-a-date" })`
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion of when an attribute is current is stated in the file.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: the accepted row of CONTRACT_ROWS, line 199
+    evidence: >-
+      `appliedAs("stakeholder", "addition", RECORDED, null)`
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: the second-current-value row, lines 389-395
+    evidence: >-
+      `body: editOf([setChange("email", ANOTHER_EMAIL)]), expected: refusedWith(409, CONFLICT_CODE, { attribute_key: "email" })`
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: the first row of PRECEDENCE_ROWS, lines 482-488
+    evidence: >-
+      `body: rawEdit({ ...SET_UNCATALOGUED, valid_from: NOT_A_DATE }), expected: FORMAT_REFUSAL`. The order of the other checks inside one change is not asserted.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: the supersession-time row, lines 367-388
+    evidence: >-
+      `superseded_at: SUPERSEDED_AT` in the world, then `expected: refusedWith(409, CONFLICT_CODE, { attribute_key: "nickname", item_id: NICKNAME_HELD_ID })`
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: the no-changes row, lines 431-434
+    evidence: >-
+      `{ body: editOf([]), expected: refusedWith(422, NO_CHANGES_CODE) }`
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: PRECEDENCE_ROWS, lines 481-521, and the describe at lines 582-594
+    evidence: >-
+      `"a reason of 1001 characters and a node whose status is merged"` with `expected: FORMAT_REFUSAL`, and `"a first change naming a key the catalog does not hold and a second change whose kind is neither set nor remove"`
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: the accepted row of CONTRACT_ROWS, line 200
+    evidence: >-
+      `appliedAs("nickname", "correction", RECORDED, NICKNAME_HELD_ID)`
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: the row at lines 346-354
+    evidence: >-
+      `setChange("deadline", NEW_DEADLINE, { valid_to: "2020-01-01" })`, `expected: refusedWith(422, INCOHERENT_CODE)`
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      No row names a live attribute that has a validity end and no supersession time.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: the accepted row of CONTRACT_ROWS, line 195
+    evidence: >-
+      `appliedAs("phase", "first_value", RECORDED, null)`
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: the disputed row, lines 409-430
+    evidence: >-
+      `status: "disputed"` in the world, then `expected: refusedWith(409, DISPUTED_CODE, { attribute_key: "nickname", item_id: NICKNAME_HELD_ID })`
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: the not-live row, lines 355-366
+    evidence: >-
+      `setChange("deadline", NEW_DEADLINE, { item_id: DEADLINE_SUPERSEDED_ID })`, `expected: refusedWith(409, CONFLICT_CODE, {...})`
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: the not-active row, lines 288-298
+    evidence: >-
+      `node: NEEDS_REVIEW_NODE_ID, ... expected: refusedWith(409, NOT_ACTIVE_CODE, {...})`
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The accepted row asserts only the answer, `action_id: expect.any(String)`. The state and confidence of the recorded attributes are not asserted.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      No raw information, chunk or fragment is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      No fragment confidence is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      No raw information content is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      No source type or metadata is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The only null sent is `{ reason: null, changes: [SET_PHASE] }`, which is a reason and not a change field.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: the row at lines 206-212
+    evidence: >-
+      `body: { reason: REASON_OF_1001, changes: [SET_PHASE] }, expected: FORMAT_REFUSAL`
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      No recorded reason is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      Only `action_id: expect.any(String)` is asserted. The recorded action's kind, target and payload are not.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: the accepted row of CONTRACT_ROWS, line 201
+    evidence: >-
+      `appliedAs("email", "removal", null, EMAIL_HELD_ID)`. Only the reported effect is asserted. The deleted status and the supersession time are not.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: the row at lines 232-238
+    evidence: >-
+      `body: rawEdit({ attribute_key: "email", kind: "remove" }), expected: FORMAT_REFUSAL`
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      No model or prompt version of a run is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      No recorded attribute validity is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The succession row asserts `appliedAs("deadline", "succession", RECORDED, DEADLINE_HELD_ID)` and no validity start or basis.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      No recorded validity end is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      No recorded validity start or basis is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: the accepted row of CONTRACT_ROWS, line 197
+    evidence: >-
+      `appliedAs("deadline", "succession", RECORDED, DEADLINE_HELD_ID)`
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      No validity end of a superseded attribute is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      No supersession time of a superseded attribute is asserted in the file.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: the accepted row of CONTRACT_ROWS, line 196
+    evidence: >-
+      `appliedAs("stakeholder", "unchanged", null, null)`. The file does not assert that nothing is recorded.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: the rows at lines 213-231
+    evidence: >-
+      `rawEdit({ attribute_key: "phase", kind: "set" })` and `rawEdit({ attribute_key: "email", kind: "remove", item_id: EMAIL_HELD_ID, value: "x" })`, both with `expected: FORMAT_REFUSAL`
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: the row at lines 330-338
+    evidence: >-
+      `setChange("phase", PHASE_VALUE, { valid_from: "2026-09-01" })`, `expected: refusedWith(422, INCOHERENT_CODE)`
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      No attribute key without recorded temporality is exercised in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: the row at lines 339-345
+    evidence: >-
+      `const INCOHERENT_VALIDITY = { valid_from: "2026-09-01", valid_to: "2026-08-01" };`, `expected: refusedWith(422, INCOHERENT_CODE)`
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: the no-changes row, lines 431-434
+    evidence: >-
+      `{ body: editOf([]), expected: refusedWith(422, NO_CHANGES_CODE) }`. The file does not assert that nothing is recorded.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      No row states a validity start before the earlier start, and none asserts the earlier status's validity end.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: the not-live row, lines 355-366
+    evidence: >-
+      `setChange("deadline", NEW_DEADLINE, { item_id: DEADLINE_SUPERSEDED_ID })`, `expected: refusedWith(409, CONFLICT_CODE, { attribute_key: "deadline", item_id: DEADLINE_SUPERSEDED_ID })`
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      The accepted row asserts only `appliedAs("email", "removal", null, EMAIL_HELD_ID)`. It does not assert that the other email stays active.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The accepted row asserts only `appliedAs("nickname", "correction", RECORDED, NICKNAME_HELD_ID)`. The earlier attribute's end and the new attribute's supersession link are not asserted.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The succession row asserts no validity start, basis or end, and the file never fixes today.
+looked_past: >-
+  The row "a second current value of a key that allows one" uses the key `email`, while the scenario emptying-one-email-rejects-only-that-email has a person holding two active emails, so whether the test world declares email as single-current is settled in another file (edit-entity-world), which is outside the set.

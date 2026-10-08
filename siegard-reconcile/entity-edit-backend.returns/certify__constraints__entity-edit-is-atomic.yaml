@@ -1,0 +1,41 @@
+certified:
+  - node: constraints/entity-edit-is-atomic
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity-refusals.spec.ts
+        name: leaves no raw information, chunk, fragment, run, attribute, provenance or action, and restores every superseded attribute
+      - file: src/__tests__/unit/curation/edit-entity-refusals.spec.ts
+        name: leaves no attribute, raw information, LLM run or curation action of the earlier change
+      - file: src/__tests__/unit/curation/edit-entity-refusals.spec.ts
+        name: is refused as a conflict and records nothing of the edit
+      - file: src/__tests__/unit/curation/edit-entity-refusals.spec.ts
+        name: is answered as a temporal incoherence
+    why: >-
+      The "not at all" half is tested at one failure point only. One test makes the curation
+      action insert fail during a mixed edit and asserts the whole store equals its snapshot from
+      before the edit. Two other tests cover edits refused for an unknown key or a conflict, and
+      both also assert the store is untouched. Three parts of the fact are not exercised.
+      (1) The "together" half. No test reads the store after an accepted edit. The one accepted
+      case ("is refused exactly when no change has an effect other than unchanged...") asserts
+      only the outcome code. Nothing shows that the raw information, raw chunk, information
+      fragment, LLM run, new and superseded attributes, provenance and curation action all take
+      effect when the edit succeeds.
+      (2) A failure at any other write. "is answered as a temporal incoherence" makes the
+      node_attribute insert fail but asserts only the code, not the store. So nothing shows that
+      the raw information, chunk, fragment and run written before that point are withdrawn.
+      (3) The order of the writes. The single curation_action failure catches only records
+      written before it. Two things claim it is the last write: the test's describe text and the
+      edit-entity-world fixture (mixedEdit, world.untouched). The test asserts neither. The pack
+      does not offer the fixture as proof, and this audit did not open it. A write made after the
+      curation action, outside the transaction, would therefore pass this test. So would a mixed
+      edit that never produces one of the named record kinds.
+    remainder: testable
+    remainder_why: >-
+      Two kinds of assertion would close it. First: one accepted mixed edit (a set on a held
+      attribute, a first value, and a supersession), checked against a store that then holds a
+      raw information, a raw chunk, an information fragment, an LLM run, the new attributes, the
+      superseded attributes marked superseded, provenance for each new attribute, and a curation
+      action. Second: the same mixed edit with the failure injected in turn at each write
+      (raw_information, raw_chunk, information_fragment, llm_run, the node_attribute insert, the
+      supersession update, provenance, curation_action), each checked against a store equal to
+      its snapshot from before the edit.

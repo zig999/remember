@@ -1,0 +1,308 @@
+read:
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      The two refusals this file raises: the BusinessError thrown in resolveAttributeKey (BUSINESS_UNKNOWN_ATTRIBUTE_KEY) and those built in assertValueReadsAsType and assertValueAllowed (BUSINESS_INVALID_ATTRIBUTE_VALUE). The rest of the contract is held elsewhere.
+    evidence: >-
+      const UNKNOWN_ATTRIBUTE_KEY_CODE = "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"; const INVALID_ATTRIBUTE_VALUE_CODE = "BUSINESS_INVALID_ATTRIBUTE_VALUE"; { attribute_key: attributeKeyName, node_type: nodeType.name }; { value_type: attributeKey.value_type, value }; { attribute_key: attributeKey.key, value, allowed_values: allowedValues }
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file only imports the shape (`AttributeKeyRow` from "../../ingestion/catalog/catalog.js") and reads `attributeKey.value_type` and `attributeKey.key`. It declares no shape.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file only passes `value_type: attributeKey.value_type` along and declares no enumeration of value types.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      resolveAttributeKey, the lookup and the throw when it finds nothing.
+    evidence: >-
+      const attributeKey = catalog.attributeKeyByNodeTypeAndKey.get(attributeKeyCacheKey(nodeType.id, attributeKeyName)); if (attributeKey === undefined) { throw new BusinessError(UNKNOWN_ATTRIBUTE_KEY_CODE,
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueAllowed. It looks up the key's domain, returns when there is none, and refuses when assertValueInDomain fails. The allowed values themselves are held by the catalog and by assertValueInDomain, which are in other files.
+    evidence: >-
+      const domain = domainOf(catalog, attributeKey.id); if (domain === null) { return; } refuseOnValidationFailure(() => assertValueInDomain(value, domain),
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      assertValueReadsAsType. It calls parseAttributeValue and refuses when that fails. The date, number and bool reading expressions are not in this file.
+    evidence: >-
+      () => parseAttributeValue({ value, value_type: attributeKey.value_type }),
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The file opens no transaction. It holds only the pure checks resolveAttributeKey and checkChangeAgainstCatalog.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The file exposes no tool surface; its exports are `resolveAttributeKey` and `checkChangeAgainstCatalog`.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file contains no authentication or request handling.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file contains no logging; it throws BusinessError and does not log.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      The file only attaches the cause to an unexpected failure (`throw new Error("An attribute value check failed unexpectedly.", { cause: err })`). Which message the caller answers is not decided here.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      The file makes no store access.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file mentions no compliance deletion and no curation action listing.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no applied-change shape.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file names no assertion status.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file imports the shape (`import type { AttributeChange } from "../dto/edit-entity.dto.js"`) and reads its `attribute_key`, `kind` and `value`. It declares none.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      The file compares against the literal `change.kind !== "set"` and declares no enumeration.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing filter.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      The file names no curation action kind.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      The file names no curation target kind.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      The file names no edit effect.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file declares no entity edit shape; it checks one change at a time.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file names no assertion status.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file reads no node attribute.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file names no node status.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file writes no curation action kind.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file writes no node status and no assertion flag.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file writes no edit effect.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file reads no validity end and no supersession time.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file records nothing and chooses no effect.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      The file reads no node attribute and checks no allows-multiple flag.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: >-
+      checkChangeAgainstCatalog, which covers the key, value-type and allowed-values part of the order. The well-formed check before it and the validity and attribute checks after it are outside this file.
+    evidence: >-
+      const attributeKey = resolveAttributeKey(catalog, nodeType, change.attribute_key); ... assertValueReadsAsType(change.value, attributeKey); assertValueAllowed(catalog, change.value, attributeKey);
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file reads no attribute's supersession time.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      The file counts no changes and no effects.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      The file checks one change only, with no request, node or change-by-change order.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file chooses no effect and reads no `is_temporal`.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      The file reads neither `valid_from` nor `valid_to`.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The file chooses no effect.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file chooses no effect.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file reads no attribute status.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      The file never reads the change's `item_id`.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file reads no node status.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The file writes no attribute.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information, chunk or fragment.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The file records no fragment.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The file tests `change.value === undefined` only. Reading a null as not stated is not done here.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The file reads no reason.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      The file reads no reason.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file only lets a non-set change past the value checks (`if (change.kind !== "set" || change.value === undefined) { return; }`). It rejects no attribute.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      The file does not test that a remove change carries an `item_id`.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file names no model and no prompt version.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file writes no attribute.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file reads no date.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      The file writes no attribute.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      The file writes no attribute.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file chooses no effect.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      The file writes no validity end.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file writes no supersession time.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file compares no value with any attribute's own value.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file tolerates a mismatch and does not refuse it: `if (change.kind !== "set" || change.value === undefined) { return; }`.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file reads no `valid_from`, no `valid_to` and no `is_temporal`.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file reads no temporality.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file compares no dates.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      The file handles one change and never an empty list.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      The file reads no validity.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      The file reads no attribute of the node.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      The file rejects no attribute.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The file chooses no effect.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The file reads no date.
+looked_past: >-
+  The file carries no comments. The `refuseOnValidationFailure` wrapper, the ALLOWED_VALUES_SEPARATOR of ", " in the refusal message, and the way the unexpected-failure Error carries its cause are implementation choices that state no domain fact, and a code review would judge them.

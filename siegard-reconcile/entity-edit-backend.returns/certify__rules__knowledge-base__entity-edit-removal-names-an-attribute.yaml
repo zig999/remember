@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    state: covered
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity.dto.spec.ts
+        name: requires a remove change to name an attribute and asks no such thing of a set change
+    why: >-
+      This test reads "name an attribute" as identifying the attribute being removed (the change's
+      item_id), not as stating an attribute key. That fits the domain vocabulary: an attribute is a
+      NodeAttribute value and the key is a separate AttributeKey. It also fits the other test,
+      "requires an attribute key and a kind...", which already requires an attribute key on every
+      change. Under that reading, the test fails if the fact stops holding. It sends a remove that
+      names no attribute and a remove whose item is null, and expects both to be refused with
+      VALIDATION_INVALID_FORMAT. It sends a remove that names an attribute and expects it to be
+      accepted. If the fact is read instead as "a remove must state an attribute key", the proof
+      falls short: the only body without an attribute key ("no attribute key", in the test
+      "requires an attribute key and a kind, types each stated field strictly and leaves value,
+      item, validity start and validity end optional") is a set change, so a remove with no
+      attribute key is never sent. The test also asserts something the node does not say: it
+      expects a set that names no attribute to be accepted. The node is silent on set changes. That
+      expectation belongs to whichever node makes the item optional for a set change, not to this
+      one. It holds today and would break if that other fact changed, even though this node's fact
+      would still hold. The test "reads a null value, item, validity start or validity end exactly
+      as the same field left out" builds a remove without an item, but it only compares the null
+      case with the omitted case. It would still pass if a remove without an item were accepted, so
+      it is not part of this proof.
