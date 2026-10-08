@@ -483,6 +483,7 @@ export interface NewAttributeArgs {
   readonly status: AssertionStatus;
   readonly confidence: number;
   readonly createdByRunId: string;
+  readonly supersedesAttributeId: string | null;
 }
 
 export async function insertNewAttribute(
@@ -493,11 +494,11 @@ export async function insertNewAttribute(
     `INSERT INTO node_attribute
        (node_id, attribute_key_id, value_type, value,
         valid_from, valid_to, status, confidence,
-        valid_from_source, created_by_run_id)
+        valid_from_source, created_by_run_id, supersedes_attribute_id)
      VALUES ($1, $2, $3::attribute_value_type, $4,
              $5::date, $6::date,
              $7::assertion_status, $8,
-             $9::valid_from_source, $10)
+             $9::valid_from_source, $10, $11)
      RETURNING id`,
     [
       args.nodeId,
@@ -510,6 +511,7 @@ export async function insertNewAttribute(
       args.confidence,
       args.validFromSource,
       args.createdByRunId,
+      args.supersedesAttributeId,
     ]
   );
   const row = res.rows[0];
@@ -517,6 +519,29 @@ export async function insertNewAttribute(
     throw new InvariantError("insertNewAttribute returned no row");
   }
   return row.id;
+}
+
+export interface AttributeSupersessionArgs {
+  readonly attributeId: string;
+  readonly validTo: string | null;
+  readonly supersededAt: Date | null;
+}
+
+export async function supersedeAttributeAtEdit(
+  client: PoolClient,
+  args: AttributeSupersessionArgs
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE node_attribute
+        SET status = 'superseded',
+            valid_to = COALESCE($2::date, valid_to),
+            superseded_at = $3::timestamptz
+      WHERE id = $1
+        AND status IN ('active', 'uncertain', 'disputed')
+      RETURNING id`,
+    [args.attributeId, args.validTo, args.supersededAt]
+  );
+  return res.rowCount ?? 0;
 }
 
 export async function copyProvenance(

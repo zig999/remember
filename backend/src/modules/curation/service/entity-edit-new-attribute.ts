@@ -23,9 +23,10 @@ export interface NewAttributeInput {
   readonly change: AttributeChange;
   readonly note: OperatorNoteRecord;
   readonly editedAt: Date;
+  readonly supersedes?: string;
 }
 
-interface RecordedValidity {
+export interface RecordedValidity {
   readonly validFrom: string | null;
   readonly validTo: string | null;
   readonly validFromSource: ValidFromSource | null;
@@ -37,7 +38,7 @@ const NO_VALIDITY: RecordedValidity = {
   validFromSource: null,
 };
 
-function validityOf(
+export function validityOf(
   attributeKey: AttributeKeyRow,
   change: AttributeChange,
   editedAt: Date
@@ -77,6 +78,7 @@ export async function recordNewAttribute(
     status: ENTITY_EDIT_ATTRIBUTE_STATUS,
     confidence: ENTITY_EDIT_ATTRIBUTE_CONFIDENCE,
     createdByRunId: note.llmRunId,
+    supersedesAttributeId: input.supersedes ?? null,
   });
   await appendProvenanceFragment(client, "attribute", attributeId, note.fragmentId);
   return attributeId;
