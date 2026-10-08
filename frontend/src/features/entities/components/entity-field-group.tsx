@@ -7,11 +7,13 @@ import { Label } from "@/shared/components/ui/label";
 import type { AttributeKey } from "../types";
 import { ClosedChoice } from "./entity-closed-choice";
 import type { EntityFormValues, GroupField } from "./entity-form-schema";
+import { ValidityFields } from "./entity-validity-fields";
 
 export interface EntityFieldGroupProps {
   readonly attributeKey: AttributeKey;
   readonly disputed: boolean;
   readonly fields: readonly GroupField[];
+  readonly changed: readonly boolean[];
   readonly control: Control<EntityFormValues>;
   readonly onAdd: () => void;
   readonly onRemove: (index: number) => void;
@@ -21,6 +23,7 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
   attributeKey,
   disputed,
   fields,
+  changed,
   control,
   onAdd,
   onRemove,
@@ -59,59 +62,72 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
       )}
       {fields.map(({ index, id }, position) => (
         <div key={id} className="flex items-start gap-xs">
-          <Controller
-            control={control}
-            name={`fields.${index}.value`}
-            render={({ field, fieldState }) => {
-              const message = fieldState.error?.message;
-              const errorId = `entity-error-${id}`;
-              const described = [
-                hasHelp ? helpId : null,
-                message === undefined ? null : errorId,
-              ]
-                .filter((reference) => reference !== null)
-                .join(" ");
-              return (
-                <div className="flex min-w-0 flex-1 flex-col gap-xs">
-                  {allowedValues === null ? (
-                    <Input
-                      {...field}
-                      id={`entity-field-${id}`}
-                      type="text"
-                      aria-label={
-                        numbered ? `${key} (valor ${position + 1})` : undefined
-                      }
-                      aria-invalid={message === undefined ? undefined : true}
-                      aria-describedby={
-                        described === "" ? undefined : described
-                      }
-                      data-testid={`entity-field-${key}`}
-                    />
-                  ) : (
-                    <ClosedChoice
-                      name={numbered ? `${key} (valor ${position + 1})` : key}
-                      fieldId={`entity-field-${id}`}
-                      testId={`entity-field-${key}`}
-                      value={field.value}
-                      allowedValues={allowedValues}
-                      describedBy={described}
-                      onChange={field.onChange}
-                    />
-                  )}
-                  {message === undefined ? null : (
-                    <p
-                      id={errorId}
-                      role="alert"
-                      data-testid={`entity-error-${key}`}
-                      className="text-xs text-destructive"
-                    >
-                      {message}
-                    </p>
-                  )}
-                </div>
-              );
-            }}
-          />
+          <div className="flex min-w-0 flex-1 flex-col gap-xs">
+            <Controller
+              control={control}
+              name={`fields.${index}.value`}
+              render={({ field, fieldState }) => {
+                const message = fieldState.error?.message;
+                const errorId = `entity-error-${id}`;
+                const described = [
+                  hasHelp ? helpId : null,
+                  message === undefined ? null : errorId,
+                ]
+                  .filter((reference) => reference !== null)
+                  .join(" ");
+                return (
+                  <div className="flex min-w-0 flex-col gap-xs">
+                    {allowedValues === null ? (
+                      <Input
+                        {...field}
+                        id={`entity-field-${id}`}
+                        type="text"
+                        aria-label={
+                          numbered
+                            ? `${key} (valor ${position + 1})`
+                            : undefined
+                        }
+                        aria-invalid={message === undefined ? undefined : true}
+                        aria-describedby={
+                          described === "" ? undefined : described
+                        }
+                        data-testid={`entity-field-${key}`}
+                      />
+                    ) : (
+                      <ClosedChoice
+                        name={numbered ? `${key} (valor ${position + 1})` : key}
+                        fieldId={`entity-field-${id}`}
+                        testId={`entity-field-${key}`}
+                        value={field.value}
+                        allowedValues={allowedValues}
+                        describedBy={described}
+                        onChange={field.onChange}
+                      />
+                    )}
+                    {message === undefined ? null : (
+                      <p
+                        id={errorId}
+                        role="alert"
+                        data-testid={`entity-error-${key}`}
+                        className="text-xs text-destructive"
+                      >
+                        {message}
+                      </p>
+                    )}
+                  </div>
+                );
+              }}
+            />
+            {attributeKey.isTemporal && changed[index] === true ? (
+              <ValidityFields
+                attributeKey={key}
+                name={numbered ? `${key} (valor ${position + 1})` : key}
+                id={id}
+                index={index}
+                control={control}
+              />
+            ) : null}
+          </div>
           {listed ? (
             <Button
               type="button"

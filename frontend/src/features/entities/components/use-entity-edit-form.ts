@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import type { AttributeKey, NodeRead } from "../types";
+import { changedFlags } from "./entity-field-changed";
 import {
   buildEntityFormSchema,
   buildFormValues,
@@ -11,6 +12,7 @@ import { zodIssueResolver } from "./zod-issue-resolver";
 export interface EntityEditForm {
   readonly form: UseFormReturn<EntityFormValues>;
   readonly valueTypesAccepted: boolean;
+  readonly changed: readonly boolean[];
 }
 
 export function useEntityEditForm(
@@ -43,5 +45,10 @@ export function useEntityEditForm(
     [schema, held],
   );
 
-  return { form, valueTypesAccepted };
+  const changed = useMemo(
+    () => changedFlags(held, attributeKeys, node.attributes),
+    [held, attributeKeys, node.attributes],
+  );
+
+  return { form, valueTypesAccepted, changed };
 }

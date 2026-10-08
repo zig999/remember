@@ -18,8 +18,22 @@ describe("entity form multi-valued field state", () => {
       (left, right) => (left.itemId ?? "").localeCompare(right.itemId ?? ""),
     );
     expect(entries).toEqual([
-      { attributeKey: "tag", itemId: "at-1", startedWith: "Alpha", value: "Alpha" },
-      { attributeKey: "tag", itemId: "at-2", startedWith: "Beta", value: "Beta" },
+      {
+        attributeKey: "tag",
+        itemId: "at-1",
+        startedWith: "Alpha",
+        value: "Alpha",
+        validFrom: "",
+        validTo: "",
+      },
+      {
+        attributeKey: "tag",
+        itemId: "at-2",
+        startedWith: "Beta",
+        value: "Beta",
+        validFrom: "",
+        validTo: "",
+      },
     ]);
   });
 
@@ -29,6 +43,8 @@ describe("entity form multi-valued field state", () => {
       itemId: null,
       startedWith: "",
       value: "",
+      validFrom: "",
+      validTo: "",
     });
   });
 });

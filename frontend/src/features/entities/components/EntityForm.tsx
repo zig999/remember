@@ -15,7 +15,10 @@ function holdSubmission(event: FormEvent<HTMLFormElement>): void {
 }
 
 export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
-  const { form, valueTypesAccepted } = useEntityEditForm(node, attributeKeys);
+  const { form, valueTypesAccepted, changed } = useEntityEditForm(
+    node,
+    attributeKeys,
+  );
   const { control } = form;
   const { fields, append, remove } = useFieldArray({
     control,
@@ -41,6 +44,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
           attributeKey={group.attributeKey}
           disputed={group.disputed}
           fields={group.fields}
+          changed={changed}
           control={control}
           onAdd={() => append(emptyField(group.attributeKey.key))}
           onRemove={remove}

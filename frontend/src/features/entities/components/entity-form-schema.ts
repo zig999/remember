@@ -9,6 +9,8 @@ export const attributeFieldSchema = z.object({
   itemId: z.string().nullable(),
   startedWith: z.string(),
   value: z.string(),
+  validFrom: z.string(),
+  validTo: z.string(),
 });
 
 export const entityFormSchema = z.object({
@@ -82,7 +84,14 @@ export function currentAttributesOf(
 }
 
 export function emptyField(key: string): AttributeFieldValues {
-  return { attributeKey: key, itemId: null, startedWith: "", value: "" };
+  return {
+    attributeKey: key,
+    itemId: null,
+    startedWith: "",
+    value: "",
+    validFrom: "",
+    validTo: "",
+  };
 }
 
 function fieldStartingFrom(attribute: NodeAttribute): AttributeFieldValues {
@@ -91,6 +100,8 @@ function fieldStartingFrom(attribute: NodeAttribute): AttributeFieldValues {
     itemId: attribute.id,
     startedWith: attribute.value,
     value: attribute.value,
+    validFrom: "",
+    validTo: "",
   };
 }
 
