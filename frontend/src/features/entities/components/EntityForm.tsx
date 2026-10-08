@@ -21,9 +21,19 @@ function holdSubmission(event: FormEvent<HTMLFormElement>): void {
   event.preventDefault();
 }
 
-export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
-  const { form, valueTypesAccepted, changed, validityOrder, review, save } =
-    useEntityEditForm(node, attributeKeys);
+export const EntityForm: FC<EntityFormProps> = ({
+  node: mountedNode,
+  attributeKeys,
+}) => {
+  const {
+    node,
+    form,
+    valueTypesAccepted,
+    changed,
+    validityOrder,
+    review,
+    save,
+  } = useEntityEditForm(mountedNode, attributeKeys);
   const { control } = form;
   const { fields, append, remove } = useFieldArray({
     control,

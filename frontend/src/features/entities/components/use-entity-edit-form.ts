@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import type { AttributeKey, NodeRead } from "../types";
 import { buildEntityEdit } from "./entity-edit-payload";
@@ -14,6 +14,7 @@ import { useUndoableSave, type UndoableSave } from "./use-undoable-save";
 import { zodIssueResolver } from "./zod-issue-resolver";
 
 export interface EntityEditForm {
+  readonly node: NodeRead;
   readonly form: UseFormReturn<EntityFormValues>;
   readonly valueTypesAccepted: boolean;
   readonly changed: readonly boolean[];
@@ -24,9 +25,17 @@ export interface EntityEditForm {
 }
 
 export function useEntityEditForm(
-  node: NodeRead,
+  propNode: NodeRead,
   attributeKeys: readonly AttributeKey[],
 ): EntityEditForm {
+  const [restarted, setRestarted] = useState<NodeRead | null>(null);
+  const [seenPropNode, setSeenPropNode] = useState(propNode);
+  if (seenPropNode !== propNode) {
+    setSeenPropNode(propNode);
+    setRestarted(null);
+  }
+  const node = restarted ?? propNode;
+
   const values = useMemo(
     () => buildFormValues(node, attributeKeys),
     [node, attributeKeys],
@@ -77,18 +86,26 @@ export function useEntityEditForm(
     validityOrderAccepted,
   );
 
-  const save = useUndoableSave(node.node.id, review, () =>
-    buildEntityEdit(
-      review.reason,
-      held,
-      changed,
-      values,
-      attributeKeys,
-      node.attributes,
-    ),
+  const save = useUndoableSave(
+    node.node.id,
+    review,
+    () =>
+      buildEntityEdit(
+        review.reason,
+        held,
+        changed,
+        values,
+        attributeKeys,
+        node.attributes,
+      ),
+    (reloaded) => {
+      setRestarted(reloaded);
+      reset(buildFormValues(reloaded, attributeKeys));
+    },
   );
 
   return {
+    node,
     form,
     valueTypesAccepted,
     changed,

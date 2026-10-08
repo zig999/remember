@@ -1,4 +1,8 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 
 import { entityGet } from "./_request";
 import { entityKeys } from "./keys";
@@ -16,4 +20,12 @@ export function useNodeRead(nodeId: string): UseQueryResult<NodeRead> {
         ),
       ),
   });
+}
+
+export function useReloadedNode(): (nodeId: string) => NodeRead | undefined {
+  const queryClient = useQueryClient();
+  return (nodeId) => {
+    const state = queryClient.getQueryState<NodeRead>(entityKeys.node(nodeId));
+    return state?.status === "success" ? state.data : undefined;
+  };
 }
