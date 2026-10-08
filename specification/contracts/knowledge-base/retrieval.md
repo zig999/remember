@@ -125,7 +125,7 @@ answers:
   - *id008
   - *id009
 - operation: list-nodes
-  accepted: '`{ ok: true, result }` carrying `total`, the `limit` and `offset` as requested, and `items`: the page of node summaries, each with its identity, node-type name, canonical name, status and the knowledge node it was merged into or null'
+  accepted: '`{ ok: true, result }` carrying `total`, the `limit` and `offset` as requested, and `items`: the page of node summaries, each with its identity, node-type name, canonical name, status and `merged_into_node_id`, the identity of the knowledge node it was merged into or null when it was merged into none'
   refusals:
   - *id001
   - *id007

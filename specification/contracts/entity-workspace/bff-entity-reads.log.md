@@ -22,4 +22,7 @@ entries:
   unstated: The failure answers decided earlier for the four reads (a refused read taking status, code, message and details from the body for any status, a non-JSON body below 500 as SYSTEM_UNKNOWN) contradict two standing rules of the application shell, an-answer-below-500-without-json-is-invalid and a-server-error-is-always-a-failure, which the shared request helper obeys for every screen.
   decided: Every failure of the four reads is the failure the application's request helper gives for it, as the rules of the application shell state, and the contract states no failure answer of its own.
   why: The person chose to align the entity workspace's reads to the shell's rules, over changing the two shell rules for the whole application or giving the entity workspace a client of its own.
+- field: answers
+  unstated: No node states the wire name of the attribute-key listing item member that says whether a key allows multiple current values.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-names-correction.md: "The backend now on main answers the attribute-key listing (GET /api/v1/attribute-keys) with the member `allows_multiple_current` for whether a key allows multiple current values."'
 ---

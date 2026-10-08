@@ -1305,7 +1305,7 @@ answers:
   - rule: "rules/application-shell/a-request-is-judged-in-a-fixed-order"
     answer: "the failure the application's request helper gives for it, with the status, code, message and details that the rules of the application shell state"
 - operation: list-attribute-keys
-  accepted: "GET /api/v1/attribute-keys with the node type named by its name in the node_type query parameter, read through the { ok, result } envelope as total and items, the items ordered by node type name and then by key"
+  accepted: "GET /api/v1/attribute-keys with the node type named by its name in the node_type query parameter, read through the { ok, result } envelope as total and items, each item carrying allows_multiple_current as a boolean saying whether the key allows multiple current values, the items ordered by node type name and then by key"
   refusals:
   - rule: "rules/application-shell/a-request-is-judged-in-a-fixed-order"
     answer: "the failure the application's request helper gives for it, with the status, code, message and details that the rules of the application shell state"
@@ -1341,6 +1341,9 @@ entries:
   unstated: The failure answers decided earlier for the four reads (a refused read taking status, code, message and details from the body for any status, a non-JSON body below 500 as SYSTEM_UNKNOWN) contradict two standing rules of the application shell, an-answer-below-500-without-json-is-invalid and a-server-error-is-always-a-failure, which the shared request helper obeys for every screen.
   decided: Every failure of the four reads is the failure the application's request helper gives for it, as the rules of the application shell state, and the contract states no failure answer of its own.
   why: The person chose to align the entity workspace's reads to the shell's rules, over changing the two shell rules for the whole application or giving the entity workspace a client of its own.
+- field: answers
+  unstated: No node states the wire name of the attribute-key listing item member that says whether a key allows multiple current values.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-names-correction.md: "The backend now on main answers the attribute-key listing (GET /api/v1/attribute-keys) with the member `allows_multiple_current` for whether a key allows multiple current values."'
 ---
 
 === contracts/entity-workspace/entity-screen
@@ -2607,7 +2610,7 @@ answers:
   - *id008
   - *id009
 - operation: list-nodes
-  accepted: '`{ ok: true, result }` carrying `total`, the `limit` and `offset` as requested, and `items`: the page of node summaries, each with its identity, node-type name, canonical name, status and the knowledge node it was merged into or null'
+  accepted: '`{ ok: true, result }` carrying `total`, the `limit` and `offset` as requested, and `items`: the page of node summaries, each with its identity, node-type name, canonical name, status and `merged_into_node_id`, the identity of the knowledge node it was merged into or null when it was merged into none'
   refusals:
   - *id001
   - *id007
@@ -2719,6 +2722,9 @@ entries:
   unstated: The search operation listed no refusal for an undefined parameter.
   decided: It adds HTTP 422 with VALIDATION_INVALID_FORMAT for an undefined parameter.
   why: The search schema is strict and serves both transports.
+- field: answers
+  unstated: No node stated the wire member name for the merged-into identity in the node summaries the node listing answers. The list-nodes answer named the merged-into node and its null case, but not the member that carries them.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-names-correction.md: The backend answers the node listing (GET /api/v1/nodes) with the member `merged_into_node_id` for the identity a merged node was merged into.'
 ---
 
 === contracts/owner-access/identity-provider

@@ -24,7 +24,7 @@ answers:
   - rule: "rules/application-shell/a-request-is-judged-in-a-fixed-order"
     answer: "the failure the application's request helper gives for it, with the status, code, message and details that the rules of the application shell state"
 - operation: list-attribute-keys
-  accepted: "GET /api/v1/attribute-keys with the node type named by its name in the node_type query parameter, read through the { ok, result } envelope as total and items, the items ordered by node type name and then by key"
+  accepted: "GET /api/v1/attribute-keys with the node type named by its name in the node_type query parameter, read through the { ok, result } envelope as total and items, each item carrying allows_multiple_current as a boolean saying whether the key allows multiple current values, the items ordered by node type name and then by key"
   refusals:
   - rule: "rules/application-shell/a-request-is-judged-in-a-fixed-order"
     answer: "the failure the application's request helper gives for it, with the status, code, message and details that the rules of the application shell state"

@@ -20,4 +20,7 @@ entries:
   unstated: The search operation listed no refusal for an undefined parameter.
   decided: It adds HTTP 422 with VALIDATION_INVALID_FORMAT for an undefined parameter.
   why: The search schema is strict and serves both transports.
+- field: answers
+  unstated: No node stated the wire member name for the merged-into identity in the node summaries the node listing answers. The list-nodes answer named the merged-into node and its null case, but not the member that carries them.
+  found: 'siegard-work/entity-edit-frontend/intake/wire-names-correction.md: The backend answers the node listing (GET /api/v1/nodes) with the member `merged_into_node_id` for the identity a merged node was merged into.'
 ---
