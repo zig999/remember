@@ -7,6 +7,7 @@ import {
   buildFormValues,
   type EntityFormValues,
 } from "./entity-form-schema";
+import { validityOrderMessages } from "./entity-validity-order";
 import { useEntityReview, type EntityReviewState } from "./use-entity-review";
 import { zodIssueResolver } from "./zod-issue-resolver";
 
@@ -14,6 +15,8 @@ export interface EntityEditForm {
   readonly form: UseFormReturn<EntityFormValues>;
   readonly valueTypesAccepted: boolean;
   readonly changed: readonly boolean[];
+  readonly validityOrder: readonly (string | null)[];
+  readonly validityOrderAccepted: boolean;
   readonly review: EntityReviewState;
 }
 
@@ -52,6 +55,15 @@ export function useEntityEditForm(
     [held, attributeKeys, node.attributes],
   );
 
+  const validityOrder = useMemo(
+    () => validityOrderMessages(held, changed, attributeKeys),
+    [held, changed, attributeKeys],
+  );
+  const validityOrderAccepted = useMemo(
+    () => validityOrder.every((message) => message === null),
+    [validityOrder],
+  );
+
   const review = useEntityReview(
     held,
     changed,
@@ -59,7 +71,15 @@ export function useEntityEditForm(
     attributeKeys,
     node.attributes,
     valueTypesAccepted,
+    validityOrderAccepted,
   );
 
-  return { form, valueTypesAccepted, changed, review };
+  return {
+    form,
+    valueTypesAccepted,
+    changed,
+    validityOrder,
+    validityOrderAccepted,
+    review,
+  };
 }

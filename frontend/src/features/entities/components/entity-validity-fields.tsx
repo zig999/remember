@@ -10,6 +10,7 @@ export interface ValidityFieldsProps {
   readonly name: string;
   readonly id: string;
   readonly index: number;
+  readonly orderMessage: string | null;
   readonly control: Control<EntityFormValues>;
 }
 
@@ -18,12 +19,14 @@ export const ValidityFields: FC<ValidityFieldsProps> = ({
   name,
   id,
   index,
+  orderMessage,
   control,
 }) => {
   const fromId = `entity-valid-from-${id}`;
   const fromNoteId = `${fromId}-note`;
   const toId = `entity-valid-to-${id}`;
   const toNoteId = `${toId}-note`;
+  const toErrorId = `${toId}-error`;
 
   return (
     <div
@@ -72,12 +75,25 @@ export const ValidityFields: FC<ValidityFieldsProps> = ({
               id={toId}
               type="date"
               aria-label={`Fim da validade de ${name}`}
-              aria-describedby={toNoteId}
+              aria-invalid={orderMessage === null ? undefined : true}
+              aria-describedby={
+                orderMessage === null ? toNoteId : `${toNoteId} ${toErrorId}`
+              }
               data-testid={`entity-valid-to-${attributeKey}`}
             />
             <p id={toNoteId} className="text-xs text-muted-foreground">
               Opcional: pode ficar vazio.
             </p>
+            {orderMessage === null ? null : (
+              <p
+                id={toErrorId}
+                role="alert"
+                data-testid={`entity-valid-to-error-${attributeKey}`}
+                className="text-xs text-destructive"
+              >
+                {orderMessage}
+              </p>
+            )}
           </div>
         )}
       />

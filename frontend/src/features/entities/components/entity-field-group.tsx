@@ -16,6 +16,7 @@ export interface EntityFieldGroupProps {
   readonly heldValues: readonly NodeAttribute[];
   readonly fields: readonly GroupField[];
   readonly changed: readonly boolean[];
+  readonly validityOrder: readonly (string | null)[];
   readonly control: Control<EntityFormValues>;
   readonly onAdd: () => void;
   readonly onRemove: (index: number) => void;
@@ -27,6 +28,7 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
   heldValues,
   fields,
   changed,
+  validityOrder,
   control,
   onAdd,
   onRemove,
@@ -130,6 +132,7 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
                 name={numbered ? `${key} (valor ${position + 1})` : key}
                 id={id}
                 index={index}
+                orderMessage={validityOrder[index] ?? null}
                 control={control}
               />
             ) : null}

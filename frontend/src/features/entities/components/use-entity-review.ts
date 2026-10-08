@@ -27,6 +27,7 @@ export function useEntityReview(
   attributeKeys: readonly AttributeKey[],
   attributes: readonly NodeAttribute[],
   valueTypesAccepted: boolean,
+  validityOrderAccepted: boolean,
 ): EntityReviewState {
   const [reviewing, setReviewing] = useState(false);
   const [reason, setReason] = useState("");
@@ -54,6 +55,6 @@ export function useEntityReview(
     setReason,
     clearReason,
     reasonTooLong: isReasonTooLong(reason),
-    saveOffered: open && isReasonAccepted(reason),
+    saveOffered: open && validityOrderAccepted && isReasonAccepted(reason),
   };
 }
