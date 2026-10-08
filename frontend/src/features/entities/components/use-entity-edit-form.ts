@@ -57,6 +57,7 @@ export function useEntityEditForm(
     changed,
     values,
     attributeKeys,
+    node.attributes,
     valueTypesAccepted,
   );
 

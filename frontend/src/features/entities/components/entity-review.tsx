@@ -1,6 +1,7 @@
 import { useEffect, useRef, type FC } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Panel } from "@/shared/components/ui/panel";
+import { EDIT_EFFECT_WORDING } from "./entity-change-effect";
 import { todayLocalDate } from "./entity-local-date";
 import type { ReviewEntry } from "./entity-review-entries";
 import type { EntityReviewState } from "./use-entity-review";
@@ -47,6 +48,17 @@ const ReviewItem: FC<ReviewItemProps> = ({ entry, today }) => {
           <dt className="text-xs text-muted-foreground">Novo valor</dt>
           <ReviewValue text={entry.value} testId={`entity-review-new-${key}`} />
         </div>
+        {entry.effect === null ? null : (
+          <div className="flex flex-col gap-xs">
+            <dt className="text-xs text-muted-foreground">Efeito</dt>
+            <dd
+              data-testid={`entity-review-effect-${key}`}
+              className="text-sm font-medium text-foreground"
+            >
+              {EDIT_EFFECT_WORDING[entry.effect]}
+            </dd>
+          </div>
+        )}
         {validity === null ? null : (
           <div className="flex flex-col gap-xs">
             <dt className="text-xs text-muted-foreground">

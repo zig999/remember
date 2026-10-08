@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import type { AttributeKey } from "../types";
+import type { AttributeKey, NodeAttribute } from "../types";
 import type {
   AttributeFieldValues,
   EntityFormValues,
@@ -19,12 +19,13 @@ export function useEntityReview(
   changed: readonly boolean[],
   baseline: EntityFormValues,
   attributeKeys: readonly AttributeKey[],
+  attributes: readonly NodeAttribute[],
   valueTypesAccepted: boolean,
 ): EntityReviewState {
   const [reviewing, setReviewing] = useState(false);
   const entries = useMemo(
-    () => reviewEntriesOf(held, changed, baseline, attributeKeys),
-    [held, changed, baseline, attributeKeys],
+    () => reviewEntriesOf(held, changed, baseline, attributeKeys, attributes),
+    [held, changed, baseline, attributeKeys, attributes],
   );
   const offered = valueTypesAccepted && entries.length > 0;
 

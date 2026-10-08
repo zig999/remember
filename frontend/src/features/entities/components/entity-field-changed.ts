@@ -6,7 +6,7 @@ export const HELD_ATTRIBUTE_STATUSES: readonly string[] = [
   "uncertain",
 ];
 
-function holdsValue(
+export function holdsValue(
   attributes: readonly NodeAttribute[],
   key: string,
   value: string,
