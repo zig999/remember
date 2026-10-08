@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +9,17 @@ import {
   ConflictError,
   ResourceNotFoundError,
 } from "../../../modules/curation/service/errors.js";
+import {
+  ABSENT_NODE_ID as ABSENT_EDIT_NODE_ID,
+  NEEDS_REVIEW_NODE_ID,
+  NODE_ID,
+  PHASE_VALUE,
+  buildWorld,
+  editOf,
+  setChange,
+  settledCode,
+} from "./edit-entity-world.js";
+import type { EditWorld } from "./edit-entity-world.js";
 
 const ABSENT_NODE_ID = "44444444-0000-4000-8000-0000000000a0";
 const NODE_TYPE_ID = "55555555-0000-4000-8000-000000000001";
@@ -170,6 +183,53 @@ describe("a not-active refusal", () => {
     expect({ status: answer.statusCode, code: answer.envelope.error.code }).toEqual({
       status: 409,
       code: NOT_ACTIVE_CODE,
+    });
+  });
+});
+
+const MERGED_EDIT_NODE_ID = "66666666-0000-4000-8000-0000000000b2";
+const DELETED_EDIT_NODE_ID = "66666666-0000-4000-8000-0000000000b3";
+const NOT_FOUND_CODE = "RESOURCE_NOT_FOUND";
+
+interface EditOutcome {
+  code: string;
+  storeChanged: boolean;
+}
+
+function addNode(world: EditWorld, id: string, status: string): void {
+  const [active] = world.store.nodes;
+  const added: Row = { ...active, id, status };
+  world.store.nodes.push(added);
+  world.untouched.nodes.push(structuredClone(added));
+}
+
+async function editOutcomeOf(nodeId: string): Promise<EditOutcome> {
+  const world = buildWorld();
+  addNode(world, MERGED_EDIT_NODE_ID, "merged");
+  addNode(world, DELETED_EDIT_NODE_ID, "deleted");
+  const edit = editOf([setChange("phase", PHASE_VALUE)]);
+
+  const code = await settledCode(world, edit, nodeId);
+
+  return { code, storeChanged: !isDeepStrictEqual(world.store, world.untouched) };
+}
+
+describe("an entity edit submitted through the edit operation", () => {
+  it("is applied to an active node, and refused with the node left as it stood for a node in needs_review, merged or deleted and for an identity at which no node is held", async () => {
+    const outcomes: Record<string, EditOutcome> = {
+      active: await editOutcomeOf(NODE_ID),
+      needs_review: await editOutcomeOf(NEEDS_REVIEW_NODE_ID),
+      merged: await editOutcomeOf(MERGED_EDIT_NODE_ID),
+      deleted: await editOutcomeOf(DELETED_EDIT_NODE_ID),
+      absent: await editOutcomeOf(ABSENT_EDIT_NODE_ID),
+    };
+
+    expect(outcomes).toEqual({
+      active: { code: ACCEPTED, storeChanged: true },
+      needs_review: { code: NOT_ACTIVE_CODE, storeChanged: false },
+      merged: { code: NOT_ACTIVE_CODE, storeChanged: false },
+      deleted: { code: NOT_ACTIVE_CODE, storeChanged: false },
+      absent: { code: NOT_FOUND_CODE, storeChanged: false },
     });
   });
 });

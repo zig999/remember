@@ -1,12 +1,12 @@
 ---
 target: backend
 title: Proof that an edit naming an absent or not-active knowledge node is refused
-summary: A fake pg client holds nodes in each of the four statuses, and the tests decide both refusals' codes, the node and status they name, the underscore spelling of needs_review, the HTTP 404 and 409 answers, and the not-active invariant over every node-status value.
+summary: A fake pg client holds nodes in each of the four statuses, and the tests decide both refusals' codes, the node and status they name, the underscore spelling of needs_review, the HTTP 404 and 409 answers, and, through the edit operation itself, that an active node is edited while an absent, needs_review, merged or deleted node is refused with the store left as it stood.
 implementation: sha256:5288bef8570f79fb1a342f493300ff8fe5070ae4a1845f95b10f334f9aeba9a9
 standard:
   at: ../standards/backend-node-service.yaml
   pin: sha256:8c38c4f11796188276d89c2c7ed1710a4eed05f701034f22c68af0a554142c77
-run: run/entity-edit-backend-refuse-inactive-node-suite
+run: run/entity-edit-backend-refuse-inactive-node-suite-2
 tests:
 - file: src/__tests__/unit/curation/entity-edit-node.spec.ts
   name: an edit naming an identity at which no knowledge node is held is refused with RESOURCE_NOT_FOUND
@@ -22,8 +22,12 @@ tests:
   fails_when: the absent-node refusal maps to HTTP 400, 422 or any status other than 404, or its envelope code is not RESOURCE_NOT_FOUND
 - file: src/__tests__/unit/curation/entity-edit-node.spec.ts
   name: an edit naming a node, by the status the node holds is refused for needs_review, merged and deleted and not refused for active
-  proves: The three status criteria (needs-review, merged, deleted refused with BUSINESS_NODE_NOT_ACTIVE) and the criterion that an active node is not refused by the active-node rule, over every value of the node-status enumeration. The same test is the proof of the invariant that an entity edit must name a knowledge node whose status is active.
-  fails_when: any of needs_review, merged or deleted is accepted or refused with another code, or an active node is refused; the diff names the status that broke
+  proves: The three status criteria (needs-review, merged, deleted refused with BUSINESS_NODE_NOT_ACTIVE) and the criterion that an active node is not refused by the active-node rule, over every value of the node-status enumeration, at the guard.
+  fails_when: any of needs_review, merged or deleted is accepted or refused with another code, or an active node is refused by the guard; the diff names the status that broke
+- file: src/__tests__/unit/curation/entity-edit-node.spec.ts
+  name: an entity edit submitted through the edit operation is applied to an active node, and refused with the node left as it stood for a node in needs_review, merged or deleted and for an identity at which no node is held
+  proves: 'The invariant that an entity edit must name a knowledge node whose status is active, exercised through the edit operation itself rather than the guard: the same edit is applied to an active node (accepted, the store changed), refused with BUSINESS_NODE_NOT_ACTIVE for a node in each of needs_review, merged and deleted, and refused with RESOURCE_NOT_FOUND for an identity at which no node is held, each refusal leaving the whole store, and so the node, exactly as it stood.'
+  fails_when: the edit operation applies an edit to a needs_review, merged or deleted node or to an absent identity, or refuses them with another code, or writes anything before refusing so that the store differs from what it was, or refuses an active node; the diff names the node status that broke
   demonstrates: rules/knowledge-base/entity-edit-names-an-active-node
 - file: src/__tests__/unit/curation/entity-edit-node.spec.ts
   name: a not-active refusal for a needs_review node names the node
@@ -62,10 +66,12 @@ not_applicable:
   why: No criterion or node of this task states concurrent behavior. Only a real database with row locks could decide it, and the shared database must not be touched.
 - edge_case: store unreachable or statement timeout
   why: The criteria of this task do not reach it. Contract refusals for SYSTEM_SERVICE_UNAVAILABLE belong to the error mapping, not to this guard.
+- edge_case: the edit operation's other checks failing together with the node check (an unknown key on a needs_review node, an incoherent validity on an absent node)
+  why: Where the node check sits relative to the others is the fact of rules/knowledge-base/entity-edit-check-order, which this task does not implement, and the sibling proof in edit-entity-refusals.spec.ts already holds those pairings. The new test here submits a well-formed edit so that only the node's status decides the outcome.
 untested:
 - 'contracts/knowledge-base/entity-editing: the node lists the accepted answer and about twenty refusals, and this task owns only the absent-node and not-active ones, whose codes, names and HTTP statuses are tested. No finite test of this task decides the whole contract, so no test claims it.'
-- 'domain/knowledge-base/node-status: the node is an enumeration of four values and this task ships no declaration of it. The helper only compares against active, and the enumeration itself lives in a prior task''s DTO. It is exercised in use by the whole-enumeration test but no test of this task decides the enumeration whole.'
-- 'domain/knowledge-base/entity-edit: the value object''s reason and changes attributes are carried by the already delivered edit-entity DTO, which this task does not touch. The reference to one knowledge node is exercised only as the node identity the guard receives.'
+- 'domain/knowledge-base/node-status: the node is an enumeration of four values and this task ships no declaration of it. The helper only compares against active, and the enumeration itself lives in a prior task''s DTO. It is exercised in use by the whole-enumeration tests but no test of this task decides the enumeration whole.'
+- 'domain/knowledge-base/entity-edit: the value object''s reason and changes attributes are carried by the already delivered edit-entity DTO, which this task does not touch. The reference to one knowledge node is exercised only as the node identity the guard and the edit operation receive.'
 - 'rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores: the assertion-flag clause reaches nothing in this task (the task''s REMAINDER note), so no test here decides the rule whole. Only the node-status clause is tested, for needs_review, and the test does not claim the node.'
 - 'Inference, behavior: the helper locks the knowledge node row with FOR UPDATE through loadNodesForUpdate. No node decides a lock for the edit, and the fake client does not assert the statement text. A lock is only decidable against a real database.'
 - 'Inference, behavior: the refusal''s message wording and the details keys node_id and status are the implementation''s choice, and no node decides them. The tests check only that the node and status appear somewhere in the message or details.'
@@ -73,7 +79,9 @@ untested:
 - 'Behavior only a real database could decide, with the shared Neon database off-limits: that the lock holds until the edit''s transaction ends, and that the real knowledge_node query returns the stored needs_review spelling.'
 ---
 ## What it is
-A fake pg client holds nodes in each of the four statuses, and the tests decide both refusals' codes, the node and status they name, the underscore spelling of needs_review, the HTTP 404 and 409 answers, and the not-active invariant over every node-status value.
+A fake pg client holds nodes in each of the four statuses, and the tests decide both refusals' codes, the node and status they name, the underscore spelling of needs_review, the HTTP 404 and 409 answers, and, through the edit operation itself, that an active node is edited while an absent, needs_review, merged or deleted node is refused with the store left as it stood.
 
 ## Notes
-None.
+The standing proof is revised whole: its eleven tests still hold and the twelfth is new. It closes the remainder on rules/knowledge-base/entity-edit-names-an-active-node, whose assertion asked for the edit operation itself rather than the guard. The new test goes through editEntityService with the shared edit-entity world, and `demonstrates` for that node moved from the guard-level whole-enumeration test to it, so the node appears on exactly one test. The guard-level test keeps its criteria claim. The merged and deleted nodes are added inside the spec file to the world's store and to its untouched copy, so the shared helper edit-entity-world.ts is unchanged and no other file was touched. The record carries no implementation pin, standard stamp or run, which the caller stamps.
+
+The remainder this proof closes was left by the review whose reconciliation record is siegard-reconcile/entity-edit-backend.md (rules/knowledge-base/entity-edit-names-an-active-node, remainder testable). The earlier proof was written against the same implementation record and its suite run is run/entity-edit-backend-refuse-inactive-node-suite; this rewrite reruns the suite as run/entity-edit-backend-refuse-inactive-node-suite-2, which passed.
