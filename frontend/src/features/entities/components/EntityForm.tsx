@@ -2,7 +2,12 @@ import { useMemo, type FC, type FormEvent } from "react";
 import { useFieldArray } from "react-hook-form";
 import type { AttributeKey, NodeRead } from "../types";
 import { EntityFieldGroup } from "./entity-field-group";
-import { buildFieldGroups, emptyField } from "./entity-form-schema";
+import {
+  buildFieldGroups,
+  emptyField,
+  outsideCatalogGroupsOf,
+} from "./entity-form-schema";
+import { OutsideCatalogValues } from "./entity-outside-catalog-values";
 import { useEntityEditForm } from "./use-entity-edit-form";
 
 export interface EntityFormProps {
@@ -28,6 +33,10 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
     () => buildFieldGroups(node, attributeKeys, fields),
     [node, attributeKeys, fields],
   );
+  const outsideCatalog = useMemo(
+    () => outsideCatalogGroupsOf(node.attributes, attributeKeys),
+    [node, attributeKeys],
+  );
 
   return (
     <form
@@ -51,6 +60,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
           onRemove={remove}
         />
       ))}
+      <OutsideCatalogValues groups={outsideCatalog} />
     </form>
   );
 };

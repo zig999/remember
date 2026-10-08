@@ -61,15 +61,40 @@ const HELD_ATTRIBUTE_STATUSES: readonly string[] = [
   DISPUTED_ATTRIBUTE_STATUS,
 ];
 
+function isHeldAttribute(attribute: NodeAttribute): boolean {
+  return HELD_ATTRIBUTE_STATUSES.includes(attribute.status);
+}
+
 export function heldAttributesOf(
   attributes: readonly NodeAttribute[],
   key: string,
 ): NodeAttribute[] {
   return attributes.filter(
-    (attribute) =>
-      attribute.attributeKey === key &&
-      HELD_ATTRIBUTE_STATUSES.includes(attribute.status),
+    (attribute) => attribute.attributeKey === key && isHeldAttribute(attribute),
   );
+}
+
+export interface OutsideCatalogGroup {
+  readonly key: string;
+  readonly values: readonly NodeAttribute[];
+}
+
+export function outsideCatalogGroupsOf(
+  attributes: readonly NodeAttribute[],
+  attributeKeys: readonly AttributeKey[],
+): readonly OutsideCatalogGroup[] {
+  const catalogKeys = new Set(
+    attributeKeys.map((attributeKey) => attributeKey.key),
+  );
+  const grouped = new Map<string, NodeAttribute[]>();
+  for (const attribute of attributes) {
+    if (catalogKeys.has(attribute.attributeKey)) continue;
+    if (!isHeldAttribute(attribute)) continue;
+    const values = grouped.get(attribute.attributeKey);
+    if (values === undefined) grouped.set(attribute.attributeKey, [attribute]);
+    else values.push(attribute);
+  }
+  return Array.from(grouped, ([key, values]) => ({ key, values }));
 }
 
 export function isDisputedKey(
