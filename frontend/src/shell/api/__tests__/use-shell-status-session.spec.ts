@@ -1,7 +1,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 const urls = vi.hoisted(() => ({ bff: "https://bff.test", auth: "https://auth.test" }));
 
@@ -79,6 +79,20 @@ function count(sent: Sent[], kind: Kind): number {
   return sent.filter((s) => s.kind === kind).length;
 }
 
+interface LocationSpy {
+  readonly replace: Mock<(url: string) => void>;
+  readonly assign: Mock<(url: string) => void>;
+}
+
+function spyOnLocation(): LocationSpy {
+  const spy: LocationSpy = {
+    replace: vi.fn<(url: string) => void>(),
+    assign: vi.fn<(url: string) => void>(),
+  };
+  vi.stubGlobal("location", spy);
+  return spy;
+}
+
 function hold(token: string): void {
   useAuthStore.getState().setToken(token);
 }
@@ -130,6 +144,7 @@ afterEach(() => {
   __setShellRedirectForTests(null);
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   useAuthStore.getState().clear();
 });
 
@@ -177,6 +192,48 @@ describe("a failed renewal on the pending curation read", () => {
     expect({ pending: count(sent, "pending"), token: count(sent, "token") }).toEqual({
       pending: 1,
       token: 1,
+    });
+  });
+});
+
+describe("a failed renewal on the pending curation read, with the production redirect in place", () => {
+  it("clears the stored token and replaces the browser page once with the sign-in address when the renewal request itself fails", async () => {
+    __setShellRedirectForTests(null);
+    const location = spyOnLocation();
+    stubFetch({
+      pending: () => reply(401),
+      token: () => new TypeError("Failed to fetch"),
+    });
+    hold(STALE);
+    mountCount();
+    await advance();
+    await settle();
+    expect({
+      token: useAuthStore.getState().accessToken,
+      replaced: location.replace.mock.calls,
+    }).toEqual({
+      token: null,
+      replaced: [[SIGN_IN_ADDRESS]],
+    });
+  });
+
+  it("replaces the browser page with the sign-in address and never navigates with a history entry when the identity provider holds no session", async () => {
+    __setShellRedirectForTests(null);
+    const location = spyOnLocation();
+    stubFetch({
+      pending: () => reply(401),
+      token: () => reply(401, { message: "no session" }),
+    });
+    hold(STALE);
+    mountCount();
+    await advance();
+    await settle();
+    expect({
+      replaced: location.replace.mock.calls,
+      assigned: location.assign.mock.calls,
+    }).toEqual({
+      replaced: [[SIGN_IN_ADDRESS]],
+      assigned: [],
     });
   });
 });
