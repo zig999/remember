@@ -10,10 +10,10 @@ export const CurationActionNameSchema = z.enum([
   "reject_item",
   "correct_item",
   "compliance_delete",
+  "edit_entity",
 ]);
 export type CurationActionName = z.infer<typeof CurationActionNameSchema>;
 
-/** Allowed target_kind values (mirrors openapi.yaml). */
 export const TargetKindSchema = z.enum([
   "node",
   "link",
@@ -48,7 +48,6 @@ export type ListCurationActionsQuery = z.infer<
   typeof ListCurationActionsQuerySchema
 >;
 
-/** Shape of one CurationAction row as returned by the API. */
 export const CurationActionSchema = z.object({
   id: UuidSchema,
   action: z.string(),
@@ -60,7 +59,6 @@ export const CurationActionSchema = z.object({
 });
 export type CurationAction = z.infer<typeof CurationActionSchema>;
 
-/** Paginated envelope of the list endpoint. */
 export const CurationActionListSchema = z.object({
   total: z.number().int().min(0),
   limit: z.number().int().min(1),
@@ -69,7 +67,6 @@ export const CurationActionListSchema = z.object({
 });
 export type CurationActionList = z.infer<typeof CurationActionListSchema>;
 
-/** Path param schema for /audit/curation-actions/{curationActionId}. */
 export const CurationActionIdParamSchema = z.object({
   curationActionId: UuidSchema,
 });
