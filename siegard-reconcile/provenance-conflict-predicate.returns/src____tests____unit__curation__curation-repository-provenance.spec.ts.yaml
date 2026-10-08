@@ -1,0 +1,53 @@
+read:
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: >-
+      the "attribute" entry of BRANCHES and the toEqual assertion in the it.each body. The entry declares the arbiter of a partial unique index on the fragment and attribute columns, and the assertion requires the statement to skip the conflicting row.
+    evidence: >-
+      {
+        kind: "attribute",
+        indexColumns: ["attribute_id", "fragment_id"],
+        indexPredicate: "attribute_id is not null",
+      }; expect(sent.map(conflictClauseOf)).toEqual([{ columns: indexColumns, predicate: indexPredicate, action: "nothing" }])
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: >-
+      the "link" entry of BRANCHES and the toEqual assertion in the it.each body. The entry declares the arbiter of a partial unique index on the fragment and link columns, and the assertion requires the statement to skip the conflicting row.
+    evidence: >-
+      {
+        kind: "link",
+        indexColumns: ["fragment_id", "link_id"],
+        indexPredicate: "link_id is not null",
+      }; expect(sent.map(conflictClauseOf)).toEqual([{ columns: indexColumns, predicate: indexPredicate, action: "nothing" }])
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file calls `appendProvenanceFragment(client, kind, SUCCESSOR_ID, FRAGMENT_ID)` and `copyProvenance(client, kind, PREDECESSOR_ID, SUCCESSOR_ID)`, but only asserts the ON CONFLICT clause of the statement sent. It never asserts that an entity edit's new attribute holds the edit's fragment provenance or the superseded attribute's provenances.
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: nowhere
+    evidence: >-
+      The only assertion is `expect(sent.map(conflictClauseOf)).toEqual([...])`. Nothing in the file asserts that a correction's new item holds every provenance of the superseded item, or the cited fragment. The copy semantics are not examined, only the conflict clause of the statement sent.
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the element. `interface Branch { readonly kind: ItemKind; readonly indexColumns: readonly string[]; readonly indexPredicate: string; }` describes the test's own table, not the provenance value object.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the element. It only passes `kind: "attribute"` and `SUCCESSOR_ID` to the repository functions.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the element. It only passes `kind: "link"` and `SUCCESSOR_ID` to the repository functions.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      Neither the entity edit nor its reason and changes appear in the file. It names only `RECORDING_FUNCTIONS`, `BRANCHES` and the ON CONFLICT clause parser.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file holds only a fragment identifier, `const FRAGMENT_ID = "11111111-0000-4000-8000-000000000004";`, and declares no shape for the fragment.
+  - node: domain/knowledge-base/assertion-correction
+    held_at: nowhere
+    evidence: >-
+      The file never declares or reads an assertion correction, its assertion kind, its item or its corrected values. The only item reference is the `ItemKind` type import.
+looked_past: >-
+  The column names, the partial-index predicates and the use of a skipping ON CONFLICT action are the database schema's tactics for enforcing the once-per-fragment rules, so I judged them no domain fact. The file carries no comments.
