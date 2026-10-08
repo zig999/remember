@@ -12,3 +12,4 @@ Stopped: the corrections the task's criteria required in src/lib/http.ts contrad
 /siegard-telemetry measure run over the window opened at 2026-10-07T23:55:41Z.
 The person chose to align the entity workspace's reads to the application shell's rules: contracts/entity-workspace/bff-entity-reads now hands every read failure to the request helper, the failure criteria of the two read tasks were re-cut and re-bound, the http.ts change and its trace binding were discarded, and plan.json was derived again.
 /implement-task over task/knowledge-base-client/listing-reads delivered after the plan was aligned to the shell's rules: green suite in run/knowledge-base-client-listing-reads-suite-6, both records validated, nodes bound into the trace.
+/implement-task over task/knowledge-base-client/node-and-catalog-reads delivered on its first build and suite runs; records validated and nodes bound.
