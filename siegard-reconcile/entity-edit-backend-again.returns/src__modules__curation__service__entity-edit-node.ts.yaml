@@ -1,0 +1,64 @@
+findings: []
+read:
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      loadActiveNodeForEdit, lines 15-27. It holds the RESOURCE_NOT_FOUND refusal (404) and the BUSINESS_NODE_NOT_ACTIVE refusal (409) of this contract. The other operations and refusals of the contract are not this file's.
+    evidence: >-
+      throw new ResourceNotFoundError(`Knowledge node '${nodeId}' is not held.`, { node_id: nodeId }); and throw new ConflictError(NODE_NOT_ACTIVE_CODE, `Knowledge node '${nodeId}' has status '${node.status}' and only an active node can be edited.`, { node_id: nodeId, status: node.status }); with const NODE_NOT_ACTIVE_CODE = "BUSINESS_NODE_NOT_ACTIVE". errors.ts gives ResourceNotFoundError statusCode 404 and code "RESOURCE_NOT_FOUND", and ConflictError statusCode 409.
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere. The file does not declare the enumeration. It only compares against the value, in const ACTIVE_STATUS = "active" and node.status !== ACTIVE_STATUS.
+    evidence: >-
+      const ACTIVE_STATUS = "active"; if (node.status !== ACTIVE_STATUS) {. The enumeration's shape is declared in the database enum, ('active', 'needs_review', 'merged', 'deleted') in migrations/0001_init.sql.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: >-
+      nowhere. This file does not convert a status. It passes the stored status unchanged into the error details, { node_id: nodeId, status: node.status }. The stored enum values are already written with underscores (needs_review) in migrations/0001_init.sql.
+    evidence: >-
+      { node_id: nodeId, status: node.status }
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: >-
+      the status check at lines 21-27 of loadActiveNodeForEdit
+    evidence: >-
+      if (node.status !== ACTIVE_STATUS) { throw new ConflictError(NODE_NOT_ACTIVE_CODE, ...
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      nowhere. The file does not touch attributes or links.
+    evidence: >-
+      the file only loads a node, using loadNodesForUpdate(client, [nodeId]), and checks its status
+  - node: domain/knowledge-base/entity-edit
+    held_at: >-
+      nowhere. The file does not declare the edit's shape. It receives only a nodeId.
+    evidence: >-
+      export async function loadActiveNodeForEdit(client: PoolClient, nodeId: string): Promise<KnowledgeNodeLockedRow>
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere. The file declares no node-attribute shape.
+    evidence: >-
+      imports are only PoolClient, loadNodesForUpdate, KnowledgeNodeLockedRow, ConflictError and ResourceNotFoundError
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      nowhere. No attribute correction is performed in this file.
+    evidence: >-
+      the file's single export, loadActiveNodeForEdit, only returns the locked active node row
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: >-
+      nowhere. No attribute handling is performed in this file.
+    evidence: >-
+      return node;
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      nowhere. No provenance is written in this file.
+    evidence: >-
+      the file calls only loadNodesForUpdate(client, [nodeId])
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      nowhere. No supersession time is set in this file.
+    evidence: >-
+      the file calls only loadNodesForUpdate(client, [nodeId])
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      nowhere. This scenario is not exercised by this file, which only checks the node before the edit.
+    evidence: >-
+      loadActiveNodeForEdit returns the node and writes nothing
+looked_past: >-
+  The file has no comments, and the loadNodesForUpdate row-lock call and the module's error-class hierarchy are code-structure matters, not judged here.

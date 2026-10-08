@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: is the new start, and none when the predecessor holds a start the new start does not pass
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: gives the new deadline the start 2026-10-07 with the basis received, and the earlier deadline the validity end 2026-10-07 and no supersession time
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: supersedes the earlier status with no validity end and records the new status starting 2026-09-01 with the basis stated
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: gives the superseded attribute that same UTC calendar date as its validity end
+    why: >-
+      The tests check every case the fact names for the validity end the succession works out.
+      A superseded attribute with no validity start gets the new start as its end. A new start
+      one day after the superseded attribute's start becomes its end. A new start on that start,
+      or one day before it, leaves no end. A new attribute with no stated start takes the edit's
+      UTC calendar date, and that date becomes the end. That holds in a server zone behind UTC
+      as well. What the tests read, though, is a stand-in for the database built inside the test
+      file, not the stored attribute. That stand-in takes the validity end from the second
+      parameter of the UPDATE on node_attribute and never reads the statement's SET clause.
+      Suppose the succession still passed the right value but stopped writing it to valid_to,
+      wrote valid_to from some other source, or wrote NULL. The stand-in would still show the
+      superseded attribute ending at the new start. In the other direction, reordering the
+      statement's parameters while keeping a correct SET clause would make the tests fail even
+      though the behaviour is right. So the stand-in is tied to the order of the statement's
+      parameters, not to the outcome. The part left unexercised is the stored superseded
+      attribute actually holding a validity end at the new start (or none, under the stated
+      condition).
+    remainder: testable
+    remainder_why: >-
+      Run the succession so the statement it issues is actually executed against node_attribute,
+      then read the superseded row back. Take a superseded attribute starting 2026-03-01. With a
+      new start of 2026-03-02 the stored valid_to should be 2026-03-02. With a new start of
+      2026-03-01 or 2026-02-28 the stored valid_to should be NULL. Take a superseded attribute
+      with no start. With a new start of 2026-09-01 the stored valid_to should be 2026-09-01.

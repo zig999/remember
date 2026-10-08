@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-attributes.spec.ts
+        name: is refused as a conflict only when a single-current key already holds a live attribute of the edited node
+    why: >-
+      The decision is fully tested at the guard. The named test runs one set change that names no
+      attribute against each case: a single-current key holding an active, an uncertain or a
+      disputed attribute of the edited node is refused as a conflict. A single-current key whose
+      attributes are all superseded or deleted is accepted. So is a single-current key holding no
+      attribute, one held live only by another node, one whose live attribute is on another key,
+      and a multiple-current key holding an active attribute. If the guard's condition changed,
+      this test would fail. The gap is that the test calls checkChangeAgainstHeldAttributes
+      directly. Its stub client rejects any statement other than a SELECT from node_attribute, so
+      no entity edit is ever attempted. The fact says the change MUST NOT be made. Suppose the
+      entity edit stopped consulting this check before writing. The fact would then stop holding
+      and the named test would still pass. So nothing in the offered proof shows that the refused
+      change is actually not made.
+    remainder: testable
+    remainder_why: >-
+      Test one input against one expected result. The input is an entity edit, sent through the
+      edit's own entry point, carrying a set change that names no attribute. It targets a key that
+      does not allow multiple current values, on a node that already holds a live attribute of
+      that key. The expected result is a refusal with BUSINESS_ENTITY_EDIT_CONFLICT, and afterwards
+      the node holds exactly the one current attribute it held before.

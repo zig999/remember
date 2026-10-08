@@ -1,0 +1,23 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-provenance
+    state: covered
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-correction.spec.ts
+        name: "holds the edit's information fragment, and for a correction every provenance of the superseded attribute and no other"
+    why: >-
+      Both halves of the fact are covered by one assertion on stored provenance rows. The first half
+      is a new attribute recorded through recordNewAttribute: it must hold exactly the edit's
+      fragment. The second half is a correction recorded through recordCorrection over a predecessor
+      with two fragments: the new attribute must hold the edit's fragment and both of the
+      predecessor's fragments. The test fails if the edit's fragment is missing, if any predecessor
+      fragment is not carried over, or if provenance is copied from the wrong attribute. A bystander
+      attribute's fragment is seeded in the store to catch that last case. The test also asserts
+      more than the node states. It uses toEqual on the exact fragment list ("and no other"), which
+      requires that the new attribute hold no provenance beyond these. The node says the attribute
+      holds these provenances. It does not say it holds only these. If a sibling task legitimately
+      adds a further provenance to the new attribute, the test breaks even though the fact still
+      holds. Separately, the test's in-memory client reads the code's SQL by regex: one insert shape,
+      one INSERT ... SELECT ... FROM provenance WHERE copy shape, and one UPDATE node_attribute. It
+      throws on any other statement. So a behaviorally equivalent rewrite of the copy, such as a
+      SELECT followed by per-row INSERTs, fails the test even though the fact still holds. That ties
+      the test to the code's SQL shape. It does not leave any part of the fact unexercised.

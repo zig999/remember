@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-new-attribute.spec.ts
+        name: is recorded with today's UTC calendar date as the start and the basis received
+      - file: src/__tests__/unit/curation/entity-edit-new-attribute.spec.ts
+        name: is recorded with the UTC calendar date of the edit as the start
+    why: >-
+      The two named tests check what gets recorded for a set change to a temporal key that
+      states no start. They pass recordNewAttribute an edit moment just after a UTC midnight
+      while the server time zone is behind UTC, and one just before a UTC midnight while the
+      server time zone is ahead of UTC. The first asserts that the start is that moment's UTC
+      calendar date and that the basis is received. The second asserts the UTC date again,
+      from the opposite side. Together they would fail if the date came from the local zone,
+      if it came from the wall clock instead of the moment passed in, or if the basis stopped
+      being received. Neither test checks that the moment passed in is the moment the edit
+      took place. Each test supplies editedAt as a fixed argument. So if the caller filled
+      editedAt with any instant other than the edit's own, the start would no longer be
+      "today" and both tests would still pass. The "today" half of the fact is therefore not
+      exercised by the offered proof. If a test outside this file pins it, that test was not
+      offered and cannot be cited here.
+    remainder: testable
+    remainder_why: >-
+      Input: an entity edit made through the edit entry point with the clock fixed at a known
+      instant, setting a temporal key and stating no validity start. Expected result: the
+      recorded attribute's start equals that instant's UTC calendar date, and its basis is
+      received.

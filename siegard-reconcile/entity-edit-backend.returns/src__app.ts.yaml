@@ -1,0 +1,359 @@
+findings:
+  - file: src/app.ts
+    where: >-
+      the fallback origins of `corsOrigins`, lines 65-68, passed as `origin` to `fastifyCors` at line 69
+    evidence: >-
+      const corsOrigins = env.CORS_ORIGINS ?? [ "http://localhost:5173", "http://127.0.0.1:5173", ];
+    cost: >-
+      Which origins may call the system when no origin list is configured is decided only here. The specification states that an allowed origin is echoed back, and never which origins are allowed or what the default is. A reader looking in the specification for who may reach the API finds no answer.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the default allowed origins a node, or state that the list comes from configuration alone and has no default. The constraint on answers carrying the allowed origin does not decide this.
+    node: constraints/answers-carry-allowed-origin
+  - file: src/app.ts
+    where: >-
+      the `/_self` route registered on the authenticated scope, lines 83-86
+    evidence: >-
+      scoped.get("/_self", async (request) => ({ ok: true, result: { user_id: request.user?.id ?? null }, }));
+    cost: >-
+      The code serves an operation at GET /api/v1/_self that answers the caller's identity as `user_id`, null when none. No node of the specification names this operation or its answer. The access contract lists only authenticate-owner, route-request and read-health, so a client depends on an answer nobody decided.
+    kind: unstated
+    correction: >-
+      The analysis would have to add this operation and its answer to a contract, or remove the route. The access contract is the nearest home.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      the `toolNames` allowlist of `registerIngestMcpTransport`, line 114
+    evidence: >-
+      "get_ingestion_status",
+    cost: >-
+      This allowlist names an ingest tool, `get_ingestion_status`, that no node holds. The ingestion contract holds `ingest_document`, `ingest_directed` and `list_recent_ingestions`, and `health` belongs to the access contract. A status tool is also what an asynchronous ingestion would need, and the ingest toolset is constrained not to offer one. The name's presence cannot be weighed against the specification.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the tool a node, or the allowlist drops the name. Nothing outside this file was read to learn whether a tool by this name is registered.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      the `fastifyCors` registration at the application root, lines 69-72
+    evidence: >-
+      await app.register(fastifyCors, { origin: corsOrigins, methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], });
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      the `preHandler` hook of the `/api/v1` scope, line 82, which covers every route registered under it
+    evidence: >-
+      scoped.addHook("preHandler", auth.preHandler);
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the `toolNames` allowlist of the ingest MCP transport, lines 109-116, which names no tool that starts an ingestion and returns early. `INGEST_TOOL_NAMES` is defined in another file this pass did not read.
+    evidence: >-
+      toolNames: [ ...INGEST_TOOL_NAMES, "ingest_document", "ingest_directed", "health", "get_ingestion_status", "list_recent_ingestions", ],
+  - node: constraints/preflight-needs-no-authentication
+    held_at: >-
+      the application-root CORS registration at line 69, before and outside the scope that carries the authentication hook
+    evidence: >-
+      await app.register(fastifyCors, { origin: corsOrigins, ... }); the hook is added only inside `app.register(async (scoped) => {`
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      the route registration on the authenticated scope, lines 139-143. This file only wires the route, so the contract's shape and answers sit in other files.
+    evidence: >-
+      await registerEditEntityRoute(scoped, { pool, logger, catalog: ingestionCatalog, });
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      app.ts only passes `pool` to `registerEditEntityRoute`; it opens no transaction.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: >-
+      the curation MCP allowlist at line 147, which does not name entity editing. The edit route is registered separately as REST, at lines 139-143.
+    evidence: >-
+      toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"],
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      app.setErrorHandler(buildErrorHandler(logger)); app.ts delegates to another file and states no log level.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      app.setErrorHandler(buildErrorHandler(logger)); the fixed message is not stated in this file.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      app.setErrorHandler(buildErrorHandler(logger)); the classification of store failures is not stated in this file.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      await registerComplianceAuditRoutes(scoped, { pool, logger }); app.ts only wires the module and declares none of the contract's answers.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it; the only entity-edit wiring is `registerEditEntityRoute(scoped, {...})`.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration or type of any status.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of change kinds.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it; it only passes `catalog: ingestionCatalog` along.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of action kinds.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of target kinds.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of effects.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of live statuses.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no shape for it.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of node statuses.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      app.ts declares no enumeration of value types.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      app.ts spells no action kind.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      app.ts spells no node status or assertion flag.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      app.ts spells no edit effect.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no attribute key; it only hands `catalog` to the route.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no value against allowed values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      app.ts parses no attribute value.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      app.ts derives no currency.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      app.ts records no attribute.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such check.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      app.ts orders no checks.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such check.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such check.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      app.ts orders no checks.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      app.ts records no correction.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      app.ts compares no dates.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      app.ts records no correction.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      app.ts records no attribute.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such refusal.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such check.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      app.ts applies no such check.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      app.ts sets no attribute state or confidence.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      app.ts records no note.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      app.ts sets no confidence.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      app.ts builds no note content.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      app.ts opens no run.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      app.ts records no source type or metadata.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      app.ts reads no change fields.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      app.ts records no provenance.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no reason.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      app.ts trims no reason.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      app.ts records no curation action.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      app.ts rejects no attribute.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no change.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      app.ts opens no run and names no model or prompt version of one.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      app.ts records no validity.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      app.ts defaults no start.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      app.ts records no validity end.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      app.ts records no validity start or basis.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      app.ts records no succession.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      app.ts closes no attribute.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      app.ts sets no supersession time.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      app.ts compares no values.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no change.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      app.ts checks no change.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      app.ts reads no temporality.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      app.ts compares no dates.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      app.ts refuses no edit.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      app.ts supersedes no attribute.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      app.ts refuses no edit.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      app.ts rejects no attribute.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      app.ts records no correction.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      app.ts defaults no start.
+looked_past: >-
+  `bodyLimit: BODY_LIMIT_BYTES` of 11 MiB is held by constraints/request-body-ceiling, a node outside this set whose log says two files set the figure, and the CORS `methods` list is a request-tuning choice, so neither is reported.
+candidates_opened:
+  - contracts/knowledge-base/access
+  - constraints/request-body-ceiling
+  - contracts/knowledge-base/ingestion

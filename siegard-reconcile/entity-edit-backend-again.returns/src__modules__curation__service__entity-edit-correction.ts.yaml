@@ -1,0 +1,70 @@
+read:
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no enumeration and names no status value. The new attribute's status is set inside `recordNewAttribute`, which lives in another file: `const attributeId = await recordNewAttribute(client, {`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the attribute. It passes values along (`attributeId: predecessor.id`, `supersedes: predecessor.id`) and reads one field of a row type declared in the repository (`ItemLockedRow`).
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      The recording half of `recordCorrection`: the predecessor is superseded, then the new attribute is recorded naming it as the one it supersedes. The decision to correct (key not temporal, different value) is not in this file.
+    evidence: >-
+      `const attributeId = await recordNewAttribute(client, {
+          ...recorded,
+          supersedes: predecessor.id,
+        });`
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not select a live attribute with a validity end and no supersession time, and it has no branch on the attribute's key or its validity end. The caller supplies `predecessor: ItemLockedRow`.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      The `copyProvenance` call, which carries over the predecessor's provenance. The fragment's own provenance is not written in this file.
+    evidence: >-
+      `await copyProvenance(client, "attribute", predecessor.id, attributeId);`
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      The `supersedeAttributeAtEdit` call in `recordCorrection`. It gives the predecessor the moment of the edit as its supersession time and states no validity end of its own.
+    evidence: >-
+      `validTo: null,
+          supersededAt: input.editedAt,`
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      `recordCorrection`. It supersedes the earlier attribute with no validity end given by the edit and records a new attribute that names it as its predecessor. The effect label is not produced in this file.
+    evidence: >-
+      `validTo: null,` and `supersedes: predecessor.id,`
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no route, no response shape and no refusal code. Its one throw is internal: `throw new InvariantError(
+            `recordCorrection: attribute ${predecessor.id} was not live`
+          );`
+  - node: domain/knowledge-base/entity-edit
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no `reason` or `changes`. It reads `input.editedAt` from `CorrectionInput`, which extends `NewAttributeInput` from another file.
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no node status. Its imports are `PoolClient`, `InvariantError`, `copyProvenance`, `supersedeAttributeAtEdit`, `ItemLockedRow` and `recordNewAttribute`.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file serializes no status or flag. It returns only the new attribute's identifier: `return attributeId;`
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads a node's status. It operates on an attribute row only: `supersedeAttributeAtEdit(client, {
+          attributeId: predecessor.id,`
+looked_past: >-
+  The `InvariantError` message in `recordCorrection` is an internal-consistency guard and states no domain fact. Whether `supersedeAttributeAtEdit` with `validTo: null` leaves an existing validity end untouched, which an ended-attribute correction would need, is decided in the repository, which is outside this file set.

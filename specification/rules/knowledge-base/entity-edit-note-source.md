@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: "The raw information an entity edit records has source type other and records in its metadata that it is an operator note and the identity of the edited knowledge node."
+statement: "The raw information an entity edit records has source type other and records in its metadata operator_note set to true and node_id holding the identity of the edited knowledge node."
 constrains:
 - domain/knowledge-base/entity-edit
 - domain/knowledge-base/raw-information

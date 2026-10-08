@@ -1,0 +1,618 @@
+findings:
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the reject-rate query inside aggregateCurationMetrics, the rejectsRes statement
+    evidence: >-
+      `SELECT (payload->>'error_code') AS code,` ... `WHERE action = 'reject_item'
+      AND payload ? 'error_code'`
+    cost: >-
+      The name of the payload field that carries a rejection's error code is
+      stated only in this query. The node says only that a reject-item action's
+      payload "carries" an error code. No node names the field or says what
+      counts as one. A writer of reject-item payloads that spells the field
+      differently drops out of the rate silently, and the next reader looks in
+      the specification for the field's name and finds nothing.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the field that a reject-item curation action's
+      payload carries its error code under a name, held by
+      rules/knowledge-base/reject-rate-by-code or by a node on the payload's
+      shape. The query then reads that name.
+    node: rules/knowledge-base/reject-rate-by-code
+read:
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      nowhere. The file declares no enumeration of assertion statuses.
+    evidence: >-
+      It imports the type (`AssertionStatus` from "../dto/enums.dto.js") and
+      uses the values in SQL literals such as `status IN ('active', 'uncertain',
+      'disputed')`.
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      nowhere. CurationActionInsertArgs is a parameter shape for one insert, not
+      the element's declaration.
+    evidence: >-
+      `export interface CurationActionInsertArgs { readonly action: string;
+      readonly target_kind: "node" | "link" | "attribute"; ...`
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      nowhere. The file declares no enumeration of target kinds.
+    evidence: >-
+      `readonly target_kind: "node" | "link" | "attribute";` is an inline
+      parameter type, not a declaration of the enumeration.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere. The file declares no knowledge-link shape.
+    evidence: >-
+      DisputedLinkRow and ItemLockedRow are read projections of selected
+      columns, not the element's declaration. The table is named in queries
+      such as `UPDATE knowledge_link`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere. The file declares no node-attribute shape.
+    evidence: >-
+      NewAttributeArgs and DisputedAttributeRow are parameter and read
+      projections, not the element's declaration.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere. The file declares no enumeration of value types.
+    evidence: >-
+      It uses the inline union `"date" | "number" | "text" | "bool"` in
+      ItemLockedRow and NewAttributeArgs, which are projections rather than an
+      enumeration declaration.
+  - node: rules/knowledge-base/accept-rate
+    held_at: >-
+      the ACCEPT_ACTIONS constant and the acceptRate computation in
+      aggregateCurationMetrics
+    evidence: >-
+      `const ACCEPT_ACTIONS = ["resolve_entity_match", "merge_nodes",
+      "resolve_dispute", "confirm_item", "correct_item"] as const;` and `let
+      acceptRate = 0; if (totalActions > 0) { ... acceptRate = accepted /
+      totalActions; }`
+  - node: rules/knowledge-base/adjust-periods-outcome
+    held_at: adjustItemPeriod
+    evidence: >-
+      `SET valid_from = $2::date, valid_to = $3::date, status = 'active' WHERE
+      id = $1 AND status = 'disputed'`
+  - node: rules/knowledge-base/alias-unique-per-node
+    held_at: >-
+      the ON CONFLICT clause of copyAliases, which respects the uniqueness
+      without declaring it
+    evidence: >-
+      `ON CONFLICT (node_id, alias_norm) DO NOTHING`
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: >-
+      the ON CONFLICT clauses of copyProvenance and appendProvenanceFragment for
+      attributes
+    evidence: >-
+      `ON CONFLICT (attribute_id, fragment_id) DO NOTHING`
+  - node: rules/knowledge-base/confirmation-activates
+    held_at: confirmItem
+    evidence: >-
+      `UPDATE node_attribute SET status = 'active' WHERE id = $1 AND status =
+      'uncertain'`
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      confirmItem, whose SET clause changes only status
+    evidence: >-
+      `UPDATE knowledge_link SET status = 'active' WHERE id = $1 AND status =
+      'uncertain'`
+  - node: rules/knowledge-base/confirmation-requires-uncertain
+    held_at: >-
+      the status guard of confirmItem, which updates only an uncertain item and
+      reports the count of rows reached
+    evidence: >-
+      `WHERE id = $1 AND status = 'uncertain' RETURNING id`
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: >-
+      copyProvenance, which copies the predecessor's fragments, and
+      appendProvenanceFragment, which adds the cited one
+    evidence: >-
+      `INSERT INTO provenance (attribute_id, fragment_id, created_at) SELECT
+      $2, fragment_id, now() FROM provenance WHERE attribute_id = $1` and
+      `INSERT INTO provenance (attribute_id, fragment_id, created_at) VALUES
+      ($1, $2, now())`
+  - node: rules/knowledge-base/corrected-item-values
+    held_at: insertCorrectedRow
+    evidence: >-
+      `COALESCE($2::text, value), COALESCE($3::date, valid_from),
+      COALESCE($4::date, valid_to), 'active'::assertion_status, confidence,
+      COALESCE($5::valid_from_source, valid_from_source), NULL,`
+  - node: rules/knowledge-base/correction-supersedes-item
+    held_at: >-
+      supersedePredecessor, which leaves valid_to untouched, and insertCorrectedRow,
+      which records the new active item naming the predecessor
+    evidence: >-
+      `SET status = 'superseded', superseded_at = now()` and the new row's
+      `$1::uuid` bound to `supersedes_attribute_id`
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: >-
+      nowhere. The file holds only the insert primitive, and which change is an
+      addition is decided elsewhere.
+    evidence: >-
+      `export async function insertNewAttribute(client: PoolClient, args:
+      NewAttributeArgs)` takes `supersedesAttributeId: string | null` from the
+      caller.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: >-
+      nowhere. The file holds no refusal. loadAttributeIdsOfKeyForUpdate only
+      reads the attributes the decision is made over.
+    evidence: >-
+      `WHERE node_id = $1 AND attribute_key_id = $2 AND status =
+      ANY($3::assertion_status[]) FOR UPDATE`
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      nowhere. The file only inserts a row with the caller's supersedesAttributeId.
+    evidence: >-
+      `readonly supersedesAttributeId: string | null;`
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: >-
+      nowhere. The file holds no raw information or raw chunk insert. It holds
+      only the fragment status transition, which is not the note's recording.
+    evidence: >-
+      `UPDATE information_fragment SET status = 'accepted' WHERE id = $1 AND
+      status = 'proposed'`
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: rejectAttributeAtEdit
+    evidence: >-
+      `SET status = 'deleted', superseded_at = $2::timestamptz WHERE id = $1 AND
+      status IN ('active', 'uncertain', 'disputed')`
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      nowhere. The file holds the supersede and insert primitives, and the
+      choice of the succession effect is made elsewhere.
+    evidence: >-
+      `export async function supersedeAttributeAtEdit(client: PoolClient, args:
+      AttributeSupersessionArgs)`
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      nowhere. supersedeAttributeAtEdit writes the supersededAt it is given,
+      and which moment or null is chosen elsewhere.
+    evidence: >-
+      `superseded_at = $3::timestamptz` with `readonly supersededAt: Date |
+      null;`
+  - node: rules/knowledge-base/entity-match-queue-entry
+    held_at: listEntityMatchQueue
+    evidence: >-
+      `WHERE kn.status = 'needs_review' ORDER BY kn.created_at ASC, kn.id ASC,
+      em.similarity DESC NULLS LAST` with `LEFT JOIN entity_match_review em ON
+      em.node_id = kn.id`
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: deleteEntityMatchReviewByNode
+    evidence: >-
+      `DELETE FROM entity_match_review WHERE node_id = $1 RETURNING id`
+  - node: rules/knowledge-base/keep-separate-activates-node
+    held_at: updateNodeStatusKeepSeparate
+    evidence: >-
+      `UPDATE knowledge_node SET status = 'active' WHERE id = $1 AND status =
+      'needs_review'`
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: >-
+      the ON CONFLICT clauses of copyProvenance and appendProvenanceFragment for
+      links
+    evidence: >-
+      `ON CONFLICT (link_id, fragment_id) DO NOTHING`
+  - node: rules/knowledge-base/merge-compresses-paths
+    held_at: pathCompressMergedInto
+    evidence: >-
+      `UPDATE knowledge_node SET merged_into_node_id = $2 WHERE
+      merged_into_node_id = $1`
+  - node: rules/knowledge-base/merge-copies-aliases
+    held_at: copyAliases
+    evidence: >-
+      `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id,
+      created_at) SELECT $2, alias, 'alias', created_by_run_id, created_at FROM
+      node_alias WHERE node_id = $1 ON CONFLICT (node_id, alias_norm) DO
+      NOTHING`
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: updateNodeMerged
+    evidence: >-
+      `SET status = 'merged', merged_into_node_id = $2 WHERE id = $1`
+  - node: rules/knowledge-base/merge-repoints-assertions
+    held_at: repointLinks and repointAttributes
+    evidence: >-
+      `WHERE source_node_id = $1 OR target_node_id = $1` and `UPDATE
+      node_attribute SET node_id = $2 WHERE node_id = $1`, neither filtering by
+      status
+  - node: rules/knowledge-base/metrics-assertion-counts
+    held_at: >-
+      the uncertainRes and disputedRes queries in aggregateCurationMetrics
+    evidence: >-
+      `(SELECT count(*) FROM knowledge_link_resolved WHERE effective_status =
+      'uncertain') + (SELECT count(*) FROM node_attribute_resolved WHERE
+      effective_status = 'uncertain')`
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: the disputedQueueRes query in aggregateCurationMetrics
+    evidence: >-
+      `SELECT DISTINCT 'link' AS k, source_node_id, target_node_id,
+      link_type_id FROM knowledge_link WHERE status = 'disputed' UNION ALL
+      SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid FROM
+      node_attribute WHERE status = 'disputed'`
+  - node: rules/knowledge-base/metrics-review-counts
+    held_at: >-
+      the needsReviewRes query and the entityMatchQueueCount assignment in
+      aggregateCurationMetrics
+    evidence: >-
+      `WHERE status = 'needs_review'` and `const entityMatchQueueCount =
+      needsReviewCount;`
+  - node: rules/knowledge-base/prefer-one-outcome
+    held_at: resolveDisputeWinner and resolveDisputeLosers
+    evidence: >-
+      `SET status = 'active' WHERE id = $1 AND status = 'disputed'` and `SET
+      status = 'deleted', superseded_at = now() WHERE id = ANY($1::uuid[]) AND
+      status = 'disputed'`
+  - node: rules/knowledge-base/reject-rate-by-code
+    held_at: >-
+      the rejectsRes query and the rejectRateByCode loop in
+      aggregateCurationMetrics. The payload field name it reads is reported as
+      unstated.
+    evidence: >-
+      `rejectRateByCode[row.code] = Number(row.total) / totalActions;` over
+      `WHERE action = 'reject_item' AND payload ? 'error_code' GROUP BY 1`
+  - node: rules/knowledge-base/rejection-and-correction-require-live-item
+    held_at: >-
+      the status guards of rejectItem and supersedePredecessor
+    evidence: >-
+      `WHERE id = $1 AND status IN ('active', 'uncertain', 'disputed')`
+  - node: rules/knowledge-base/rejection-deletes
+    held_at: rejectItem
+    evidence: >-
+      `SET status = 'deleted', superseded_at = now() WHERE id = $1 AND status
+      IN ('active', 'uncertain', 'disputed')`
+  - node: rules/knowledge-base/review-queue-order
+    held_at: >-
+      the ORDER BY clauses of listEntityMatchQueue, listDisputedLinks and
+      listDisputedAttributes, which hold the entity-match order and the per-item
+      dispute order. The cross-kind order is not held here.
+    evidence: >-
+      `ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST` and
+      `ORDER BY kl.recorded_at ASC, kl.id ASC`
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      the LIMIT and OFFSET of listEntityMatchQueue, listDisputedLinks and
+      listDisputedAttributes, each applied to its own rows
+    evidence: >-
+      `LIMIT $1 OFFSET $2`
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      countEntityMatchQueue, countDisputedLinks and countDisputedAttributes,
+      which carry no page
+    evidence: >-
+      `SELECT count(*)::text AS total FROM knowledge_node WHERE status =
+      'needs_review'`
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: >-
+      rejectAttributeAtEdit, which reaches only the attribute id it is given
+    evidence: >-
+      `UPDATE node_attribute SET status = 'deleted', superseded_at =
+      $2::timestamptz WHERE id = $1`
+  - node: constraints/entity-edit-is-atomic
+    held_at: >-
+      nowhere. Every function takes a PoolClient and opens no transaction, so
+      the transaction is held by the caller.
+    evidence: >-
+      `export async function rejectAttributeAtEdit(client: PoolClient, args:
+      AttributeRejectionArgs)`
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: >-
+      nowhere. The file exposes no tool surface.
+    evidence: >-
+      The file exports only repository functions over `PoolClient`.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      nowhere. The file has no network entry point or authentication.
+    evidence: >-
+      `import type { PoolClient } from "pg";` is its only external dependency.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      nowhere. The file logs nothing.
+    evidence: >-
+      The file holds no logger import or call.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      nowhere. The file answers no failure to a caller. Its only throws are
+      InvariantError on a missing returned row.
+    evidence: >-
+      `throw new InvariantError("insertNewAttribute returned no row");`
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      nowhere. The file maps no store failure to an answer.
+    evidence: >-
+      The file holds no try/catch around `client.query`.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      nowhere. The file holds no read or listing of compliance deletions or
+      curation actions, and no answer shape.
+    evidence: >-
+      The only curation-action statement is `INSERT INTO curation_action
+      (action, target_kind, target_id, payload, reason)`.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      nowhere. The file holds no route, refusal or answer shape.
+    evidence: >-
+      The file holds only the persistence primitives of the edit, such as
+      `supersedeAttributeAtEdit` and `rejectAttributeAtEdit`.
+  - node: domain/knowledge-base/applied-change
+    held_at: >-
+      nowhere. The file declares no shape for an applied change.
+    evidence: >-
+      The file holds no `attribute_key`, `effect`, `item_id` and
+      `predecessor_id` declaration.
+  - node: domain/knowledge-base/attribute-change
+    held_at: >-
+      nowhere. The file declares no attribute-change shape.
+    evidence: >-
+      AttributeSupersessionArgs and AttributeRejectionArgs are narrow
+      parameter shapes, not the element's declaration.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: >-
+      nowhere. The file declares no enumeration of change kinds.
+    evidence: >-
+      The file holds no `set` or `remove` kind declaration.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere. The file declares no attribute-key shape.
+    evidence: >-
+      The file reads only `ak.key AS attribute_key` from the table in
+      listDisputedAttributes.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      nowhere. The file declares no filter shape.
+    evidence: >-
+      The file holds no created_from, created_to or page declaration.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      nowhere. The file declares no enumeration of action kinds.
+    evidence: >-
+      `readonly action: string;` and the ACCEPT_ACTIONS constant of string
+      literals are not the enumeration's declaration.
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      nowhere. The file declares no enumeration of edit effects.
+    evidence: >-
+      The file holds no `first_value`, `addition`, `succession` or `removal`
+      declaration.
+  - node: domain/knowledge-base/entity-edit
+    held_at: >-
+      nowhere. The file declares no entity-edit shape.
+    evidence: >-
+      The file holds no `reason` and `changes` declaration.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: >-
+      nowhere. The file declares no enumeration, only the repeated literal
+      list in status guards.
+    evidence: >-
+      `status IN ('active', 'uncertain', 'disputed')`
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere. The file declares no enumeration. It imports `NodeStatus` and
+      uses literals.
+    evidence: >-
+      `import type { AssertionStatus, ItemKind, NodeStatus, ValidFromSource }
+      from "../dto/enums.dto.js";`
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: >-
+      the action literals of ACCEPT_ACTIONS and the reject-rate filter in
+      aggregateCurationMetrics
+    evidence: >-
+      `"resolve_entity_match", "merge_nodes"` and `WHERE action =
+      'reject_item'`
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: >-
+      nowhere. The file puts nothing on the wire. It uses the underscored form
+      only as a stored value.
+    evidence: >-
+      `WHERE kn.status = 'needs_review'`
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: >-
+      nowhere. The file spells no effect.
+    evidence: >-
+      The file holds no edit effect literal.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere. The file holds no catalog check.
+    evidence: >-
+      `readonly attributeKeyId: string;` is only passed on to the insert.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere. The file holds no allowed-values check.
+    evidence: >-
+      `readonly value: string;` is inserted without validation.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere. The file holds no parse check.
+    evidence: >-
+      `VALUES ($1, $2, $3::attribute_value_type, $4,` binds the value as given.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere. The file derives no currency.
+    evidence: >-
+      The file holds no is_current or valid_to-null filter.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: >-
+      nowhere. The file holds no change checks.
+    evidence: >-
+      The file holds only persistence primitives.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: >-
+      nowhere. The file holds no refusal. ItemLockedRow carries superseded_at
+      for the caller to judge.
+    evidence: >-
+      `readonly superseded_at: Date | null;`
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      The file holds no count of effects and no refusal.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds no request, node or change checks.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      nowhere. The file holds the primitives, and the choice of the correction
+      effect is made elsewhere.
+    evidence: >-
+      `supersedeAttributeAtEdit` and `insertNewAttribute`, which are called
+      with the caller's decision.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      The file holds no comparison against today.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The file selects no attribute by validity end and supersession time. It
+      reads both only as ItemLockedRow columns.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: >-
+      nowhere. The file holds no refusal. supersedeAttributeAtEdit's guard
+      admits disputed, and the refusal sits in the caller.
+    evidence: >-
+      `AND status IN ('active', 'uncertain', 'disputed')`
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      The file holds no check that a named attribute is live. It reads
+      attributes with a status filter via loadAttributeIdsOfKeyForUpdate.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      `loadNodesForUpdate` returns the node's status for the caller to judge,
+      and the file holds no refusal.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: >-
+      nowhere. The status, confidence and run are arguments of insertNewAttribute.
+    evidence: >-
+      `readonly status: AssertionStatus; readonly confidence: number; readonly
+      createdByRunId: string;`
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The file holds no fragment insert.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      The file holds no raw information insert.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The file holds no fragment or raw information insert.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      The file holds no raw information insert.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: >-
+      nowhere. The COALESCE in insertCorrectedRow reads a null as not stated
+      for a correction, not for an entity-edit change.
+    evidence: >-
+      `COALESCE($3::date, valid_from)`
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      nowhere. The primitives copyProvenance and appendProvenanceFragment are
+      reused, and the file does not tie them to an entity edit.
+    evidence: >-
+      `export async function copyProvenance(client: PoolClient, itemKind:
+      ItemKind, predecessorId: string, successorId: string)`
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no reason length check.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      `readonly reason: string | null;` in CurationActionInsertArgs is stored as
+      given, and the file does no trimming.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: >-
+      nowhere. insertCurationAction records whatever action, target and payload
+      it is given.
+    evidence: >-
+      `VALUES ($1, $2, $3, $4::jsonb, $5)` with `args.action`,
+      `args.target_kind`, `args.target_id`, `JSON.stringify(args.payload)` and
+      `args.reason`.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      The file holds no refusal for a remove change without an attribute.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file holds no LLM run insert and no model or prompt version literal.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      insertNewAttribute takes `validFrom`, `validTo` and `validFromSource` as
+      nullable arguments and decides none of them.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file holds no default for the validity start.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: >-
+      nowhere. insertNewAttribute inserts the validTo it is given, and the
+      decision is made elsewhere.
+    evidence: >-
+      `$5::date, $6::date,` bound to `args.validFrom, args.validTo`
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      `$9::valid_from_source` is bound to the caller's `args.validFromSource`.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: >-
+      nowhere. supersedeAttributeAtEdit applies a validTo it is given, and the
+      end is computed elsewhere.
+    evidence: >-
+      `valid_to = COALESCE($2::date, valid_to)`
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no value comparison and no unchanged effect.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file holds no check on a change's kind and value.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file holds no check on the key's temporality.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file reads no is_temporal column.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file holds no comparison of validity start and end. adjustItemPeriod
+      writes both as given.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no refusal for an edit without changes.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: >-
+      nowhere. supersedeAttributeAtEdit leaves valid_to when given null, and
+      the choice of null is made elsewhere.
+    evidence: >-
+      `valid_to = COALESCE($2::date, valid_to)`
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      The file holds no conflict refusal. The guard `AND status IN ('active',
+      'uncertain', 'disputed')` reaches no row of a superseded attribute and
+      reports a zero count.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      nowhere. The file holds the supersede and insert primitives, and the
+      effect is chosen elsewhere.
+    evidence: >-
+      `supersedeAttributeAtEdit` and `insertNewAttribute`
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The file holds no today default.
+looked_past: >-
+  The guards in updateNodeMerged and acceptInformationFragment state transitions
+  that other nodes outside this set govern (merge-survivor-active,
+  node-merge-absorbs-active-node and provenance-accepts-proposed-fragment), so
+  they are attributed there and not reported.

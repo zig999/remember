@@ -1,0 +1,29 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-provenance
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-correction.spec.ts
+        name: holds the edit's information fragment and every provenance of the superseded attribute
+    why: >-
+      The fact has two parts. One applies to every entity edit: the edit's new attribute holds the
+      provenance of the edit's information fragment. The other applies only to corrections: the
+      new attribute also holds every provenance of the attribute it supersedes. The offered file
+      runs only the correction path (recordCorrection with a predecessor). No edit in it records a
+      new attribute without superseding one, so the first part goes unexercised for every entity
+      edit that is not a correction. Within the correction path, "every provenance of the attribute
+      it supersedes" is only partly bound. The test's fake client matches any statement shaped
+      "INSERT INTO provenance ... SELECT". Its copyStatement then copies every provenance row of the
+      predecessor itself and never evaluates the statement's selection. An implementation whose
+      copy selected only some of the superseded attribute's provenance would still pass. The test
+      fails only if the copy statement is removed entirely, or if its parameters name the wrong
+      attributes. It does bind the edit's own fragment on a correction, because that insert is
+      parsed column by column. The file's other tests (status, superseded_at, supersedes_attribute_id,
+      valid_to, value, active state) assert nothing about provenance and do not bear on this fact.
+    remainder: testable
+    remainder_why: >-
+      Two assertions would close it. First, an entity edit that sets an attribute the node does
+      not yet hold, with the expected result that the new attribute's provenance holds the edit's
+      information fragment. Second, a correction of an attribute holding several provenance rows,
+      run against a store that evaluates the copy's selection (not a fake that copies every row
+      whatever the statement says). Its expected result is that the new attribute's provenance
+      holds each of those fragments as well as the edit's own.

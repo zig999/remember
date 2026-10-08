@@ -1,0 +1,40 @@
+certified:
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: supersedes the earlier status with no validity end and records the new status starting 2026-09-01 with the basis stated
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: is the new start, and none when the predecessor holds a start the new start does not pass
+      - file: src/__tests__/unit/curation/entity-edit-succession.spec.ts
+        name: is superseded whether or not the succession gives it a validity end
+    why: >-
+      Both outcomes are exercised at the succession step. The named test starts from a
+      status_text attribute that begins on 2026-10-01 and has no end, then sets another
+      status with a stated start of 2026-09-01. It asserts that the earlier status becomes
+      superseded with no validity end, and that the new status starts on 2026-09-01 with the
+      basis stated. The validity-end table checks the same rule on the deadline key with a
+      start one day before and a start on the predecessor's start. The test of the
+      superseded status checks that it is superseded even when it gets no end.
+
+      The trigger is the part left unexercised: the owner editing the project. Every test
+      calls recordSuccession directly and builds the predecessor itself. The change it
+      passes names the attribute key "any", not the status. So nothing in the set shows
+      that an edit of the project naming that status finds the status as the attribute to
+      supersede. Nothing shows that the edit reaches the succession with the backdated
+      start, and not refused or treated as having no predecessor. If the edit path stopped
+      doing either, the fact would stop holding and every one of these tests would still
+      pass.
+
+      The "no validity end" result is also read through the test's in-memory stand-in for
+      the UPDATE statement. That stand-in keeps the row's earlier null end when no end
+      parameter is sent, so the assertion depends on the parameter order of the statement
+      the code issues.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, through the owner's project-edit entry point
+      and not recordSuccession. Input: a project holding an active status_text that starts
+      on 2026-10-01 with no validity end, and an edit with a set change on status_text to
+      another value, stating a validity start of 2026-09-01. Expected: the earlier status is
+      superseded and has no validity end, and the new status starts on 2026-09-01 with the
+      basis stated.

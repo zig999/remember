@@ -1,0 +1,40 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity-unchanged.spec.ts
+    why: >-
+      The "reported with the effect unchanged" half is fully exercised. One equality assertion
+      covers a table of probes, so the test fails if any probe's effect changes. In the named
+      branch, active, uncertain and disputed attributes with the same value give unchanged, and
+      superseded and deleted ones do not. Values that differ only in case or accents do not
+      count as the same character for character. In the branch that names no attribute, active
+      and uncertain values of a multiple-current key give unchanged. Disputed, superseded,
+      different and case-differing values do not.
+
+      The "records nothing" half is only partly exercised. The test counts only the rows
+      returned by recordedAttributes, and it leaves out the row carrying the companion phase
+      value. Every probe sends the unchanged change together with a phase set change, so an
+      edit action is always recorded. Nothing checks whether that recorded action carries any
+      trace of the unchanged change. Nothing checks whether the held attribute row is left as
+      it was, for example its status or superseded_at. An implementation that recorded the
+      unchanged change in the edit action, or rewrote the held row without inserting a new one,
+      would still pass.
+
+      The test also says that a named disputed attribute is live. I did not check that against
+      the live-assertion-status node, because the pack limits the reading to the proof.
+
+      Over-assertion finding: this single test also pins facts that belong to sibling rules. A
+      named superseded or deleted attribute is refused with BUSINESS_ENTITY_EDIT_CONFLICT.
+      Values differing in case or accents are a correction that records one row. Unnamed
+      non-matching values are an addition or a first_value that records one row. If any of
+      those sibling facts legitimately changes, this test fails even though this node still
+      holds.
+    remainder: testable
+    remainder_why: >-
+      Two inputs would close it. First, an edit carrying only a set change that names a live
+      attribute with exactly its held value. Second, an edit carrying only a set change that
+      names none, whose value equals an active or uncertain value of a multiple-current key.
+      Expected result for each: the effect is reported as unchanged, no attribute row is
+      inserted, the held row is unaltered (same status, no superseded_at), and no edit action
+      or other record carries any trace of the change.

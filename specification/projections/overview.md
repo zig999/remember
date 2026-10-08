@@ -13,7 +13,7 @@ Derived by spec.py from the specification files; never edited.
 | entity-workspace | supporting | 2 | 41 | 3 | 3 |
 | graph-explorer | supporting | 10 | 170 | 3 | 4 |
 | ingest-workspace | supporting | 3 | 58 | 3 | 4 |
-| knowledge-base | core | 85 | 452 | 6 | 33 |
+| knowledge-base | core | 85 | 467 | 6 | 34 |
 | owner-access | supporting | 4 | 14 | 2 | 4 |
 
 ## Aggregates
@@ -95,4 +95,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-388 decision(s) disclosed, 8 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+418 decision(s) disclosed, 8 fact(s) recorded as read, 2 location(s) retired in the decision logs.

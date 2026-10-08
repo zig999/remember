@@ -1,0 +1,381 @@
+findings: []
+read:
+  - node: domain/knowledge-base/entity-edit
+    held_at: >-
+      nowhere. The file declares OperatorNoteInput, which carries only the reason and two other fields. It does not declare the entity edit's shape (reason, changes).
+    evidence: >-
+      readonly nodeId: string; readonly reason: string; readonly editedAt: Date;
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: >-
+      recordOperatorNote, through insertNoteSource, wholeContentChunk and insertAcceptedNoteFragment.
+    evidence: >-
+      const raw = await insertRawInformation(client, { ... content, ... }); const [chunk] = await insertRawChunks(client, raw.id, [ wholeContentChunk(content), ]); text: args.reason, ... chunk_ids: [args.chunkId], ... const accepted = await acceptInformationFragment(client, fragment.id);
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: >-
+      The OPERATOR_NOTE_CONFIDENCE constant, passed to insertFragmentWithSources.
+    evidence: >-
+      export const OPERATOR_NOTE_CONFIDENCE = 1.0; ... confidence: OPERATOR_NOTE_CONFIDENCE,
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: >-
+      composeNoteContent, called from recordOperatorNote with randomUUID() as the nonce.
+    evidence: >-
+      return [reason, editedAt.toISOString(), nonce].join(NOTE_CONTENT_SEPARATOR); ... const content = composeNoteContent(reason, input.editedAt, randomUUID());
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: >-
+      recordOperatorNote. It opens the run for the note's raw information and records the fragment under that same run's id.
+    evidence: >-
+      const run = await openOperatorRun(client, source.rawInformationId, source.contentHash); ... llmRunId: run.id,
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: >-
+      OPERATOR_NOTE_SOURCE_TYPE and the metadata argument in insertNoteSource.
+    evidence: >-
+      const OPERATOR_NOTE_SOURCE_TYPE: SourceType = "outro"; ... metadata: { operator_note: true, node_id: nodeId },
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: >-
+      The first statement of recordOperatorNote. Both the note content and the fragment text are built from the trimmed reason.
+    evidence: >-
+      const reason = input.reason.trim();
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: >-
+      OPERATOR_NOTE_MODEL, OPERATOR_NOTE_PROMPT_VERSION, openOperatorRun and completeOperatorRun.
+    evidence: >-
+      export const OPERATOR_NOTE_MODEL = "operator"; export const OPERATOR_NOTE_PROMPT_VERSION = "operator-edit-v1"; ... outcome: "completed",
+  - node: constraints/entity-edit-is-atomic
+    held_at: >-
+      nowhere. The file runs every write on the PoolClient it is handed. The transaction is owned by the caller.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: >-
+      nowhere. The file exposes no tool or route surface.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      nowhere. The file holds no authentication.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      nowhere. The file logs nothing and refuses nothing for a business cause.
+    evidence: >-
+      throw new InvariantError(`completeOperatorRun: llm_run ${llmRunId} was not running`)
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      nowhere. The file throws InvariantError and states no answer.
+    evidence: >-
+      throw new InvariantError("insertNoteSource: no raw chunk returned");
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      nowhere. The file holds no store-failure handling.
+    evidence: >-
+      const [chunk] = await insertRawChunks(client, raw.id, [ wholeContentChunk(content), ]);
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      nowhere. The contract is not the file's surface.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      nowhere. The file holds no request or answer shape of the edit-entity operation.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; readonly rawInformationId: string; readonly rawChunkId: string; readonly fragmentId: string; }
+  - node: domain/knowledge-base/applied-change
+    held_at: >-
+      nowhere. The file declares no applied-change shape.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; ... }
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      nowhere. The file declares no assertion status.
+    evidence: >-
+      const accepted = await acceptInformationFragment(client, fragment.id);
+  - node: domain/knowledge-base/attribute-change
+    held_at: >-
+      nowhere. The file declares no attribute-change shape.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: >-
+      nowhere. The file declares no change kind.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere. The file declares no attribute key.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      nowhere. The file records no curation action.
+    evidence: >-
+      import { acceptInformationFragment } from "../repository/curation.repository.js";
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      nowhere. The file declares no filter.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      nowhere. The file declares no curation action kind.
+    evidence: >-
+      export const OPERATOR_NOTE_MODEL = "operator";
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      nowhere. The file declares no target kind.
+    evidence: >-
+      metadata: { operator_note: true, node_id: nodeId },
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      nowhere. The file declares no edit effect.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: >-
+      nowhere. The file declares no live status.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere. The file records no node attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere. The file declares no node status.
+    evidence: >-
+      readonly nodeId: string;
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere. The file declares no value type.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: >-
+      nowhere. The file records no curation action kind.
+    evidence: >-
+      export const OPERATOR_NOTE_PROMPT_VERSION = "operator-edit-v1";
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: >-
+      nowhere. No status crosses the wire in this file.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: >-
+      nowhere. No effect is written in this file.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere. The file checks no attribute key.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere. The file checks no attribute value.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere. The file parses no attribute value.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere. The file derives no currency.
+    evidence: >-
+      const accepted = await acceptInformationFragment(client, fragment.id);
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: >-
+      nowhere. The file does not count changes.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: >-
+      nowhere. The file orders no checks.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: >-
+      nowhere. The file checks no validity.
+    evidence: >-
+      readonly editedAt: Date;
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: >-
+      nowhere. The file reads no attribute status.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: >-
+      nowhere. The file reads no attribute.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: >-
+      nowhere. The file reads no node status.
+    evidence: >-
+      readonly nodeId: string;
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: >-
+      nowhere. The file records the note's confidence only. The new attributes' state and run are held elsewhere.
+    evidence: >-
+      export const OPERATOR_NOTE_CONFIDENCE = 1.0;
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: >-
+      nowhere. The file reads no change field.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: >-
+      nowhere. The file records the fragment's chunk source and no attribute provenance.
+    evidence: >-
+      chunk_ids: [args.chunkId],
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: >-
+      nowhere. The file checks no length.
+    evidence: >-
+      const reason = input.reason.trim();
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: >-
+      nowhere. The file records no curation action.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; readonly rawInformationId: string; readonly rawChunkId: string; readonly fragmentId: string; }
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      nowhere. The file rejects no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: >-
+      nowhere. editedAt is carried only into the note's content.
+    evidence: >-
+      return [reason, editedAt.toISOString(), nonce].join(NOTE_CONTENT_SEPARATOR);
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: >-
+      nowhere. The file closes no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: >-
+      nowhere. The file supersedes no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: >-
+      nowhere. The file compares no values.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: >-
+      nowhere. The file checks no change.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: >-
+      nowhere. The file reads no key temporality.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere. The file checks no validity.
+    evidence: >-
+      export interface OperatorNoteInput { readonly nodeId: string; readonly reason: string; readonly editedAt: Date; }
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: >-
+      nowhere. The file refuses nothing.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: >-
+      nowhere. The file refuses nothing.
+    evidence: >-
+      export async function recordOperatorNote(client: PoolClient, input: OperatorNoteInput)
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: >-
+      nowhere. The file rejects no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: >-
+      nowhere. The file records no attribute.
+    evidence: >-
+      export interface OperatorNoteRecord { readonly llmRunId: string; ... }
+looked_past: >-
+  I saw the newline separator and ISO-8601 rendering of the moment inside the note content, the run's idempotency-key composition, and the code-point chunk offsets. They are representation choices beneath what entity-edit-note-content and entity-edit-note state, not domain facts, so I did not report them.
+candidates_opened:
+  - domain/knowledge-base/source-type

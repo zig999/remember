@@ -1,0 +1,333 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the catch block of the GET /metrics handler, lines 80-98 (the logger.warn call)
+    evidence: >-
+      deps.logger.warn({ route: "GET /api/v1/curation/metrics", operation: "getCurationMetrics", transport: "rest", original_status: statusCode, outcome: degradedStatus, error_code: degradedEnvelope.error.code, ... cause_message: err instanceof Error ? err.message : String(err), }, "curation_metrics_degraded")
+    cost: >-
+      The log name, the warn level, and the choice to log the cause of a degraded metrics read live only in this handler. Specification constraints do hold the logging facts of curation (a failed write is logged at error level as curation_request_failed), so the next reader looks for this one there and finds nothing. A person tuning alerts could not tell that a degraded read is logged at warn and a failed write at error.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether a degraded metrics read is logged, under what name, at what level and with what fields. It would give that fact a node, probably a refusal clause of read-curation-metrics in contracts/knowledge-base/curation or a sibling logging constraint.
+    node: contracts/knowledge-base/curation
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      Only the REST half sits here. Each write handler forwards the result of the shared service, and each refusal goes through sendError, whose mapper is shared with the MCP transport.
+    evidence: >-
+      const result = await resolveEntityMatchService({ pool: deps.pool, logger: deps.logger }, params.node_id, body); return reply.status(200).send(result); ... return sendError(err, reply, deps.logger);
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The handlers only delegate with `return sendError(err, reply, deps.logger);`. The `curation_request_failed` logger.error call is declared in src/modules/curation/routes/send-error.ts, which the candidate index does not bind to this node, not in this file.
+  - node: rules/knowledge-base/curation-request-checked-first
+    held_at: >-
+      The write handlers, which parse the path and body before they call the service that reads any node, link, attribute or fragment.
+    evidence: >-
+      body = MergeNodesBodySchema.parse(request.body ?? {}); ... const result = await mergeNodesService({ pool: deps.pool, logger: deps.logger }, body.survivor_id, body.absorbed_id, body.reason);
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The file registers /queue, /metrics, /entity-matches/:node_id/resolve, /nodes/merge, /disputes/resolve, /items/confirm, /items/reject and /items/correct. It has no edit route and no transaction.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The file mounts REST handlers only, with `app.get(` and `app.post(`, and exposes no edit operation and no tool surface.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      No handler in the file authenticates. `app.get("/queue", async (request: FastifyRequest, reply: FastifyReply) => {` runs no token check, so authentication is not held here.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file never logs at error level. Its one direct log is `deps.logger.warn(`, and the per-refusal level is decided in sendError and mapErrorToHttpResponse, outside this file.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      The file never answers an internal failure itself. The write handlers delegate with `return sendError(err, reply, deps.logger);`, and the metrics catch turns a 500 into a fixed 503 answer.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      The catch block of GET /metrics, which answers 503 SYSTEM_SERVICE_UNAVAILABLE in place of a 500. The write routes delegate to sendError.
+    evidence: >-
+      const degradedStatus = statusCode === 500 ? 503 : statusCode; ... code: "SYSTEM_SERVICE_UNAVAILABLE", message: "A backing service is temporarily unavailable."
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file registers no compliance-delete, compliance-deletion or curation-action listing route.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file registers no POST /nodes/:node_id/edit route. Its routes end with `app.post("/items/correct", ...`.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape with attribute_key, effect, item_id or predecessor_id. Its one interface is `export interface CurationRouteDeps`.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      No assertion status enumeration is declared in the file.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      No attribute change shape is declared in the file. It only imports body schemas such as `ConfirmItemBodySchema`.
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      No set or remove enumeration is declared in the file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      No attribute key shape is declared in the file. It only passes `catalog: deps.ingestionCatalog` along.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      The file declares no curation action shape and records no action. Services do that.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      No curation action filter shape is declared in the file.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      No curation action kind enumeration is declared in the file.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      No curation target kind enumeration is declared in the file.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      No edit effect enumeration is declared in the file.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      No entity edit shape is declared in the file.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: nowhere
+    evidence: >-
+      No live status enumeration is declared in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No node attribute shape is declared in the file.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      No node status enumeration is declared in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      No value type enumeration is declared in the file.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file neither records nor filters curation action kinds.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file spells no node status or assertion flag. It forwards service results as they are, with `reply.status(200).send(result)`.
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file has no edit route and spells no edit effect.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file checks no attribute key against a node type.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file checks no allowed values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file parses no attribute value.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file derives no currency.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file records no addition.
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds no change checks.
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds no entity edit checks.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no entity edit correction.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      The file holds no validity checks.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The file holds no such correction.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file records no first value.
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      The file records no note.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The file records no fragment.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      The file records no source.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The file reads no change fields.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The file states no reason length. Schemas imported from the dto files do.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      The file trims no reason.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file records no removal.
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file defaults no start.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      The file records no end.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      The file records no start.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file records no succession.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      The file closes no attribute.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file sets no supersession time.
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file holds no such check.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file reads no temporality.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file holds no validity check.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no edit route.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      The file records no succession.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: nowhere
+    evidence: >-
+      The file has no edit route.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      The file records no removal.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no correction by edit.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The file defaults no start.
+looked_past: >-
+  The GET /queue handler and the path parse of the entity-match handler call .parse() outside any try block, so whether their refusals answer alike on both transports depends on an error handler outside this file. I did not read it, because it is outside the file set. I also noted that curation-write-failure-logged is bound to this file while its code lives in send-error.ts, which the index binds to other nodes.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - contracts/curation-workspace/bff-curation

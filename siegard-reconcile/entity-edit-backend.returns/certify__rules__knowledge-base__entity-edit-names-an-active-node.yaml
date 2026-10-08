@@ -1,0 +1,29 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/entity-edit-node.spec.ts
+        name: is refused for needs_review, merged and deleted and not refused for active
+      - file: src/__tests__/unit/curation/entity-edit-node.spec.ts
+        name: is refused with RESOURCE_NOT_FOUND
+    why: >-
+      The proof runs only the node guard, loadActiveNodeForEdit, on a mocked client. It never
+      runs an entity edit. Over that guard the fact is fully tested. The guard accepts a node
+      held as active. It refuses with BUSINESS_NODE_NOT_ACTIVE a node held as needs_review,
+      merged or deleted, and it refuses with RESOURCE_NOT_FOUND an identity where no node is
+      held. The proof does not test that an entity edit goes through this guard. If the edit
+      stopped calling the guard, or called it after writing, an edit naming a merged,
+      deleted or needs_review node would succeed, and every test here would still pass. So
+      "an entity edit MUST name an active node" is proven of the guard, not of the edit.
+      Two more limits. The four statuses in the table are all the test lists, and the pack
+      does not let me check them against the node-status vocabulary. The remaining tests in
+      the file are about the refusal itself: that the message names the node and its status,
+      the needs_review spelling, and the HTTP 404/409 mapping. None of them bears on whether
+      the edit is held to an active node.
+    remainder: testable
+    remainder_why: >-
+      Submit an entity edit through the edit operation itself, not through the guard. Use one
+      edit per non-active status (needs_review, merged, deleted) and one naming an absent
+      identity. Each should be refused (BUSINESS_NODE_NOT_ACTIVE, or RESOURCE_NOT_FOUND for
+      the absent one) and leave the node as it stood. The same edit naming an active node
+      should be applied.

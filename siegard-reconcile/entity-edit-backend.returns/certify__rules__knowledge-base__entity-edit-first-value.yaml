@@ -1,0 +1,25 @@
+certified:
+  - node: rules/knowledge-base/entity-edit-first-value
+    state: partial
+    tests:
+      - file: src/__tests__/unit/curation/edit-entity-records.spec.ts
+        name: is recorded as a new active attribute that names no predecessor, with the effect first_value
+    why: >-
+      The test sends a set change with no attribute named. It goes to the phase key, and the node holds
+      a phase attribute only in status superseded. The test asserts all three parts of the fact: the
+      effect is first_value, one new attribute is recorded with status active, and its
+      supersedes_attribute_id is null. It would fail if the effect changed, if the status changed, or if
+      the new attribute named the superseded one as its predecessor. So the success path and the
+      superseded case are proven. The fact's condition is that the node holds no attribute of the key
+      with a live status, and the test checks only one status outside the live set, which is
+      superseded. Nothing in the set makes the same change when the node's attribute of that key is in
+      status deleted, which is the status a removal leaves behind. A key with no attribute at all is
+      not tested either. An implementation that treated a deleted attribute as live would answer
+      succession, or name the deleted attribute as the one it supersedes. This test would still pass in
+      that case. That part of the fact is unexercised.
+    remainder: testable
+    remainder_why: >-
+      Input: a set change with no attribute named, to a key where the edited node's only attribute has
+      status deleted (superseded_at set). Expected result: effect first_value, exactly one new attribute
+      with status active, and supersedes_attribute_id null. The same assertion should also be run for a
+      key where the node holds no attribute at all.

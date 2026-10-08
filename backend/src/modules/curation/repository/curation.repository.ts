@@ -5,6 +5,7 @@ import type {
   AssertionStatus,
   ItemKind,
   NodeStatus,
+  ValidFromSource,
 } from "../dto/enums.dto.js";
 
 export interface KnowledgeNodeLockedRow {
@@ -193,6 +194,28 @@ export async function loadItemsForUpdate(
     [Array.from(itemIds)]
   );
   return res.rows;
+}
+
+export interface AttributesOfKeyFilter {
+  readonly nodeId: string;
+  readonly attributeKeyId: string;
+  readonly statuses: readonly AssertionStatus[];
+}
+
+export async function loadAttributeIdsOfKeyForUpdate(
+  client: PoolClient,
+  filter: AttributesOfKeyFilter
+): Promise<string[]> {
+  const res = await client.query<{ id: string }>(
+    `SELECT id
+       FROM node_attribute
+      WHERE node_id = $1
+        AND attribute_key_id = $2
+        AND status = ANY($3::assertion_status[])
+      FOR UPDATE`,
+    [filter.nodeId, filter.attributeKeyId, Array.from(filter.statuses)]
+  );
+  return res.rows.map((row) => row.id);
 }
 
 export async function confirmItem(
@@ -449,6 +472,99 @@ export async function insertCorrectedRow(
   return row.id;
 }
 
+export interface NewAttributeArgs {
+  readonly nodeId: string;
+  readonly attributeKeyId: string;
+  readonly valueType: "date" | "number" | "text" | "bool";
+  readonly value: string;
+  readonly validFrom: string | null;
+  readonly validTo: string | null;
+  readonly validFromSource: ValidFromSource | null;
+  readonly status: AssertionStatus;
+  readonly confidence: number;
+  readonly createdByRunId: string;
+  readonly supersedesAttributeId: string | null;
+}
+
+export async function insertNewAttribute(
+  client: PoolClient,
+  args: NewAttributeArgs
+): Promise<string> {
+  const res = await client.query<{ id: string }>(
+    `INSERT INTO node_attribute
+       (node_id, attribute_key_id, value_type, value,
+        valid_from, valid_to, status, confidence,
+        valid_from_source, created_by_run_id, supersedes_attribute_id)
+     VALUES ($1, $2, $3::attribute_value_type, $4,
+             $5::date, $6::date,
+             $7::assertion_status, $8,
+             $9::valid_from_source, $10, $11)
+     RETURNING id`,
+    [
+      args.nodeId,
+      args.attributeKeyId,
+      args.valueType,
+      args.value,
+      args.validFrom,
+      args.validTo,
+      args.status,
+      args.confidence,
+      args.validFromSource,
+      args.createdByRunId,
+      args.supersedesAttributeId,
+    ]
+  );
+  const row = res.rows[0];
+  if (!row) {
+    throw new InvariantError("insertNewAttribute returned no row");
+  }
+  return row.id;
+}
+
+export interface AttributeSupersessionArgs {
+  readonly attributeId: string;
+  readonly validTo: string | null;
+  readonly supersededAt: Date | null;
+}
+
+export async function supersedeAttributeAtEdit(
+  client: PoolClient,
+  args: AttributeSupersessionArgs
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE node_attribute
+        SET status = 'superseded',
+            valid_to = COALESCE($2::date, valid_to),
+            superseded_at = $3::timestamptz
+      WHERE id = $1
+        AND status IN ('active', 'uncertain', 'disputed')
+      RETURNING id`,
+    [args.attributeId, args.validTo, args.supersededAt]
+  );
+  return res.rowCount ?? 0;
+}
+
+export interface AttributeRejectionArgs {
+  readonly attributeId: string;
+  readonly rejectedAt: Date;
+}
+
+export async function rejectAttributeAtEdit(
+  client: PoolClient,
+  args: AttributeRejectionArgs
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE node_attribute
+        SET status = 'deleted',
+            superseded_at = $2::timestamptz
+      WHERE id = $1
+        AND status IN ('active', 'uncertain', 'disputed')
+      RETURNING id`,
+    [args.attributeId, args.rejectedAt]
+  );
+  return res.rowCount ?? 0;
+}
+
 export async function copyProvenance(
   client: PoolClient,
   itemKind: ItemKind,
@@ -519,6 +635,21 @@ export async function findInformationFragmentById(
     [fragmentId]
   );
   return res.rows[0] ?? null;
+}
+
+export async function acceptInformationFragment(
+  client: PoolClient,
+  fragmentId: string
+): Promise<number> {
+  const res = await client.query(
+    `UPDATE information_fragment
+        SET status = 'accepted'
+      WHERE id = $1
+        AND status = 'proposed'
+      RETURNING id`,
+    [fragmentId]
+  );
+  return res.rowCount ?? 0;
 }
 
 export interface CurationActionInsertArgs {

@@ -1,0 +1,304 @@
+read:
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      The two refusal codes this file raises, ENTITY_EDIT_CONFLICT_CODE and ENTITY_EDIT_DISPUTED_CODE, and the `conflictOf` and `disputedOf` builders. The other answers of the contract are not in this file.
+    evidence: >-
+      const ENTITY_EDIT_CONFLICT_CODE = "BUSINESS_ENTITY_EDIT_CONFLICT"; const ENTITY_EDIT_DISPUTED_CODE = "BUSINESS_ENTITY_EDIT_DISPUTED"; { attribute_key: change.attribute_key, item_id: held.id }
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file only imports the type: import type { AssertionStatus } from "../dto/enums.dto.js";
+  - node: domain/knowledge-base/attribute-change-kind
+    held_at: nowhere
+    evidence: >-
+      The file only compares against the values: change.kind === "set" and change.kind === "remove". It declares no shape.
+  - node: domain/knowledge-base/live-assertion-status
+    held_at: the LIVE_STATUSES constant
+    evidence: >-
+      export const LIVE_STATUSES: readonly AssertionStatus[] = [ "active", "uncertain", "disputed", ];
+  - node: rules/knowledge-base/entity-edit-adds-no-second-current-value
+    held_at: assertNoSecondCurrentValue(), called from checkChangeAgainstHeldAttributes() for an unnamed set change
+    evidence: >-
+      if (target.attributeKey.allows_multiple_current) { return; } ... statuses: LIVE_STATUSES, ... if (liveIds.length > 0) { throw conflictOf(
+  - node: rules/knowledge-base/entity-edit-changes-no-attribute-with-a-supersession-time
+    held_at: assertSupersessionTimeLeavesValue() together with SUPERSESSION_TIME_STATUSES
+    evidence: >-
+      const carriesSupersessionTime = held.superseded_at !== null && SUPERSESSION_TIME_STATUSES.includes(held.status); if (carriesSupersessionTime && statesOtherValueThan(held, change)) { throw conflictOf(
+  - node: rules/knowledge-base/entity-edit-leaves-disputes-to-curation
+    held_at: assertDisputeLeftToCuration() and disputedOf()
+    evidence: >-
+      const changesHeld = change.kind === "remove" || statesOtherValueThan(held, change); if (held.status === DISPUTED_STATUS && changesHeld) { throw disputedOf(held, change); }
+  - node: rules/knowledge-base/entity-edit-names-a-live-attribute
+    held_at: checkNamedAttribute() and isLiveAttributeOf()
+    evidence: >-
+      if (held === undefined || !isLiveAttributeOf(held, target)) { throw conflictOf( ... held.node_id === target.node.id && held.attribute_key_id === target.attributeKey.id && LIVE_STATUSES.includes(held.status)
+  - node: rules/knowledge-base/entity-edit-unchanged-records-nothing
+    held_at: nowhere
+    evidence: >-
+      This file only refuses. It has no branch that reports the effect unchanged. The nearest construct is statesOtherValueThan(), whose `change.value !== held.value` comparison only decides refusals.
+  - node: scenarios/knowledge-base/edit-of-a-superseded-attribute-is-a-conflict
+    held_at: checkNamedAttribute(), which refuses a named attribute that is not live
+    evidence: >-
+      if (held === undefined || !isLiveAttributeOf(held, target)) { throw conflictOf(`Node '${target.node.id}' holds no live attribute '${itemId}' of key '${target.attributeKey.key}'.`, change);
+  - node: constraints/entity-edit-is-atomic
+    held_at: nowhere
+    evidence: >-
+      The file takes a PoolClient from its caller and opens no transaction. The boundary is not here.
+  - node: constraints/entity-editing-is-not-a-language-model-tool
+    held_at: nowhere
+    evidence: >-
+      The file declares no tool surface. It exports only LIVE_STATUSES, EditedKey and checkChangeAgainstHeldAttributes.
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file contains no authentication. It exports only checkChangeAgainstHeldAttributes and its helpers.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file imports no logger. Its refusals are thrown as ConflictError and logged nowhere here.
+  - node: constraints/internal-failure-withholds-cause
+    held_at: nowhere
+    evidence: >-
+      The file catches no failure and states no internal-failure message.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: nowhere
+    evidence: >-
+      The file does not handle store errors. The loadItemsForUpdate and loadAttributeIdsOfKeyForUpdate calls let them propagate.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance or audit-listing construct.
+  - node: domain/knowledge-base/applied-change
+    held_at: nowhere
+    evidence: >-
+      The file declares and builds no applied change.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file only imports the shape and reads its fields: import type { AttributeChange } from "../dto/edit-entity.dto.js";
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file reads one field of a shape declared elsewhere: import type { AttributeKeyRow } from "../../ingestion/catalog/catalog.js"; target.attributeKey.allows_multiple_current
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no curation-action listing or filter.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      The file never names a curation action kind.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      The file never names a curation target kind. The only "attribute" literal is the table selector passed as loadItemsForUpdate(client, "attribute", [itemId]).
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      The file assigns no effect to any change.
+  - node: domain/knowledge-base/entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file does not declare the edit's shape. It checks one change of it.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no node-attribute shape. It reads `held.superseded_at`, `held.status` and `held.value` from the imported ItemLockedRow.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file checks no node status.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file does not read value types.
+  - node: rules/knowledge-base/a-curation-action-kind-is-written-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file spells no curation action kind.
+  - node: rules/knowledge-base/a-node-status-and-an-assertion-flag-cross-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file spells no node status or assertion flag with a hyphen. The only status literals are "active", "uncertain" and "disputed".
+  - node: rules/knowledge-base/an-edit-effect-crosses-the-wire-with-underscores
+    held_at: nowhere
+    evidence: >-
+      The file spells no effect.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file takes the attribute key as an already resolved `target.attributeKey`. It does not check the key against the node type.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no check of allowed values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file has no value parsing.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file does not derive a current state. It tests liveness by status only.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file does not record an addition. For a key that allows multiple current values, assertNoSecondCurrentValue returns without effect.
+  - node: rules/knowledge-base/entity-edit-change-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds only the final check of the order, the one against held attributes. checkChangeAgainstHeldAttributes does not order the checks.
+  - node: rules/knowledge-base/entity-edit-changes-something
+    held_at: nowhere
+    evidence: >-
+      The file counts no effects.
+  - node: rules/knowledge-base/entity-edit-check-order
+    held_at: nowhere
+    evidence: >-
+      The file does not order the checks of the edit as a whole. It checks a single change.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no correction.
+  - node: rules/knowledge-base/entity-edit-defaulted-start-precedes-end
+    held_at: nowhere
+    evidence: >-
+      The file does not read validity dates.
+  - node: rules/knowledge-base/entity-edit-ended-attribute-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no correction. It reads no validity end.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file records nothing. In the unnamed case it only refuses when a live value exists: if (liveIds.length > 0) { throw conflictOf(
+  - node: rules/knowledge-base/entity-edit-names-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file does not check the node's status. It reads only `target.node.id`.
+  - node: rules/knowledge-base/entity-edit-new-attribute-state
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-note
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information, chunk or fragment.
+  - node: rules/knowledge-base/entity-edit-note-confidence
+    held_at: nowhere
+    evidence: >-
+      The file records no fragment.
+  - node: rules/knowledge-base/entity-edit-note-content
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/entity-edit-note-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/entity-edit-note-source
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/entity-edit-null-field-is-not-stated
+    held_at: nowhere
+    evidence: >-
+      The file tests `change.item_id !== undefined` and `change.value !== undefined`. It does not itself read null as not stated, which the DTO layer does.
+  - node: rules/knowledge-base/entity-edit-provenance
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/entity-edit-reason-length
+    held_at: nowhere
+    evidence: >-
+      The file does not read the reason.
+  - node: rules/knowledge-base/entity-edit-reason-trimmed
+    held_at: nowhere
+    evidence: >-
+      The file does not read the reason.
+  - node: rules/knowledge-base/entity-edit-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      The file records no curation action.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file rejects no attribute. It refuses a remove change on a disputed attribute: change.kind === "remove" || statesOtherValueThan(held, change)
+  - node: rules/knowledge-base/entity-edit-removal-names-an-attribute
+    held_at: nowhere
+    evidence: >-
+      The file branches on `namesAttribute(change)`. A remove change with no item is not refused here. The refusal is made in the validation layer.
+  - node: rules/knowledge-base/entity-edit-run
+    held_at: nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/entity-edit-stable-attribute-holds-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-start-defaults-to-today
+    held_at: nowhere
+    evidence: >-
+      The file reads no validity start.
+  - node: rules/knowledge-base/entity-edit-stated-end-is-held
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-stated-start-is-stated
+    held_at: nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file records no succession.
+  - node: rules/knowledge-base/entity-edit-succession-closes-the-previous
+    held_at: nowhere
+    evidence: >-
+      The file closes no validity.
+  - node: rules/knowledge-base/entity-edit-supersession-time
+    held_at: nowhere
+    evidence: >-
+      The file sets no supersession time. It only reads `held.superseded_at`.
+  - node: rules/knowledge-base/entity-edit-value-matches-the-kind
+    held_at: nowhere
+    evidence: >-
+      The file does not check that a value is stated exactly when the kind is set. statesOtherValueThan requires `change.kind === "set" && change.value !== undefined` and refuses nothing for a mismatch.
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file does not read validity.
+  - node: rules/knowledge-base/unrecorded-temporality-is-not-temporal
+    held_at: nowhere
+    evidence: >-
+      The file does not read temporality.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file does not read validity dates.
+  - node: scenarios/knowledge-base/an-edit-with-no-changes-is-refused-as-changing-nothing
+    held_at: nowhere
+    evidence: >-
+      The file checks one change at a time and has no empty-list branch.
+  - node: scenarios/knowledge-base/backdated-start-supersedes-without-an-end
+    held_at: nowhere
+    evidence: >-
+      The file records no succession and reads no validity.
+  - node: scenarios/knowledge-base/emptying-one-email-rejects-only-that-email
+    held_at: nowhere
+    evidence: >-
+      The file rejects no attribute.
+  - node: scenarios/knowledge-base/stable-key-edit-is-a-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no correction.
+  - node: scenarios/knowledge-base/temporal-edit-without-a-date-starts-today
+    held_at: nowhere
+    evidence: >-
+      The file reads no validity start and applies no default.
+looked_past: >-
+  The file's `held.node_id === target.node.id` and `held.attribute_key_id === target.attributeKey.id` comparisons, and the way it spreads the optional item into the conflict details, are implementation choices and say nothing about a domain fact.

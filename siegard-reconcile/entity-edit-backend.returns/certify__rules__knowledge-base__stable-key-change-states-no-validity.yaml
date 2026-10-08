@@ -1,0 +1,23 @@
+certified:
+  - node: rules/knowledge-base/stable-key-change-states-no-validity
+    state: covered
+    tests:
+      - file: src/__tests__/unit/curation/attribute-change-validity.spec.ts
+        name: a change to a key that is not temporal is refused with BUSINESS_TEMPORAL_INCOHERENT when it states $label
+      - file: src/__tests__/unit/curation/attribute-change-validity.spec.ts
+        name: a change that states no validity to a key that accepts none is not refused when the key $label
+    why: >-
+      The fact is covered. The test feeds a key whose is_temporal is false a validity start, a validity
+      end, and both, on set changes. It also feeds a remove change a start alone and an end alone.
+      Each input must be refused, so if a change to a key that is not temporal were allowed to state a
+      validity start or end, the test would fail. Its companion checks that the same keys accept a
+      change stating no validity, so a guard that refused every change would also fail. Three findings
+      for a reader to route, none settled here. (1) Over-assertion: the refusal is pinned to the code
+      BUSINESS_TEMPORAL_INCOHERENT, which the node does not name. Changing the code would break the
+      test even though the fact still holds. (2) Over-assertion: "a change to a key that records no
+      temporality is refused with BUSINESS_TEMPORAL_INCOHERENT when it states $label" also refuses
+      validity for a key whose is_temporal is null. The node says only "not temporal" and does not say
+      whether a key with no recorded temporality counts. That test is therefore not cited as proof,
+      because it asserts a reading the node does not state. (3) Scope: every case calls
+      checkChangeValidity directly. Nothing in the offered proof goes through the edit route or the
+      apply step. If the edit path stopped calling this check, these tests would still pass.
