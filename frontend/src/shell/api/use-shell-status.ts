@@ -23,6 +23,20 @@ async function getJson(path: string): Promise<unknown> {
   return readBody(await send(path));
 }
 
+const SESSION_EXPIRED_ADDRESS = "/sign-in?reason=session_expired";
+
+function replacePage(url: string): void {
+  if (typeof window !== "undefined" && typeof window.location?.replace === "function") {
+    window.location.replace(url);
+  }
+}
+
+let redirectImpl: (url: string) => void = replacePage;
+
+export function __setShellRedirectForTests(fn: ((url: string) => void) | null): void {
+  redirectImpl = fn ?? replacePage;
+}
+
 async function renewToken(): Promise<string | null> {
   try {
     const fresh = await fetchAccessToken();
@@ -33,11 +47,19 @@ async function renewToken(): Promise<string | null> {
   }
 }
 
+function endSession(): void {
+  useAuthStore.getState().clear();
+  redirectImpl(SESSION_EXPIRED_ADDRESS);
+}
+
 async function getPendingJson(token: string): Promise<unknown> {
   const res = await send(PENDING_PATH, token);
   if (res.status !== 401) return readBody(res);
   const fresh = await renewToken();
-  if (fresh === null) return readBody(res);
+  if (fresh === null) {
+    endSession();
+    return readBody(res);
+  }
   return readBody(await send(PENDING_PATH, fresh));
 }
 

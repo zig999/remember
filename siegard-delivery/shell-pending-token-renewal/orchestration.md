@@ -6,3 +6,4 @@
 - Run ended: suite red with cause test on this delivery's own tests, which only a person settles; no recommendation.
 - Human asked to commit the pending state and follow door A (rewrite the two tests whole via /implement-task); committed: implementation record, build-2 run, red suite run, the unproven test file.
 - /implement-task proof-only continuation over renew-expired-token-on-pending-read (human chose door A): test-author rewrote the tests whole; suite-2 passed; proof record written; deliver.py derived the delivery; trace bound 5 nodes; committed next.
+- /implement-task over task/pending-read-token-renewal/end-session-on-failed-pending-renewal: build passed, implementation and proof records written, suite passed first attempt, delivery derived, trace bound 4 nodes (5 other bindings over the same file left stale, to be answered by the review); committed next.
