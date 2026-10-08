@@ -1,0 +1,18 @@
+read:
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      useNodeTypes() and useNodeListing() both read through entityGet. The node-types path is "/api/v1/node-types", and the listing path is built in the queryFn of useNodeListing(). This file holds only the list-node-types and list-nodes operations. Neither read-node nor list-attribute-keys is stated here.
+    evidence: >-
+      entityGet<NodeTypeListWire>("/api/v1/node-types", signal) and entityGet<NodeListingWire>(`/api/v1/nodes${buildListingQs(namePrefix, nodeType)}`, signal)
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: >-
+      The two guards in buildListingQs(). An empty name prefix and an empty node type are each treated as a narrowing not given.
+    evidence: >-
+      if (namePrefix.length > 0) search.set("name_prefix", namePrefix); if (nodeType.length > 0) search.set("node_type", nodeType);
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: >-
+      buildListingQs(). It names the prefix parameter name_prefix and the node type parameter node_type, and leaves out of the query string each narrowing that is empty. The node type value is passed through as the string the caller gives, with no identity lookup.
+    evidence: >-
+      search.set("name_prefix", namePrefix); search.set("node_type", nodeType); return qs.length > 0 ? `?${qs}` : "";
+looked_past: >-
+  The query key factory, the wire-to-domain transforms and the request helper live in other files and are not judged here.

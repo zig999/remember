@@ -1,0 +1,23 @@
+read:
+  - node: domain/entity-workspace/attribute-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file imports the shape rather than declaring it: `import type { AttributeFieldValues, EntityFormValues, } from "./entity-form-schema";`. Its own `ReviewEntry` interface (`readonly startedWith: string; readonly value: string; readonly validity: ReviewValidity | null;`) is a review row, not the attribute field's shape. The file only reads fields of `AttributeFieldValues` (`field.attributeKey`, `field.startedWith`, `field.itemId`).
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never compares a field's value with the held attributes to decide whether it counts as changed. It receives the verdict as an argument (`changed: readonly boolean[]`) and applies it with `changed[index] === true ? [heldEntry(field, index, keys, attributes)] : []`.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not decide what makes a field changed. It consumes the verdict in `changed[index] === true ? [heldEntry(field, index, keys, attributes)] : []`, and no comparison of `field.value` with `field.startedWith` appears in it.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file rejects no attribute, marks nothing deleted and sets no supersession time. It only lists removed fields for the review, with `field.itemId !== null && field.startedWith !== "" && !kept.has(field.itemId)`. It takes the effect from `effectOf({ ...field, value: "" }, keys, attributes)`, which calls `changeOfField` in another file.
+looked_past: >-
+  The file contains no comments. I read the removed-field selection in removedFieldsOf, the review ordering by catalog position and the entry ids as review presentation decided by the review rules (review-lists-each-changed-field-once, review-states-the-effect-of-each-change). None of them states a domain fact outside the specification, so I did not report them.

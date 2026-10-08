@@ -1,0 +1,76 @@
+findings:
+  - file: src/features/entities/components/entity-form-schema.ts
+    where: >-
+      HELD_ATTRIBUTE_STATUSES and isHeldAttribute, lines 58-66
+    evidence: >-
+      const HELD_ATTRIBUTE_STATUSES: readonly string[] = [ "active", "uncertain", DISPUTED_ATTRIBUTE_STATUS, ];
+    cost: >-
+      domain/knowledge-base/live-assertion-status already enumerates the statuses of an assertion that is still held (active, uncertain, disputed). This array declares that vocabulary a second time, in a file that node is not bound to. entity-field-changed.ts also lists "uncertain" in its own copy. If the enumeration changes, the node's own check never reaches this file. The two copies then disagree and nobody can tell which one was decided.
+    kind: contradicts
+    correction: >-
+      The held-status vocabulary should have one home that the live-assertion-status node binds. Alternatively, the node binding should be extended to this file, so that a change to the node reaches it.
+    node: domain/knowledge-base/live-assertion-status
+  - file: src/features/entities/components/entity-form-schema.ts
+    where: >-
+      outsideCatalogGroupsOf (line 92) and buildFieldGroups heldValues (lines 186-188), both through isHeldAttribute
+    evidence: >-
+      if (!isHeldAttribute(attribute)) continue;
+    cost: >-
+      The code decides that an attribute outside the catalog, and the values a disputed key lists, are shown only when their status is held. Superseded and deleted attributes are left out. The nodes say only that such an attribute "MUST show its value without a field" and that a disputed key "MUST show its values". The restriction lives only in this file, so the next reader looking for what the form shows will not find it in the specification.
+    kind: unstated
+    correction: >-
+      The analysis should give the node an explicit statement of which of an attribute's statuses the outside-catalog and disputed-key displays show.
+    node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+  - file: src/features/entities/components/entity-form-schema.ts
+    where: >-
+      startingFieldsOf, the multi-valued branch, line 159
+    evidence: >-
+      return held.length > 0 ? held.map(fieldStartingFrom) : [emptyField(key)];
+    cost: >-
+      A multi-valued key whose node holds no current attribute opens with one empty field. The node says only "one field for each current attribute the node holds", which gives zero fields for none. The one-empty-field starting state is a form decision no node states, so the next reader looking for what the form shows at open will not find it in the specification.
+    kind: unstated
+    correction: >-
+      The node should state how many fields a multi-valued key shows when the node holds no current attribute of it.
+    node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+read:
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file issues no request and declares no wire shape. It only reads `attributeKey.allowsMultiple` and `attributeKey.valueType` from `AttributeKey`, imported with `import type { AttributeKey, NodeAttribute, NodeRead } from "../types";`.
+  - node: domain/entity-workspace/attribute-field
+    held_at: >-
+      attributeFieldSchema, lines 7-14
+    evidence: >-
+      export const attributeFieldSchema = z.object({ attributeKey: z.string().min(1), itemId: z.string().nullable(), startedWith: z.string(), value: z.string(), validFrom: z.string(), validTo: z.string(), });
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: >-
+      entityFormSchema, lines 16-18, which declares `fields` only; buildFormValues, lines 165-174, seeds the session's fields from the node.
+    evidence: >-
+      export const entityFormSchema = z.object({ fields: z.array(attributeFieldSchema), });
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: >-
+      buildEntityFormSchema, the superRefine on fields, lines 27-35. The reading of a value as its type is delegated to valueTypeMessage in entity-value-types.
+    evidence: >-
+      const message = valueTypeMessage(valueType, field.value); if (message === null) return; ctx.addIssue({ code: "custom", message, path: [index, "value"] });
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: >-
+      emptyField, lines 129-138
+    evidence: >-
+      return { attributeKey: key, itemId: null, startedWith: "", value: "", validFrom: "", validTo: "", };
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: >-
+      startingFieldsOf, multi-valued branch, line 159. Adding and removing fields is not in this file. The empty-field case for no held attribute is reported as a finding.
+    evidence: >-
+      const held = currentAttributesOf(node.attributes, key); return held.length > 0 ? held.map(fieldStartingFrom) : [emptyField(key)];
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: >-
+      fieldStartingFrom, lines 140-149, and the single-valued branch of startingFieldsOf, lines 161-162
+    evidence: >-
+      startedWith: attribute.value, value: attribute.value, and return [current === undefined ? emptyField(key) : fieldStartingFrom(current)];
+looked_past: >-
+  The grouping of fields per catalog key, the withholding of a field for a disputed key, and the closed-value and value-type wording belong to nodes outside this set, so I left them to the judgments that own those nodes.
+candidates_opened:
+  - rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+  - rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+  - domain/knowledge-base/live-assertion-status

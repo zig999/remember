@@ -1,0 +1,22 @@
+findings:
+  - file: src/features/entities/components/entity-allowed-values.ts
+    where: >-
+      allowedValueLabel, line 10
+    evidence: >-
+      return label === null || label.trim().length === 0 ? allowed.value : label;
+    cost: >-
+      The code treats a label made only of whitespace as no label, so the owner is shown the value instead. The rule states only "for a value that has no label, by its value" and never says that a blank label counts as none. The blank-label case therefore lives only in this file, and a reader of the specification would not find it there.
+    kind: unstated
+    correction: >-
+      Analysis would give the blank-label case a node. It could be stated in rules/entity-workspace/a-closed-key-offers-only-its-allowed-values, or the specification could say that only a missing label counts as none.
+    node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+read:
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      nowhere
+    evidence: >-
+      The node governs the GET reads of node types, nodes, one node and attribute keys, with their URLs, envelope and refusals. This file makes no request and reads no wire. It only imports `import type { AllowedValue } from "../types";` and maps already-read allowed values into `ChoiceOption` entries. The label-or-value fallback it applies is held by the candidate node a-closed-key-offers-only-its-allowed-values.
+looked_past: >-
+  The file's `ChoiceOption` interface and the three helper functions are presentation plumbing. They state no other domain fact, and the `AllowedValue` shape is declared in ../types, not in this file.
+candidates_opened:
+  - rules/entity-workspace/a-closed-key-offers-only-its-allowed-values

@@ -1,0 +1,21 @@
+read:
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      entityGet, line 15. Every entity read is sent through the application's request helper `http`, as a GET. The file adds no failure of its own. The paths and query parameters for each operation are supplied by the callers.
+    evidence: >-
+      return http<T>(path, { method: "GET", headers: bearerHeaders(), signal });
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: >-
+      The lazy `Authorization` getter in bearerHeaders, lines 7-10. It is only the part of the rule that says the repeated request carries the new token. Starting the refresh, repeating once and the 30000 ms cutoff are not stated in this file. They are in the `http` helper, in lib/http.ts.
+    evidence: >-
+      Object.defineProperty(headers, "Authorization", {
+          enumerable: true,
+          get: () => authHeader().Authorization ?? "",
+        });
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: >-
+      bearerHeaders, lines 4-12, passed as the `headers` of every read in entityGet. The `Bearer ${token}` form is built by authHeader, which this file imports from features/curation/api/_request.ts.
+    evidence: >-
+      if (authHeader().Authorization === undefined) return headers;
+looked_past: >-
+  The file imports authHeader from the curation feature's request module, a cross-feature dependency. That is a code-structure matter and no domain fact, so it belongs to another judgment.

@@ -1,0 +1,37 @@
+read:
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      the `EditEffect` union type, lines 12-17. It declares first-value, addition, succession, correction and removal. The sixth enumeration value, `unchanged`, is not declared. `changeOfField` returns `null` for an unchanged field instead of naming it.
+    evidence: >-
+      export type EditEffect =
+        | "first-value"
+        | "addition"
+        | "succession"
+        | "correction"
+        | "removal";
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: >-
+      `changeOfField`, lines 38-66. It judges one field at a time against the `attributes` array it is handed. It takes no other field's change as input.
+    evidence: >-
+      export function changeOfField(
+        field: ChangeSubject,
+        attributeKey: AttributeKey,
+        attributes: readonly NodeAttribute[],
+      ): FieldChange | null {
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      the first-value branch of `changeOfField`, lines 55-58. A field with no item id and a non-empty value, on a key whose held attributes (via `heldAttributesOf`) are empty, takes the effect first-value as a `set` change with a null `itemId`.
+    evidence: >-
+      if (field.value === "") return null;
+        if (heldAttributesOf(attributes, field.attributeKey).length === 0) {
+          return { kind: "set", effect: "first-value", itemId: null };
+        }
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      the removal branch of `changeOfField`, lines 43-48. A field that names an item id, whose value differs from its starting value and is now empty, yields a `remove` change with the effect removal.
+    evidence: >-
+      if (field.value === "") {
+            return { kind: "remove", effect: "removal", itemId };
+          }
+looked_past: >-
+  The `EDIT_EFFECT_WORDING` map holds display words for the effects ("Primeiro valor", "Adição", "Sucessão", "Correção", "Remoção"). They only name an effect and state no domain fact, so I made no finding of them.
