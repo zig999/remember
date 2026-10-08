@@ -50,6 +50,16 @@ export const AttributeChangeSchema = z
   });
 export type AttributeChange = z.infer<typeof AttributeChangeSchema>;
 
+export const EditEffectSchema = z.enum([
+  "first-value",
+  "addition",
+  "succession",
+  "correction",
+  "removal",
+  "unchanged",
+]);
+export type EditEffect = z.infer<typeof EditEffectSchema>;
+
 export const EditEntityBodySchema = z.object({
   reason: ReasonRequiredSchema.max(ENTITY_EDIT_REASON_MAX_LENGTH),
   changes: z.array(AttributeChangeSchema),

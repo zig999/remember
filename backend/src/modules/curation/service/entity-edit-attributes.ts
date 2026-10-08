@@ -16,7 +16,7 @@ import { ConflictError } from "./errors.js";
 const ENTITY_EDIT_CONFLICT_CODE = "BUSINESS_ENTITY_EDIT_CONFLICT";
 const ENTITY_EDIT_DISPUTED_CODE = "BUSINESS_ENTITY_EDIT_DISPUTED";
 const DISPUTED_STATUS: AssertionStatus = "disputed";
-const LIVE_STATUSES: readonly AssertionStatus[] = [
+export const LIVE_STATUSES: readonly AssertionStatus[] = [
   "active",
   "uncertain",
   "disputed",
