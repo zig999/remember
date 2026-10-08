@@ -2,6 +2,7 @@
 import reactHooks from "eslint-plugin-react-hooks";
 import importPlugin from "eslint-plugin-import";
 import storybook from "eslint-plugin-storybook";
+import tseslint from "typescript-eslint";
 
 export default [
   {
@@ -19,8 +20,10 @@ export default [
       "react-hooks": reactHooks,
       import: importPlugin,
       storybook,
+      "@typescript-eslint": tseslint.plugin,
     },
     languageOptions: {
+      parser: tseslint.parser,
       ecmaVersion: 2022,
       sourceType: "module",
       parserOptions: {

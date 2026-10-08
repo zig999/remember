@@ -102,7 +102,6 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
       />
       <EdgeLabelRenderer>
         <div
-          // eslint-disable-next-line react/forbid-dom-props
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,

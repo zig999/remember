@@ -13,7 +13,7 @@
  *   visible in the canvas and asserted (also runs as a Vitest browser test).
  */
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite";
-import { useEffect, type ReactElement } from "react";
+import { useEffect, type ReactElement, type ReactNode } from "react";
 import { toast } from "sonner";
 import { expect, userEvent, within } from "storybook/test";
 import { AppToaster } from "./AppToaster";
@@ -25,12 +25,18 @@ import { AmbientBackdrop } from "./AmbientBackdrop";
  * stories. The app is dark-only; AppToaster pins sonner's own data-theme to
  * "dark" so the toast renders as DARK frosted glass.
  */
-const withDarkTheme: Decorator = (Story) => {
+function DarkThemeFrame({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", "dark");
   }, []);
-  return <Story />;
-};
+  return <>{children}</>;
+}
+
+const withDarkTheme: Decorator = (Story) => (
+  <DarkThemeFrame>
+    <Story />
+  </DarkThemeFrame>
+);
 
 const meta: Meta<typeof AppToaster> = {
   title: "Eternal/Shell/AppToaster",
