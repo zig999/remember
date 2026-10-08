@@ -577,7 +577,7 @@ export async function copyProvenance(
        SELECT $2, fragment_id, now()
          FROM provenance
         WHERE link_id = $1
-       ON CONFLICT (link_id, fragment_id) DO NOTHING
+       ON CONFLICT (link_id, fragment_id) WHERE link_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [predecessorId, successorId]
     );
@@ -588,7 +588,7 @@ export async function copyProvenance(
      SELECT $2, fragment_id, now()
        FROM provenance
       WHERE attribute_id = $1
-     ON CONFLICT (attribute_id, fragment_id) DO NOTHING
+     ON CONFLICT (attribute_id, fragment_id) WHERE attribute_id IS NOT NULL DO NOTHING
      RETURNING id`,
     [predecessorId, successorId]
   );
@@ -605,7 +605,7 @@ export async function appendProvenanceFragment(
     const res = await client.query(
       `INSERT INTO provenance (link_id, fragment_id, created_at)
          VALUES ($1, $2, now())
-       ON CONFLICT (link_id, fragment_id) DO NOTHING
+       ON CONFLICT (link_id, fragment_id) WHERE link_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [successorId, fragmentId]
     );
@@ -614,7 +614,7 @@ export async function appendProvenanceFragment(
   const res = await client.query(
     `INSERT INTO provenance (attribute_id, fragment_id, created_at)
        VALUES ($1, $2, now())
-     ON CONFLICT (attribute_id, fragment_id) DO NOTHING
+     ON CONFLICT (attribute_id, fragment_id) WHERE attribute_id IS NOT NULL DO NOTHING
      RETURNING id`,
     [successorId, fragmentId]
   );
