@@ -1,6 +1,8 @@
 import { useEffect, useRef, type FC } from "react";
 import { Button } from "@/shared/components/ui/button";
+import { Label } from "@/shared/components/ui/label";
 import { Panel } from "@/shared/components/ui/panel";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { EDIT_EFFECT_WORDING } from "./entity-change-effect";
 import { todayLocalDate } from "./entity-local-date";
 import type { ReviewEntry } from "./entity-review-entries";
@@ -97,10 +99,21 @@ const ReviewItem: FC<ReviewItemProps> = ({ entry, today }) => {
 
 export interface EntityReviewProps {
   readonly review: EntityReviewState;
+  readonly onConfirm?: () => void;
 }
 
-export const EntityReview: FC<EntityReviewProps> = ({ review }) => {
-  const { entries, offered, open, openReview, closeReview } = review;
+export const EntityReview: FC<EntityReviewProps> = ({ review, onConfirm }) => {
+  const {
+    entries,
+    offered,
+    open,
+    openReview,
+    closeReview,
+    reason,
+    setReason,
+    reasonTooLong,
+    saveOffered,
+  } = review;
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const wasOpen = useRef(false);
@@ -143,15 +156,38 @@ export const EntityReview: FC<EntityReviewProps> = ({ review }) => {
           <ReviewItem key={entry.id} entry={entry} today={today} />
         ))}
       </ul>
-      <Button
-        type="button"
-        variant="outline"
-        className="self-start"
-        onClick={closeReview}
-        data-testid="entity-review-close"
-      >
-        Voltar à edição
-      </Button>
+      <div className="flex flex-col gap-sm">
+        <Label htmlFor="entity-review-reason">Motivo</Label>
+        <Textarea
+          id="entity-review-reason"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          aria-required="true"
+          aria-invalid={reasonTooLong}
+          rows={3}
+          data-testid="entity-review-reason"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-sm">
+        {saveOffered ? (
+          <Button
+            type="button"
+            variant="primary"
+            onClick={onConfirm}
+            data-testid="entity-review-confirm"
+          >
+            Salvar
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={closeReview}
+          data-testid="entity-review-close"
+        >
+          Voltar à edição
+        </Button>
+      </div>
     </Panel>
   );
 };
