@@ -16,6 +16,10 @@ answers:
   refusals:
   - when: "The answer has no total or no token is held."
     answer: "0 pending and the segment hidden"
+  - rule: "rules/application-shell/an-expired-token-is-renewed-by-the-pending-read"
+    answer: "the total of the read asked once more with the fresh token"
+  - rule: "rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session"
+    answer: "the sign-in address with the reason session_expired"
 ---
 
 ## Description

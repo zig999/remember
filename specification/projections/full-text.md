@@ -584,11 +584,24 @@ answers:
   refusals:
   - when: "The answer has no total or no token is held."
     answer: "0 pending and the segment hidden"
+  - rule: "rules/application-shell/an-expired-token-is-renewed-by-the-pending-read"
+    answer: "the total of the read asked once more with the fresh token"
+  - rule: "rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session"
+    answer: "the sign-in address with the reason session_expired"
 ---
 
 ## Description
 
 The two status reads the footer makes.
+
+=== contracts/application-shell/bff-shell-reads.log
+---
+entries:
+- field: answers
+  unstated: What read-pending-curation answers when the held token has expired.
+  decided: With a fresh token the read is asked once more and its total is shown, and when the renewal fails the answer is the sign-in address with the reason session_expired.
+  why: Each answer is the one its renewal rule fixes, and the contract is where a caller of the boundary reads them.
+---
 
 === contracts/application-shell/shell-screen
 ---
@@ -7257,6 +7270,27 @@ constrains:
 
 None.
 
+=== rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+---
+type: invariant
+statement: "A failed renewal of the access token on the pending curation read MUST clear the stored token and replace the page with the sign-in address and the reason session_expired."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session.log
+---
+entries:
+- field: statement
+  unstated: The material names no such thing, and says nothing about what the shell does when the renewal of an expired token fails; the options weighed were ending the session as a failed refresh does, stopping the asks and showing the session as expired without leaving the page, and leaving the 0 pending with the segment hidden.
+  decided: A failed renewal on the pending curation read clears the stored token and replaces the page with the sign-in address and the reason session_expired.
+  why: It is the only option the specification already states for a failed refresh and for an expired token, so it adds no shell state and leaves no dead session hidden.
+---
+
 === rules/application-shell/a-failure-carries-code-status-message-and-details
 ---
 type: invariant
@@ -7722,6 +7756,27 @@ constrains:
 
 None.
 
+=== rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+---
+type: invariant
+statement: "A 401 on the pending curation read MUST make the shell ask the identity provider once for a fresh access token with the session cookie and ask the read once more with it."
+constrains:
+- domain/application-shell/application-shell
+---
+
+## Description
+
+None.
+
+=== rules/application-shell/an-expired-token-is-renewed-by-the-pending-read.log
+---
+entries:
+- field: statement
+  unstated: 'The material names no such thing: it states that the pending read counts 0 without a total and is not retried, and nothing about an access token that is held but expired.'
+  decided: A 401 on the pending curation read makes the shell ask the identity provider once for a fresh access token with the session cookie and ask the read once more with it.
+  why: The owner decided the read renews the token silently and keeps being asked, and the helper's own refresh rule already fixes one renewal and one repeat for any 401.
+---
+
 === rules/application-shell/an-ingestion-request-has-no-cutoff
 ---
 type: invariant
@@ -7989,7 +8044,7 @@ None.
 === rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
 ---
 type: invariant
-statement: "The health and the pending curation total MUST each be asked every 20 seconds and not retried on failure, health without the token."
+statement: "The health and the pending curation total MUST each be asked every 20 seconds and not retried on failure other than the one repeat after a renewed token, health without the token."
 constrains:
 - domain/application-shell/application-shell
 ---
@@ -7997,6 +8052,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/application-shell/health-and-pending-are-asked-every-twenty-seconds.log
+---
+entries:
+- field: statement
+  unstated: Whether the one repeat that follows a renewed token counts as a retry on failure.
+  decided: 'It does not: the statement allows the one repeat after a renewed token and still forbids any other retry.'
+  why: Without the exception the statement forbids the repeat the renewal rule demands, and the two could not both hold.
+---
 
 === rules/application-shell/health-is-judged-by-the-database-field
 ---
@@ -26397,6 +26461,32 @@ then:
 
 A second 401 is not refreshed.
 
+=== scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in
+---
+subject: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+given:
+- "the shell holds an access token that has expired"
+- "the identity provider holds no session for the owner"
+when:
+- "the pending curation read is answered 401"
+then:
+- "the stored token is cleared"
+- "the page is replaced with the sign-in address and the reason session_expired"
+---
+
+## Description
+
+A session that cannot be renewed ends where the owner can sign in again.
+
+=== scenarios/application-shell/a-failed-renewal-sends-the-owner-to-sign-in.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing; it states no case of a renewal that fails.
+  decided: rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session
+  why: The failed renewal is the decision this increment took, and a concrete case fixes what the owner meets.
+---
+
 === scenarios/application-shell/an-empty-rename-sends-nothing
 ---
 subject: rules/application-shell/a-rename-sends-the-trimmed-title
@@ -26413,6 +26503,33 @@ then:
 ## Description
 
 A blank title is dropped silently.
+
+=== scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown
+---
+subject: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+given:
+- "the shell holds an access token that has expired"
+- "the owner's session cookie is still valid"
+when:
+- "the pending curation read is answered 401"
+then:
+- "the identity provider is asked once for a fresh access token"
+- "the read is asked once more with the fresh token"
+- "the footer shows the total of that answer"
+---
+
+## Description
+
+An expired token costs the owner nothing while the session lives.
+
+=== scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown.log
+---
+entries:
+- field: subject
+  unstated: The material names no such thing; it gives the expired-token case only as the observed fault.
+  decided: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
+  why: The renewal rule is the one the observed case exposes, and a worked case lets a reader see the total shown after the repeat.
+---
 
 === scenarios/application-shell/an-expiring-token-redirects-to-sign-in
 ---

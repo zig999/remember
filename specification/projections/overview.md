@@ -6,7 +6,7 @@ Derived by spec.py from the specification files; never edited.
 
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
-| application-shell | supporting | 10 | 121 | 2 | 4 |
+| application-shell | supporting | 10 | 123 | 2 | 6 |
 | chat | supporting | 17 | 131 | 1 | 0 |
 | chat-workspace | supporting | 6 | 126 | 2 | 4 |
 | curation-workspace | supporting | 10 | 218 | 3 | 9 |
@@ -95,4 +95,4 @@ Derived by spec.py from the specification files; never edited.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-418 decision(s) disclosed, 10 fact(s) recorded as read, 2 location(s) retired in the decision logs.
+424 decision(s) disclosed, 10 fact(s) recorded as read, 2 location(s) retired in the decision logs.
