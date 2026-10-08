@@ -1,0 +1,1 @@
+- /plan-work over slug shell-pending-token-renewal (slug derived from the ask, target frontend named in the ask): plan derived, 1 inventory, 1 epic, 2 tasks, no specification change; commit 4715dd9.
