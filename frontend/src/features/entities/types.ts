@@ -222,11 +222,16 @@ export interface EditUnreachable {
   readonly failure: EditFailure;
 }
 
+export interface EditSessionEnded {
+  readonly kind: "session-ended";
+}
+
 export type EditOutcome =
   | EditAccepted
   | EditConflict
   | EditRefused
-  | EditUnreachable;
+  | EditUnreachable
+  | EditSessionEnded;
 
 export interface EditVariables {
   readonly nodeId: string;

@@ -11,9 +11,11 @@ import { entityKeys } from "./keys";
 import type { EditFailure, EditOutcome, EditVariables } from "../types";
 
 const CONFLICT_CODE = "BUSINESS_ENTITY_EDIT_CONFLICT";
+const SESSION_ENDED_CODE = "AUTH_SESSION_EXPIRED";
 const UNREACHABLE_CODES: readonly string[] = [
   "SYSTEM_NETWORK",
   "SYSTEM_TIMEOUT",
+  "SYSTEM_ABORTED",
 ];
 
 function conflictFacts(details: unknown): {
@@ -35,6 +37,7 @@ function toFailureOutcome(error: EnvelopeError): EditOutcome {
   if (error.code === CONFLICT_CODE) {
     return { kind: "conflict", ...conflictFacts(error.details) };
   }
+  if (error.code === SESSION_ENDED_CODE) return { kind: "session-ended" };
   const failure: EditFailure = {
     code: error.code,
     status: error.httpStatus,
