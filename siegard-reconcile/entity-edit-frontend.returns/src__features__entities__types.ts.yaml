@@ -1,0 +1,330 @@
+findings:
+  - file: src/features/entities/types.ts
+    where: >-
+      line 145, the type AttributeChangeKind
+    evidence: >-
+      export type AttributeChangeKind = "set" | "remove";
+    cost: >-
+      The two kinds of an attribute change are declared here and again in the node domain/knowledge-base/attribute-change-kind, whose values are `set` and `remove`. That node is not bound to this file, so a change to the enumeration in the node reaches no check on this file. If the two disagree later, nobody can tell which one was decided.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/attribute-change-kind to this file, because the file is where the enumeration is declared. Nothing in the code needs to change, since the values agree today.
+    node: domain/knowledge-base/attribute-change-kind
+
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: >-
+      EntityEditWire, AttributeChangeWire, EditConflict and EditFailure, lines 156-173 and 195-212
+    evidence: >-
+      export interface EntityEditWire { readonly reason: string; readonly changes: readonly AttributeChangeWire[]; } and export interface EditConflict { readonly kind: "conflict"; readonly attributeKey: string | null; readonly itemId: string | null; }
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      NodeTypeListWire, NodeListingWire, NodeReadWire and AttributeKeyListWire
+    evidence: >-
+      export interface NodeListingWire { readonly total: number; readonly limit: number; readonly offset: number; readonly items: readonly ListedNodeWire[]; } and export interface AttributeKeyListWire { readonly total: number; readonly items: readonly AttributeKeyWire[]; }
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      EditAcceptedWire and AppliedChangeWire, lines 175-186
+    evidence: >-
+      export interface EditAcceptedWire { readonly node_id: string; readonly action_id: string; readonly applied: readonly AppliedChangeWire[]; }
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      NodeTypeWire, ListedNodeWire, NodeSummaryWire, NodeAliasWire, NodeAttributeWire and AttributeKeyWire
+    evidence: >-
+      export interface NodeAttributeWire { readonly id: string; readonly attribute_key: string; readonly value: string; readonly valid_from: string | null; readonly valid_to: string | null; readonly status: string; readonly is_current: boolean; }
+  - node: domain/knowledge-base/attribute-change
+    held_at: >-
+      AttributeChange (line 147) and AttributeChangeWire (line 161)
+    evidence: >-
+      export interface AttributeChange { readonly attributeKey: string; readonly kind: AttributeChangeKind; readonly value?: string | null; readonly itemId?: string | null; readonly validFrom?: string | null; readonly validTo?: string | null; }
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only the outcome vocabulary, `export type EditOutcome = | EditAccepted | EditConflict | EditRefused | EditUnreachable | EditSessionEnded;`. It holds no mapping from a failure code to an outcome.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares data shapes only and shows no loading indication, alert, review or notice. The nearest construct is `export interface EditVariables { readonly nodeId: string; readonly edit: EntityEdit; readonly signal?: AbortSignal; }`.
+  - node: domain/entity-workspace/attribute-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      No type declares the form field with its started_with member. The nearest shape is `export interface AttributeChange {`.
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: >-
+      nowhere
+    evidence: >-
+      No type declares the session with fields, reason, reviewing and undo_deadline. The nearest shape is `export interface EditVariables {`.
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The effect is carried as a bare string and the enumeration is not declared here, as in `readonly effect: string;`.
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no refresh or session behavior. The only trace is the outcome shape `export interface EditSessionEnded { readonly kind: "session-ended"; }`.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no timeout. The nearest construct is `readonly signal?: AbortSignal;`.
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no address or layout.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no request or refresh behavior.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and judges no effect. The effect is `readonly effect: string;`.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: >-
+      AttributeChangeWire, line 161, which keeps value, item_id, valid_from and valid_to present and nullable
+    evidence: >-
+      readonly value: string | null; readonly item_id: string | null; readonly valid_from: string | null; readonly valid_to: string | null;
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field or validity behavior. The nearest construct is `readonly isTemporal: boolean;` on AttributeKey.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field or validity behavior. The nearest construct is `readonly isTemporal: boolean;` on AttributeKey.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the carried values, `readonly allowedValues: readonly AllowedValue[] | null;`, but nothing offers or restricts a field to them.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only names the outcome, `readonly kind: "conflict";`. It keeps no typed value and shows no alert.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only. No alert text or deleted-node handling appears.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only. No link or curation address appears.
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries `readonly status: string;` on NodeAttribute but decides nothing from it.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no alert text. The nearest constructs are `readonly kind: "conflict";` and `readonly kind: "unreachable";`.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validation. The nearest construct is `readonly valueType: string;` on AttributeKey.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field behavior. The nearest construct is `readonly allowsMultiple: boolean;`.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and judges no change.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and judges no change.
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the description, `readonly description: string | null;`. It shows no help text.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only. The nearest construct is `readonly allowsMultiple: boolean;`.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no reload behavior.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validation message.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the shape, `readonly namePrefix?: string | null; readonly nodeType?: string | null;`, but treats nothing as given or not given.
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no display or defaulting behavior. The nearest construct is `readonly validFrom?: string | null;`.
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no date behavior.
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no request header.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no form initialization.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no review.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no effect wording. The effect is only `readonly effect: string;`.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no review offer.
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the reason, `readonly reason: string;`. It holds no length bound and no trimming.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the applied effect, `readonly effect: string;`. It states no effect in a review.
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the carriers, `readonly changes: readonly AttributeChange[];`, but holds no per-field sending behavior.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no timing or undo behavior.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no form.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries `readonly status: string;` but decides no offer from it.
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no wording.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares `readonly namePrefix?: string | null; readonly nodeType?: string | null;` but builds no request and holds neither query parameter name.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only and no screen behavior.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the listing shapes, `export interface NodeListing {`, but no screen behavior.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no address or code-splitting.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity comparison. The nearest constructs are `readonly validFrom?: string | null; readonly validTo?: string | null;`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no value parsing. The nearest constructs are `readonly value?: string | null;` and `readonly valueType: string;`.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the effect as `readonly effect: string;` and records no addition.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the effect as `readonly effect: string;` and records no correction.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the effect as `readonly effect: string;` and records no first value.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the kind, `export type AttributeChangeKind = "set" | "remove";`, but records no removal.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the effect as `readonly effect: string;` and records no succession.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only. The nearest construct is `readonly kind: "conflict";`.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares types only. The nearest construct is `readonly validFrom?: string | null;`.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no undo behavior. The nearest construct is `readonly signal?: AbortSignal;`.
+
+looked_past: >-
+  I saw that the wire shapes spell field names such as merged_into_node_id and merged_into on NodeSummaryWire, and left them alone as the implementation's naming of a published read, not a domain fact.
+
+candidates_opened:
+  - domain/knowledge-base/attribute-change-kind

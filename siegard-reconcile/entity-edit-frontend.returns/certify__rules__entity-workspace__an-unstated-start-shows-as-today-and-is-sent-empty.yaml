@@ -1,0 +1,34 @@
+certified:
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    state: partial
+    tests:
+      - file: src/features/entities/components/__tests__/EntityForm.edit-payload.spec.tsx
+        name: shows an unstated validity start as today in the review and sends the change with no validity start
+      - file: src/features/entities/components/__tests__/EntityForm.edit-payload.spec.tsx
+        name: shows an unstated validity start as today in the review and sends it empty while the owner states a validity end
+    why: >-
+      The "sent empty" half is fully exercised. The deadline is changed without
+      stating a start, both with and without a stated end. Both tests assert the
+      sent change carries valid_from null, and that today's date appears nowhere
+      in the request body. The clock is pinned to 2026-06-15, so a start that
+      silently became today would make them fail.
+
+      The "show as today" half is exercised only in the review panel. Each test
+      reads that panel's validity-start text for the deadline and checks it
+      contains 2026-06-15. The node constrains the attribute field and names no
+      place where the start shows. Nothing in the offered proof reads the
+      attribute field in the form, so an unstated start that stopped showing
+      as today there would pass both tests. The review panel would still say
+      today.
+
+      Both tests also assert more than the fact states. "Sent empty" is pinned
+      to an explicit null: an omitted valid_from would fail them even though it
+      is arguably also "empty". That pinning is a fact for a reader to route,
+      not one this audit settles. The file's first test states a start of
+      2026-06-14 and bears on this fact not at all.
+    remainder: testable
+    remainder_why: >-
+      Input: an attribute field in the edit form whose value the owner changes
+      without stating a validity start, with the clock fixed. Expected result:
+      that field's own validity start shows as the fixed day, before the review
+      opens.

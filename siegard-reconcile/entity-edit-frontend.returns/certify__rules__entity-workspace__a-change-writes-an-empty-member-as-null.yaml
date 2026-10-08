@@ -1,0 +1,31 @@
+certified:
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    state: covered
+    tests:
+      - file: src/features/entities/api/__tests__/edit-request-wire.spec.ts
+        name: writes the six members of every change, JSON null in every empty member and null in value and validity of a remove change
+      - file: src/features/entities/components/__tests__/entity-edit-payload.spec.ts
+        name: writes JSON null in every member that holds nothing and in the value and validity of a remove change
+      - file: src/features/entities/components/__tests__/entity-edit-payload.spec.ts
+        name: sends one remove change naming the attribute it started from, with null value and validity, for $label
+      - file: src/features/entities/components/__tests__/entity-edit-payload.spec.ts
+        name: sends a set change that names no attribute for $label
+      - file: src/features/entities/components/__tests__/entity-edit-payload.spec.ts
+        name: sends a null validity start, and no date of today, when the owner states none and $label
+    why: >-
+      The fact is covered by the wire test in edit-request-wire.spec.ts. It checks the sent changes
+      with toStrictEqual. For a set change, value, item_id, valid_from and valid_to are each sent
+      as null when they are absent, null or blank. When they hold something, all four are sent
+      with their values. For a remove change, value, valid_from and valid_to are sent as null even
+      when the input held them, and item_id is kept. If a member were left out, or a remove change
+      carried a value or a validity, the test would fail. Two things that test asserts go beyond
+      this node, and I did not decide what to do about them. First, the test treats a blank
+      string as a member that holds nothing. The node says "holds nothing" and does not say
+      whether a blank string counts. Second, toStrictEqual fixes each change to exactly six
+      members (attribute_key, kind and the four above). The node only requires four members to
+      be present. A sibling node, rules/entity-workspace/save-sends-one-change-per-changed-field,
+      sets what a set change carries. If a member is ever added legitimately, this test breaks
+      even though this node's fact still holds. The tests in entity-edit-payload.spec.ts bear on
+      the fact through the reviewed form. As the pack instructed, I did not open their helpers
+      (setOf, removeOf, expectedBody, bodyOf), so their share of the proof was read only from the
+      literal null arguments the tests pass.

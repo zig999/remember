@@ -1,0 +1,43 @@
+certified:
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    state: unauditable
+    tests:
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: offers a closed key every allowed value and nothing else, each by its label, a label-less one by its own value, in the order the catalog gives them
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: offers a closed key only its allowed values when the node holds a current value outside them
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: shows each allowed value by its label, not by its own value
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: keeps the order the catalog delivers the allowed values in, whatever their sort orders and whatever alphabetical order would give
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: shows an allowed value that has no label by its own value, neither as an empty option nor left out
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: shows an allowed value whose label is the empty string by its own value, not as an empty option
+      - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+        name: adds an entry that is an empty choice offering the allowed values
+    why: >-
+      The fact says the field offers the allowed values "in their order", and that phrase can be
+      read two ways. It could mean the order the catalog delivers the values in. It could also mean
+      the order set by each value's own sort order, which the fixtures carry as `sortOrder`
+      (`allowed(value, label, sortOrder)`). On the input these tests use, the two readings expect
+      different results. In "offers a closed key every allowed value and nothing else..." and
+      "keeps the order the catalog delivers...", the fixtures deliberately give sort orders that
+      disagree with delivery order: k/30, c/10, t/20, a/40. Both tests then assert the delivery
+      order (Medium, Urgent, High, Low), and they name it as theirs "whatever their sort orders".
+      Under the sort-order reading, the same input expects Urgent, High/t, Medium, Low. So if that
+      reading is the one meant, these two tests would fail on a correct implementation instead of
+      proving the fact. The node does not say which order is meant, and choosing one here would
+      certify a fact nobody wrote.
+
+      The rest of the fact is exercised:
+      - "Only those values": the offered options are compared by exact array equality, including
+        when the node holds a current value outside the allowed set, and for an added entry of a
+        multi-valued key.
+      - "Each by its label": labels are shown instead of the values themselves.
+      - A value with no label is shown by its value. The tests cover both a null label and an
+        empty-string label, and the value is neither dropped nor shown as an empty option.
+
+      The offered list is read from the rendered `role="option"` elements after the choice is
+      opened (helper `openChoice` in entity-form-closed-support.ts). So those parts would fail if
+      they stopped holding.

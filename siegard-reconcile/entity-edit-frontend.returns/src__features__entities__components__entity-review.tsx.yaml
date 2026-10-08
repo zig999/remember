@@ -1,0 +1,326 @@
+findings:
+  - file: src/features/entities/components/entity-review.tsx
+    where: >-
+      ReviewValue, line 19, the wording shown for a value that is empty
+    evidence: >-
+      <span className="italic text-muted-foreground">Sem valor</span>
+    cost: >-
+      The text the review shows for an absent previous or new value, such as a first value or a removal, is a wording no node holds. The wording rules of the entity workspace pin the texts the screen shows to the letter ("Edição registrada.", "Primeiro valor" and others). This one lives only in this component, so the next reader looks in the specification and finds no such text. A later edit to it would not be a decision anyone recorded.
+    kind: unstated
+    correction: >-
+      Give the wording for an empty previous or new value in the review a node. The show-review answer of contracts/entity-workspace/entity-screen, or a wording rule beside review-names-each-effect-in-its-wording, could hold it. Until then the string is a domain wording decided only in source.
+    node: contracts/entity-workspace/entity-screen
+read:
+  - node: contracts/entity-workspace/entity-screen
+    held_at: >-
+      EntityReview and ReviewItem, which hold the show-review operation. The review is not offered when `offered` is false, and each entry shows its previous value beside its new value, its effect and its validity, with a reason field.
+    evidence: >-
+      if (!offered) return null;
+      ... <dt className="text-xs text-muted-foreground">Valor anterior</dt> ... <dt className="text-xs text-muted-foreground">Novo valor</dt> ... <Label htmlFor="entity-review-reason">Motivo</Label>
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: >-
+      ReviewItem, the validity-start span, which shows today for an unstated start. What is sent is not decided in this file.
+    evidence: >-
+      const startStated = validity !== null && validity.from !== ""; ... {startStated ? validity.from : today}
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      const today = todayLocalDate(); ... the file only calls the helper imported from "./entity-local-date". It states no time zone or clock itself.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: >-
+      The entries.map in EntityReview, which renders one ReviewItem per entry, and the ReviewItem dl that puts the previous value beside the new value.
+    evidence: >-
+      {entries.map((entry) => ( <ReviewItem key={entry.id} entry={entry} today={today} /> ))}
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: >-
+      The guard at the top of EntityReview, which renders no review and no button while `offered` is false. What counts as changed is decided in the review state, not here.
+    evidence: >-
+      if (!offered) return null;
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no length bound and no trimming. It reads `reasonTooLong` and `saveOffered` from the review state, uses the first only as `aria-invalid={reasonTooLong}`, and gates the button with `{saveOffered ? (`. Both values are decided elsewhere.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: >-
+      ReviewItem, the Efeito block, which shows the entry's effect.
+    evidence: >-
+      {EDIT_EFFECT_WORDING[entry.effect]}
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file issues no request. It only calls the `onConfirm` callback it is given: onClick={onConfirm}
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads nothing from the knowledge base. It takes `review: EntityReviewState` as a prop.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no part of the published edit-entity operation. It renders `<Button ... onClick={onConfirm}>` and nothing more.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no read operation. It renders review entries received through `review`.
+  - node: domain/entity-workspace/attribute-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the field. It declares only ReviewValueProps, ReviewItemProps and EntityReviewProps, and imports `ReviewEntry` from "./entity-review-entries".
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: >-
+      nowhere
+    evidence: >-
+      The session shape is not declared here. EntityReviewProps carries `readonly review: EntityReviewState`, imported from "./use-entity-review".
+  - node: domain/knowledge-base/attribute-change
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no change. It declares no attribute_key, kind, item_id, valid_from or valid_to member.
+  - node: domain/knowledge-base/edit-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared here. The file only indexes `EDIT_EFFECT_WORDING[entry.effect]`, imported from "./entity-change-effect".
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no session or token handling. It imports only UI components and the review state types.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no request and no timeout. It renders `<Panel ... title="Revisão das alterações">`.
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no address or layout. It is the component `export const EntityReview: FC<EntityReviewProps>`.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no request and handles no 401.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not judge any effect. It only displays `entry.effect`, which the review state computes.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no request body. It passes `onClick={onConfirm}` through.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns the review, not the form's fields. It only hides the validity blocks when the entry holds none: {validity === null ? null : (
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file offers no validity input. It only shows the validity the entry states: <dt className="text-xs text-muted-foreground">Fim da validade</dt>
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no key field and no allowed values.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no save answer and no form values. It holds `reason` only as received from the review state.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file shows no alert for a node. It renders only the review button and the review panel.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no link to curation. Its only buttons are "Revisar alterações", "Salvar" and "Voltar à edição".
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no key status. It reads nothing about disputed attributes.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file shows no save failure. It holds no conflict text and no could-not-be-sent text.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no value type and refuses no value. It only shows `entry.value` as text.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field and no multi-valued key.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file decides no change status. The entries it renders come in through `entries`.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file decides no change status. It maps over `entries` from the review state.
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field and no catalog description.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no list of fields and no add or remove control.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no error code and no classification of a failure.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reloads no node. It only calls `onConfirm`.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no type message. It shows `entry.value` as received.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns neither the listing nor its narrowings.
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no catalog and no attribute outside it.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no request and carries no token or Authorization header.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no field and starts none from a value.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds none of the effect texts. It looks the wording up in a table imported from another file: {EDIT_EFFECT_WORDING[entry.effect]}
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no change and sends nothing. It holds `onClick={onConfirm}`.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no delay and no undo. It calls `onConfirm` and does nothing more.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no form and no field group.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no node status. The review is gated only by `offered`: if (!offered) return null;
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds none of the listed texts. It holds no listing, no could-not-load alert, no recorded-edit notice and no "Desfazer".
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no listing request and no query parameter.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no node listing and no node-type choice.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no nodes.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no address and no lazy loading.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file compares no dates. It shows `validity.from` and `validity.to` as given and holds no message.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file parses no value. It shows `text` as received in ReviewValue.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute and decides no effect. It only shows `entry.effect`.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute and decides no effect. It only shows `entry.effect`.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute and decides no effect. It only shows `entry.effect`.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute and decides no effect. It only shows `entry.effect`.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute and decides no effect. It only shows `entry.effect`.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no conflict answer. It holds `onClick={onConfirm}` only.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: >-
+      ReviewItem, the validity-start span, which shows today for an unstated start. The send-empty part sits outside this file.
+    evidence: >-
+      {startStated ? validity.from : today}
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no undo and no delay before sending.
+looked_past: >-
+  The control names and data labels ("Revisar alterações", "Revisão das alterações", "Motivo", "Salvar", "Voltar à edição", "Valor anterior", "Novo valor", "Efeito", "Início da validade", "Fim da validade") and the hint "Início não informado: hoje.", which states the held fact that an unstated start shows as today, are not reported. Focus management and `data-testid` attributes are not this pass's.

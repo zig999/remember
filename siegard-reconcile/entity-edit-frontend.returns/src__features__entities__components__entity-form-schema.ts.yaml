@@ -1,0 +1,328 @@
+findings:
+  - file: src/features/entities/components/entity-form-schema.ts
+    where: >-
+      HELD_ATTRIBUTE_STATUSES, lines 58-62, and isHeldAttribute, lines 64-66
+    evidence: >-
+      const HELD_ATTRIBUTE_STATUSES: readonly string[] = [
+        "active",
+        "uncertain",
+        DISPUTED_ATTRIBUTE_STATUS,
+      ];
+    cost: >-
+      The three statuses a node attribute can hold while it is still held are
+      already an enumeration in domain/knowledge-base/live-assertion-status
+      (active, uncertain, disputed). This file declares them a second time as
+      its own list, and the node is not bound to this file. If the enumeration
+      gains or loses a value, no check reaches this list, and nobody can tell
+      which of the two was decided.
+    kind: contradicts
+    correction: >-
+      The vocabulary needs one home. Either the node binds to this file, so
+      that a change to the node reaches the list, or the list is derived from
+      a declaration the node is bound to. Code cannot read the specification,
+      so the correction is the bind and not a request that the file read it.
+    node: domain/knowledge-base/live-assertion-status
+  - file: src/features/entities/components/entity-form-schema.ts
+    where: >-
+      outsideCatalogGroupsOf, line 92, and heldAttributesOf, lines 68-75
+    evidence: >-
+      if (!isHeldAttribute(attribute)) continue;
+    cost: >-
+      The node says an attribute whose key the catalog no longer holds
+      "MUST show its value without a field", with no status condition. The
+      code drops every attribute that is superseded, deleted or of any status
+      outside the three listed. That exclusion is a rule about what the owner
+      sees, and it lives only here. The next reader looks for it in the
+      specification and does not find it.
+    kind: unstated
+    correction: >-
+      Add to the outside-the-catalog rule, or to a sibling node, which
+      statuses show their value. The code can then stay as it is.
+    node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+read:
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      This file makes no request. It only imports the AttributeKey, NodeAttribute and NodeRead types.
+  - node: domain/entity-workspace/attribute-field
+    held_at: >-
+      attributeFieldSchema, lines 7-14
+    evidence: >-
+      export const attributeFieldSchema = z.object({
+        attributeKey: z.string().min(1),
+        itemId: z.string().nullable(),
+        startedWith: z.string(),
+        value: z.string(),
+        validFrom: z.string(),
+        validTo: z.string(),
+      });
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: >-
+      entityFormSchema, lines 16-18. It holds only the fields member. node_id, reason, reviewing and undo_deadline are not declared here.
+    evidence: >-
+      export const entityFormSchema = z.object({
+        fields: z.array(attributeFieldSchema),
+      });
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: >-
+      DISPUTED_ATTRIBUTE_STATUS, line 5, isDisputedKey, lines 100-109, and the early return in startingFieldsOf, line 156. The pointer text is not in this file.
+    evidence: >-
+      attribute.attributeKey === key &&
+      attribute.status === DISPUTED_ATTRIBUTE_STATUS
+      ...
+      if (isDisputedKey(node.attributes, key)) return [];
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: >-
+      buildEntityFormSchema superRefine, lines 27-35
+    evidence: >-
+      const message = valueTypeMessage(valueType, field.value);
+      if (message === null) return;
+      ctx.addIssue({ code: "custom", message, path: [index, "value"] });
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: >-
+      emptyField, lines 129-138
+    evidence: >-
+      itemId: null,
+      startedWith: "",
+      value: "",
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: >-
+      the allowsMultiple branch of startingFieldsOf, lines 157-160. Adding and removing fields happens in another file.
+    evidence: >-
+      const held = currentAttributesOf(node.attributes, key);
+      return held.length > 0 ? held.map(fieldStartingFrom) : [emptyField(key)];
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: >-
+      the empty validity start of fieldStartingFrom, line 146, and emptyField, line 135. Showing it as today is not in this file.
+    evidence: >-
+      validFrom: "",
+      validTo: "",
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: >-
+      outsideCatalogGroupsOf, lines 82-98
+    evidence: >-
+      if (catalogKeys.has(attribute.attributeKey)) continue;
+      if (!isHeldAttribute(attribute)) continue;
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: >-
+      fieldStartingFrom, lines 140-149, and the single-valued branch of startingFieldsOf, lines 161-162
+    evidence: >-
+      const current = currentAttributeOf(node.attributes, key);
+      return [current === undefined ? emptyField(key) : fieldStartingFrom(current)];
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: >-
+      buildFieldGroups, lines 176-196, and buildFormValues, lines 165-174. Both follow the catalog's order.
+    evidence: >-
+      return attributeKeys.map((attributeKey) => {
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: nowhere
+    evidence: >-
+      This file declares no request and no failure mapping.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: >-
+      Only partly. The disputed-key and per-key field-group parts sit in buildFieldGroups and isDisputedKey. This file renders no state, alert or notice.
+    evidence: >-
+      disputed,
+      heldValues: disputed
+        ? heldAttributesOf(node.attributes, attributeKey.key)
+        : [],
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      This file sends nothing. It builds no edit body and states no refusal code.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      This file only reads the already-fetched NodeRead and AttributeKey values.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      No change shape (kind, value, item_id, valid_from, valid_to) is declared here. The form-side shape is attributeFieldSchema.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      No effect name (first-value, addition and the rest) appears in this file.
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      This file has no session or token handling.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: nowhere
+    evidence: >-
+      This file has no request and no timeout.
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      This file declares no address.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      This file has no request.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      This file judges no effect. It only builds the starting values from the loaded node.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      This file builds no edit request. validFrom and validTo are empty strings in form state, not JSON null.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      This file does not decide when a field offers validity.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      This file does not decide when a field offers validity.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      This file declares no allowed-values handling.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      This file handles no save answer.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      This file shows no alert.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      The pointer text and the /curation link are not in this file. It only sets the disputed flag, `disputed,`.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      This file holds no alert text.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      This file holds no changed-field decision.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      This file only records startedWith. It never compares it with value. `startedWith: attribute.value,`
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      This file reads no description.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      This file holds no failure code.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      This file triggers no reload. buildFormValues only builds the starting values.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: >-
+      The call to valueTypeMessage, line 31. The wording and the no-value handling are in entity-value-types, which this file imports and which is outside the file set.
+    evidence: >-
+      const message = valueTypeMessage(valueType, field.value);
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      This file has no listing request.
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      This file holds no clock or date.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      This file has no request.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      This file lists no review.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      This file holds no effect wording.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      This file offers no review.
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      This file has no reason field.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      This file states no effect.
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      This file builds no save payload.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      This file has no timing.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      This file checks no node status.
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      This file holds no state wording.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      This file has no listing request.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      This file has no node-type listing.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      This file lists no nodes.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      This file declares no address.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      The schema checks only the value type (`path: [index, "value"]`). No comparison of validFrom and validTo appears.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      Delegated. The value-type check calls valueTypeMessage, line 31. The parsing rules themselves are in the imported file, outside this set.
+    evidence: >-
+      const message = valueTypeMessage(valueType, field.value);
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      This file records no effect.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      This file records no effect.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      This file records no effect.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      This file records no effect.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      This file records no effect.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      This file handles no save answer.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The empty start is set in fieldStartingFrom, `validFrom: "",`. Showing as today and sending are not in this file.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      This file has no timing or send.
+looked_past: >-
+  The file's exports and helper functions read as ordinary code structure. They state no domain fact beyond the two findings above, and the file holds no comments.

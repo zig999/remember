@@ -1,0 +1,26 @@
+certified:
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    state: partial
+    tests:
+      - file: src/features/entities/api/__tests__/edit-request-session.spec.ts
+        name: clears the stored token, replaces the page with /sign-in?reason=session_expired and fails with AUTH_SESSION_EXPIRED
+    why: >-
+      In this test the refresh is rejected after a 401 on an entity edit. It checks that the
+      stored token is null afterwards and that the caller gets the code AUTH_SESSION_EXPIRED. It
+      also checks that "/sign-in?reason=session_expired" was handed to the redirect function
+      the test installed through __setEditRedirectForTests. Because the test swaps in its own
+      redirect function, it only sees which address was handed over, not how the browser went
+      there. If the page were opened with a navigation that keeps a history entry, rather than
+      replaced, every assertion would still pass, so the "replace the page" part of the fact is
+      not tested. The fact applies to the request helper, but the set only tests it through
+      entityEdit and its edit-specific redirect function. Nothing in the set tests a failed
+      refresh on any other request that goes through the helper. The sibling test "fails
+      carrying status 401 and reading Sua sessão expirou. Faça login novamente." checks status
+      and message only, not the token, the redirect or the code, so it is not cited.
+    remainder: testable
+    remainder_why: >-
+      Set up a request through the request helper that gets a 401, then make the refresh fail.
+      Run it with the real redirect in place and the browser's location stubbed. Expect the
+      stored token to be cleared, the caller to get AUTH_SESSION_EXPIRED, and the page to be
+      replaced with "/sign-in?reason=session_expired" (location.replace called with that
+      address, and no history-keeping navigation made).

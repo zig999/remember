@@ -1,0 +1,276 @@
+findings:
+  - file: src/features/entities/components/entity-edit-payload.ts
+    where: >-
+      buildEntityEdit, the .sort(...) over the built changes (lines 129-130)
+    evidence: >-
+      .sort((first, second) => first.position - second.position)
+    cost: >-
+      The order in which the edit lists its changes is chosen only here: catalog position of the key, with changed fields ahead of removed fields inside one key (the sort is stable over fieldsToSend). The knowledge base answers one `applied` entry per change "in the order given", and its conflict and no-second-current-value judgments are made over that edit. The next reader looks in the specification for the order a save sends its changes and finds none, so the order reads as an implementation accident rather than a decision.
+    kind: unstated
+    correction: >-
+      Give the order in which a save sends its changes a node, for example by extending rules/entity-workspace/save-sends-one-change-per-changed-field, or state that the order is not significant.
+    node: rules/entity-workspace/save-sends-one-change-per-changed-field
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file builds the body with `return toEntityEditWire(buildEntityEdit(...args));` and states no path, method, header or failure code; the request itself is made elsewhere.
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      The shape is only imported: `import type { AttributeFieldValues, EntityFormValues } from "./entity-form-schema";`. The file's own FieldToSend and FieldValidity are not this value object.
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      No session, reviewing flag or undo deadline is declared; the file holds only pure builders such as `export function buildEntityEdit(`.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The shape is imported, not declared: `import type { AttributeChange, AttributeChangeKind, ... } from "../types";`. The file only constructs values of it, e.g. `kind: "remove",`.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: >-
+      memberOf, NO_VALIDITY and removeChangeOf, lines 28-62; setChangeOf, lines 64-75
+    evidence: >-
+      return text === "" ? null : text;  /  const NO_VALIDITY: FieldValidity = { validFrom: null, validTo: null };  /  kind: "remove",
+          value: null,
+          itemId: field.itemId,
+          ...NO_VALIDITY,
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: >-
+      validityStatedBy, lines 43-52 (the sent-empty half; the shows-as-today half is not in this file)
+    evidence: >-
+      validFrom: memberOf(field.validFrom),
+      validTo: memberOf(field.validTo),
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: >-
+      the return of buildEntityEdit, line 131 (the send-trimmed half; the 1-to-1000 bound is not in this file)
+    evidence: >-
+      return { reason: trimmedReason(reason), changes };
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: >-
+      fieldsToSend, changeOf, removeChangeOf and setChangeOf, lines 54-101
+    evidence: >-
+      changed[index] === true ? [{ field, removed: false }] : []  /  return changeKindOf(item, attributeKey, attributes) === "remove"
+          ? removeChangeOf(item.field)
+          : setChangeOf(item.field, attributeKey);  /  kind: "set",
+          value: memberOf(field.value),
+          itemId: field.itemId,
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: >-
+      validityStatedBy, lines 43-52 (the change is sent with no validity start)
+    evidence: >-
+      validFrom: memberOf(field.validFrom),
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      The file makes no read; no GET path or query parameter appears in it.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: nowhere
+    evidence: >-
+      The file renders no screen, alert or notice; it exports only builders such as `export function fieldsToSend(`.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file is the consumer: it states no refusal code and no applied answer. It only builds `EntityEdit`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file makes no search, listing, read or traversal.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      No effect enumeration is declared in the file; the effect is judged in `changeOfField`, imported from "./entity-change-effect".
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      The file holds no token or refresh handling.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: nowhere
+    evidence: >-
+      The file holds no timeout.
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      The file holds no address or layout.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      The file sends no request and handles no 401.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      The file only passes `attributes` to the imported `changeOfField(subject, attributeKey, attributes)`; the judgment is made there.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      `if (!attributeKey.isTemporal) return NO_VALIDITY;` sends no validity for a key that is not temporal. Nothing offers or withholds a validity field in this file.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      The file offers no field; it only reads `field.validFrom` and `field.validTo` when sending.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      No allowed values appear in the file.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      The file handles no answer to a save.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      The file shows nothing.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      The file holds no link or curation address.
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file holds no disputed-status handling.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no alert text.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      The file parses no value; `memberOf(field.value)` only maps "" to null.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      The file creates no field.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      The file receives the result as `changed: readonly boolean[]`; the judgment is made elsewhere.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      The file trusts `changed[index] === true` and decides nothing about what counts as changed.
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      The file shows no help text.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      The file holds no multiplicity handling.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      The file holds no failure code.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no reload.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no type messages.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing narrowing.
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      The file reads no clock or date.
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      The file shows nothing. Its only catalog-related branch, `return entry === undefined ? [] : [`, drops a held field whose key is not in the catalog.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      The file holds no header or token.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      The file starts no field.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      The file lists nothing for review; `fieldsToSend` builds the sent set, not the review.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no effect wording.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file offers no review.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      The file states no effect; it reads only `changeOfField(...)?.kind`.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      The file holds no delay or undo.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      The file builds no form group; it only reads the catalog order as `position` in `attributeKeys.map((attributeKey, position) =>`.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file holds no status check.
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no wording.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing request.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      The file holds no address.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      The file compares no dates; it maps `field.validFrom` and `field.validTo` to members unchanged.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file parses no value.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file records nothing; it only reads the judged kind via `changeOfField`.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file records nothing.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file records nothing.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file only builds the remove change it sends: `kind: "remove",`. It rejects and stamps nothing.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file records nothing.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      The file handles no conflict answer.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no undo.
+looked_past: >-
+  The guard `return entry === undefined ? [] : [` silently drops a held field whose key the catalog does not list, a defensive branch for a case the attributes-outside-the-catalog rule says never reaches a field, which I left to a code review.

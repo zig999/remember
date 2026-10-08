@@ -1,0 +1,313 @@
+read:
+  - node: contracts/application-shell/shell-screen
+    held_at: >-
+      ProtectedLayout and protectedLayoutRoute (the workspace shown inside the shell, and the redirect to sign-in for a stale token), plus the notFoundRoute and stub routes for the page-state wording. The file does not hold the shell's header, footer or palette, nor the render-failure state.
+    evidence: >-
+      `<AppShell>` wrapping `<Outlet />`; `throw redirect({ to: "/sign-in", search: { reason: "session_expired" } });`; `title="Página não encontrada." hint="O endereço solicitado não existe ou foi removido."`; `title="Grafo"`
+  - node: domain/application-shell/application-shell
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for health, curation_pending, as_of, palette_open, address or reason. It only builds routes with `createRoute(...)` and `RootRoute.addChildren([...])`.
+  - node: rules/application-shell/a-fresh-owner-skips-sign-in
+    held_at: >-
+      signInRoute beforeLoad, lines 96-106
+    evidence: >-
+      `try { fresh = useAuthStore.getState().isFresh(); } catch { fresh = false; } if (fresh) { throw redirect({ to: "/chat" }); }`
+  - node: rules/application-shell/a-loading-workspace-says-so-politely
+    held_at: >-
+      the Suspense fallbacks of chatRoute, ingestRoute and curationRoute
+    evidence: >-
+      `role="status" aria-live="polite"` around "Carregando conversa…", "Carregando ingestão…" and "Carregando curadoria…"
+  - node: rules/application-shell/an-unknown-address-says-page-not-found
+    held_at: >-
+      notFoundRoute, lines 217-227, for the not-found address. The handling of an address that matches no route is not in this file.
+    evidence: >-
+      `path: "/not-found"` with `title="Página não encontrada." hint="O endereço solicitado não existe ou foi removido."`
+  - node: rules/application-shell/chat-and-curation-keep-one-search-key
+    held_at: >-
+      validateSearch of chatRoute and of curationRoute
+    evidence: >-
+      `if (typeof raw === "string" && raw.length > 0) { return { conversation: raw }; } return {};` and the same for `{ item: raw }`
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: >-
+      the routeTree and protectedLayoutRoute with ProtectedLayout
+    evidence: >-
+      `protectedLayoutRoute.addChildren([ indexRoute, chatRoute, graphRoute, searchRoute, ingestRoute, curationRoute, entityListRoute, entityRoute, historyRoute, notFoundRoute, ])` and `<AppShell><Outlet /></AppShell>`
+  - node: rules/application-shell/sign-in-shows-the-expiry-notice-for-its-reason
+    held_at: nowhere
+    evidence: >-
+      signInRoute declares no search validation and no notice, only `component: () => <SignInPage />`. The reading of the reason lives in SignInPage, another file.
+  - node: rules/application-shell/sign-in-sits-outside-the-guarded-shell
+    held_at: >-
+      signInRoute and the routeTree
+    evidence: >-
+      `getParentRoute: () => RootRoute, path: "/sign-in"` and `RootRoute.addChildren([ signInRoute, protectedLayoutRoute.addChildren([`
+  - node: rules/application-shell/some-addresses-show-only-a-placeholder
+    held_at: >-
+      graphRoute, searchRoute and historyRoute carry the three titles. The line "Conteúdo em breve." is not in this file.
+    evidence: >-
+      `<StubPage title="Grafo" testId="graph-page" />`, `<StubPage title="Busca" testId="search-page" />`, `<StubPage title="Histórico" testId="history-page" />`
+  - node: rules/application-shell/the-guard-needs-a-fresh-token
+    held_at: >-
+      protectedLayoutRoute beforeLoad, lines 46-54
+    evidence: >-
+      `const fresh = useAuthStore.getState().isFresh(); if (!fresh) { throw redirect({ to: "/sign-in", search: { reason: "session_expired" }, }); }`
+  - node: rules/application-shell/the-palette-lives-inside-the-shell
+    held_at: nowhere
+    evidence: >-
+      The file mounts only `<AppShell><Outlet /></AppShell>` and names no palette or shortcut.
+  - node: rules/application-shell/the-root-address-leads-to-chat
+    held_at: >-
+      indexRoute, lines 58-64, a child of the guarded layout so the guard's beforeLoad runs first
+    evidence: >-
+      `getParentRoute: () => protectedLayoutRoute, path: "/", beforeLoad: () => { throw redirect({ to: "/chat" }); }`
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: >-
+      the Suspense fallbacks of entityListRoute and entityRoute. The alerts, no-node statement and edit notice are not in this file.
+    evidence: >-
+      `Carregando nós…` and `Carregando formulário…`, each in a `role="status" aria-live="polite"` div
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: >-
+      entityListRoute (path "/entities"), entityRoute (path "/entities/$nodeId") and the lazy() imports, lines 19-28
+    evidence: >-
+      `const EntityPage = lazy(() => import("@/features/entities/components/EntityPage")...` and `const EntityListPage = lazy(() => import("@/features/entities/components/EntityListPage")...`
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file sends no request. It only mounts `<EntityPage />` at "/entities/$nodeId".
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      The file sends no request. It only mounts `<EntityListPage />` and `<EntityPage />`.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: nowhere
+    evidence: >-
+      The route components only wrap the pages in Suspense (`<EntityListPage />`, `<EntityPage />`). The file states none of the screen's operations, answers or refusals. Its fallbacks cover the loading of the page's code, not the fetching of nodes.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit request or answer. It contains only route declarations.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no read request or answer. It contains only route declarations.
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      The file declares no field shape (attribute_key, item_id, started_with, value, valid_from, valid_to).
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      The file declares no session shape (node_id, fields, reason, reviewing, undo_deadline). It only has `path: "/entities/$nodeId"`.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no change shape.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration of edit effects.
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      The file holds no token refresh. The only token use is `useAuthStore.getState().isFresh()`.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: nowhere
+    evidence: >-
+      The file holds no request and no timeout.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      The file holds no request and no refresh.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      The file holds no review logic. It contains only route declarations.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit payload.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no save handling.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      The file holds no alert. It only wraps `<EntityPage />` in Suspense.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      The file holds no link to curation. Its only /curation use is `path: "/curation"` in curationRoute.
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file holds no form rendering.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no save alert.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no value validation.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      The file holds no save handling.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no save handling.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no value-type messages.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing request. The entityListRoute declares only `path: "/entities"` and `preload: false`.
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The file holds no validity fields.
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no date handling.
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      The file holds no form rendering.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      The file sends no request and sets no Authorization header.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no form fields.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      The file holds no review.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file holds no effect wording.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file holds no review.
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      The file holds no review reason.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      The file holds no review.
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file holds no save.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      The file holds no undo window.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      The file holds no form rendering.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file holds no node status handling.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing request.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      The file holds no node-type listing handling.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      The file only mounts `<EntityListPage />` at "/entities" and lists no nodes itself.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      The file holds no validity fields.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file holds no value parsing.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit effect logic.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit effect logic.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit effect logic.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit effect logic.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file holds no edit effect logic.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      The file holds no save handling.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The file holds no payload.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      The file holds no undo window.
+looked_past: >-
+  The route paths /chat, /graph, /search, /ingest, /curation, /history and /not-found, which are held by rules/application-shell/the-areas-live-at-fixed-addresses (outside this set), and the data-testid values and `preload: false`, which are implementation choices rather than domain facts.
+candidates_opened:
+  - rules/application-shell/the-areas-live-at-fixed-addresses

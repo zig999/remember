@@ -1,0 +1,22 @@
+certified:
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    state: covered
+    tests:
+      - file: src/features/entities/components/__tests__/EntityForm.edit-payload.spec.tsx
+        name: shows an unstated validity start as today in the review and sends the change with no validity start
+      - file: src/features/entities/components/__tests__/EntityForm.edit-payload.spec.tsx
+        name: shows an unstated validity start as today in the review and sends it empty while the owner states a validity end
+    why: >-
+      Both halves are asserted on the deadline change. The setup is in deadlineChangedWithoutAStart
+      in entity-form-payload-support.ts: the deadline is changed and no start is given, the review is
+      opened, and Salvar is pressed after a reason. The test then asserts that the start shown for
+      deadline in the review contains today's date. It also asserts that the deadline change, sent
+      once the undo window passes, carries valid_from null and that today's date appears nowhere in
+      the body. If the review stopped showing today, either test would fail. If the form sent today,
+      or any other start, either test would also fail.
+      One over-assertion to route: the fact says the change is sent "with no validity start", but
+      the tests require valid_from to be exactly null. A send that left valid_from out would also
+      have no start, yet it fails toEqual. The tests are stricter than this node on the shape of the
+      wire. Whether null is that contract's own requirement is not settled here.
+      The tests do not check that the node is a project. The fixture node holds a temporal
+      "deadline" attribute, and its node type is not asserted.

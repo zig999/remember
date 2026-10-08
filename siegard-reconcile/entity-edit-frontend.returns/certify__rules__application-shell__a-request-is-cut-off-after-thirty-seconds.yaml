@@ -1,0 +1,34 @@
+certified:
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    state: partial
+    tests:
+      - file: src/features/entities/api/__tests__/edit-request-cutoff.spec.ts
+        name: is cut off at 30000 ms and not before, with the abort reading Request timed out after 30s and the failure SYSTEM_TIMEOUT
+    why: >-
+      The fact covers every request that is not an ingestion request, and it is
+      placed on the request helper. The offered proof sends exactly one such
+      request: the entity edit, through entityEdit. For that one request, the
+      named test checks three things. The signal is not aborted at 29999 ms. It
+      is aborted at 30000 ms. The abort reason reads "Request timed out after
+      30s". The test would fail if any of those stopped holding for the edit.
+      Nothing in the set sends any other non-ingestion request, such as a read or
+      a request with another method or path, and nothing calls the request helper
+      directly. So the cutoff for every other non-ingestion request is never
+      exercised. If the edit got its 30 s cutoff some way other than the shared
+      helper, these tests would still pass while the helper's fact failed. The
+      named test also checks the failure code SYSTEM_TIMEOUT in the same toEqual.
+      The fact does not state that code, so the test asserts more than the fact,
+      and changing that code would also break this proof. The sibling test "fails
+      with SYSTEM_TIMEOUT reading Tempo limite excedido na requisição." checks a
+      user-facing message the fact does not state. It also moves the clock
+      straight past 30000 ms without checking the boundary, so it would still
+      pass with any cutoff earlier than 60000 ms. For that reason it is not cited
+      as proof of this fact.
+    remainder: testable
+    remainder_why: >-
+      Call the request helper itself with a non-ingestion request, whose server
+      answers only after 30000 ms. Expected result: the request is not aborted at
+      29999 ms, and at 30000 ms it is aborted with the reason "Request timed out
+      after 30s". The helper is the single place the fact is put on, so that one
+      input against that one result decides the fact for every non-ingestion
+      request.

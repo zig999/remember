@@ -1,0 +1,270 @@
+findings:
+  - file: src/features/entities/api/__tests__/edit-outcomes.spec.ts
+    where: >-
+      line 45, the expected `applied` entry of the first test, "is accepted with the node, the action and what was applied when the edit is answered 200".
+    evidence: >-
+      effect: "created",
+    cost: >-
+      The test states "created" as the effect a 200 answer reports for a change. The enumeration holds six effects and "created" is not one of them: first-value, addition, succession, correction, removal and unchanged. The accepted answer the knowledge base publishes lists one effect per change. A reader who takes the accepted outcome's shape from this test will think "created" is an effect the knowledge base can report. The same fixture value is in `edit-support.ts` (`ACCEPTED_WIRE`), and `types.ts` types `effect` as a bare `string`, so nothing fails if a value outside the set arrives.
+    kind: contradicts
+    correction: >-
+      The expected effect, and the wire fixture it comes from, should use a value the enumeration holds, for example the first-value that a first value on `status_text` would report.
+    node: domain/knowledge-base/edit-effect
+
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: >-
+      The five outcome tests assert the contract's answers: the conflict details, the refusal passthrough at 409, SYSTEM_NETWORK and SYSTEM_TIMEOUT. The 200 test asserts the accepted answer, apart from the effect value in the finding.
+    evidence: >-
+      kind: "conflict", attributeKey: "status_text", itemId: null  /  failure: { code: "SYSTEM_NETWORK" }  /  failure: { code: "SYSTEM_TIMEOUT" }  /  code: "BUSINESS_ENTITY_EDIT_DISPUTED", status: 409, message: "Disputed.", details
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      The file sends only the edit; `describe("edit outcome", ...)` never touches a read.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: nowhere
+    evidence: >-
+      The file renders no screen and states no alert or notice; the tests read only request outcomes.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: >-
+      The accepted answer's `{ node_id, action_id, applied }` shape and the BUSINESS_ENTITY_EDIT_CONFLICT and BUSINESS_ENTITY_EDIT_DISPUTED codes appear as fixtures. The effect value "created" departs from the published set (see the finding).
+    evidence: >-
+      stubFetch(answers(() => jsonResponse(ACCEPTED_WIRE)));  /  const CONFLICT = "BUSINESS_ENTITY_EDIT_CONFLICT";
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file states nothing about search, provenance, catalog listings or graph reads.
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      The file declares no field shape; it passes SOME_VARIABLES to the edit.
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      The file declares no session shape and holds no session state.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file declares no change shape; the changes live in SOME_VARIABLES, imported from `edit-support`.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration of effects. The only effect it states is `effect: "created"`, a value outside the node's set.
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      No test in the file exercises a refresh or AUTH_SESSION_EXPIRED.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: >-
+      The timeout test advances the cutoff of 30000 ms and expects SYSTEM_TIMEOUT.
+    evidence: >-
+      outcomeOf(mountEdit(), SOME_VARIABLES, 30_000)  /  failure: { code: "SYSTEM_TIMEOUT" }
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      The file states nothing about addresses or layout.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      No test in the file answers 401.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      The file judges no effect against a loaded node.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      The file asserts no request body.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      The conflict tests check only the outcome's kind and details; no typed values are kept or asserted here.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      The file states nothing about a deleted node.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      The file contains no link.
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file only expects a BUSINESS_ENTITY_EDIT_DISPUTED refusal passed through; it shows no key.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file asserts no alert text.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      The file validates no field value.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: >-
+      The network and timeout tests classify SYSTEM_NETWORK and SYSTEM_TIMEOUT as unreachable, and the 409 test classifies another code as refused. The unreachable and refused outcomes for SYSTEM_INVALID_RESPONSE, SYSTEM_UPSTREAM and SYSTEM_UNKNOWN, and the AUTH_SESSION_EXPIRED case, are not asserted here.
+    evidence: >-
+      kind: "unreachable", failure: { code: "SYSTEM_NETWORK" }  /  kind: "unreachable", failure: { code: "SYSTEM_TIMEOUT" }  /  kind: "refused"
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: >-
+      The last test asserts that an accepted edit invalidates the node's cached query.
+    evidence: >-
+      mounted.queryClient.getQueryState(entityKeys.node("n-1"))?.isInvalidated).toBe(true)
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no message text.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      The file makes no listing request.
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The file states no validity start.
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      The file states no date.
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      The file contains no form.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      The file asserts no request header.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      The file contains no form or field.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      The file contains no review.
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no effect wording.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file contains no review.
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      The file states no reason.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      The file contains no review.
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file builds no changes; they come from SOME_VARIABLES.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      The file has no undo window; it uses fake timers only for the 30 s cutoff.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      The file contains no form.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file contains no form.
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no wording.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      The file makes no listing request.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      The file makes no listing request.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      The file makes no listing request.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      The file states no address.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      The file states no validity.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file parses no value.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file records no effect of this kind.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file records no effect of this kind.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file records no effect of this kind; its only effect value is `effect: "created"`.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file records no effect of this kind.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file records no effect of this kind.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      The conflict tests check the outcome only; no form or typed value is present.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The file states no validity start and asserts no request body.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no undo.
+
+looked_past: >-
+  I saw the `kind` values the file asserts (accepted, conflict, refused, unreachable), the fixture ids and messages such as "Conflict." and "Disputed.", and the helpers imported from `./edit-support` and `./support`. They are the client's own vocabulary and test scaffolding, not a judgment this pass makes.

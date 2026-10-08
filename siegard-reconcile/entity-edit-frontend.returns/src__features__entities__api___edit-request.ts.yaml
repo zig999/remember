@@ -1,0 +1,272 @@
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: >-
+      editUrl(), sendOnce(), noAnswer(), refusalOf(), answerOf() and entityEdit() — the whole file
+    evidence: |-
+      return `${base}/api/v1/nodes/${encodeURIComponent(nodeId)}/edit`;
+      method: "POST", headers: { "Content-Type": "application/json", ...authHeader() }, body,
+      message: "Tempo limite excedido na requisição."
+      message: "Requisição cancelada."
+      message: "Falha de rede ao contactar o servidor."
+      message: "Sua sessão expirou. Faça login novamente."
+      message: "Resposta do servidor não é JSON válido."
+      ? "Algo deu errado. Tente novamente." : "Erro desconhecido do servidor."
+      code: readableCode ?? (upstream ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN"),
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: >-
+      refreshSession() catch branch and the throw in entityEdit()
+    evidence: |-
+      useAuthStore.getState().clear();
+      redirectImpl(SIGN_IN_EXPIRED);
+      const SIGN_IN_EXPIRED = "/sign-in?reason=session_expired";
+      code: "AUTH_SESSION_EXPIRED",
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: >-
+      the timer in sendOnce()
+    evidence: |-
+      controller.abort(
+            new DOMException("Request timed out after 30s", "TimeoutError"),
+          );
+        }, DEFAULT_TIMEOUT_MS);
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: >-
+      entityEdit(), the 401 branch
+    evidence: |-
+      if (response.status === 401) {
+          if (!(await refreshSession())) {
+      response = await sendOnce(url, body, signal);
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: >-
+      the headers of the fetch in sendOnce()
+    evidence: |-
+      headers: { "Content-Type": "application/json", ...authHeader() },
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      the file sends only the edit write; it holds no read request: `method: "POST"` to `/api/v1/nodes/${encodeURIComponent(nodeId)}/edit`
+  - node: contracts/entity-workspace/entity-screen
+    held_at: nowhere
+    evidence: >-
+      the file shows nothing to the owner; it only throws `EnvelopeError` values and returns `Promise<EditAcceptedWire>`
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      the file is the consumer; the accepted answer is only cast, its shape declared elsewhere: `return (await response.json()) as EditAcceptedWire;`
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      no read of the knowledge base appears in the file; its only request is `fetch(url, { method: "POST", ...`
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      the file declares no field shape; it imports `import type { EditAcceptedWire, EntityEditWire } from "../types";`
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      no session state is held; the file's only state is the per-call `let timedOut = false;`
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      the change shape is not declared here; the edit is only serialized: `const body = JSON.stringify(edit);`
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      no effect value is named in the file; the answer is cast whole as `EditAcceptedWire`
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      the file declares no layout or address guard; its only address is `const SIGN_IN_EXPIRED = "/sign-in?reason=session_expired";`
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      the file judges no effect; it sends `JSON.stringify(edit)` as given
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      the members of each change are not written here; the file stringifies the already-built `edit`: `const body = JSON.stringify(edit);`
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      no field or validity offer in the file; only `entityEdit(nodeId, edit, signal)`
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      no field or validity offer in the file; only `entityEdit(nodeId, edit, signal)`
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      the file holds no allowed values and no field; it is a request function
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      the file keeps no form values; a conflict is only passed on as `details: readableCode === undefined ? undefined : error?.details`
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      the file shows no alert and reads no node; the text "Este nó foi apagado." does not appear
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      the file renders no link; "Abrir na fila de curadoria" does not appear
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      the file renders nothing and reads no attribute status
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      the conflict and could-not-be-sent texts do not appear; the file only builds failures with `new EnvelopeError({ code: "SYSTEM_NETWORK", ...`
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      the file validates no value; it sends the body as given
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      the file holds no field state
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      the file decides no changed field; it receives `edit: EntityEditWire`
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      the file decides no changed field; it receives `edit: EntityEditWire`
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      the file shows no help text and reads no catalog
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      the file holds no field list
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      the file only produces the codes (`code: "SYSTEM_TIMEOUT"`, `"SYSTEM_ABORTED"`, `"SYSTEM_NETWORK"`, `"SYSTEM_INVALID_RESPONSE"`, `"AUTH_SESSION_EXPIRED"`); it does not classify them as could-not-be-sent or refusal
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      the file reloads nothing; it returns `answerOf(response)`
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      none of the value-type messages ("Data inválida. Use o formato AAAA-MM-DD.") appears in the file
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      the file makes no listing request; its request is the edit POST
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      the file neither shows nor builds a validity start; the body is `JSON.stringify(edit)`
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      the file reads no clock date
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      the file renders no attribute
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      the file holds no field state
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      the file renders no review
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      none of "Primeiro valor", "Adição", "Sucessão", "Correção", "Remoção" appears in the file
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      the file offers no review and holds no field comparison
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      the reason is not read or trimmed here; the edit arrives built: `edit: EntityEditWire`
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      the file states no effect
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      the file builds no change; it only sends `body = JSON.stringify(edit)`
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      the file holds no five-second wait; its only timer is the request cutoff `setTimeout(() => {`, `}, DEFAULT_TIMEOUT_MS);`
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      the file renders no form
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      the file renders no form and reads no node status
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      none of "Edição registrada." or "Desfazer" appears in the file
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      the file sends no name_prefix or node_type parameter
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      the file shows no node-type choice
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      the file lists no node
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      the file declares no route; its only address is `/sign-in?reason=session_expired`
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      the file compares no dates
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      the file parses no attribute value
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      the file is a client; the effect is the upstream's and is only carried in the answer cast `as EditAcceptedWire`
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      the file is a client; the effect is the upstream's and is only carried in the answer cast `as EditAcceptedWire`
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      the file is a client; the effect is the upstream's and is only carried in the answer cast `as EditAcceptedWire`
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      the file is a client; the effect is the upstream's and is only carried in the answer cast `as EditAcceptedWire`
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      the file is a client; the effect is the upstream's and is only carried in the answer cast `as EditAcceptedWire`
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      the file keeps no form values; it only throws the refusal as `throw await refusalOf(response);`
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      the file builds no validity start; the body is `JSON.stringify(edit)`
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      the file holds no undo; it sends whenever `entityEdit` is called
+looked_past: >-
+  The refresh and redirect logic duplicates the curation feature's request helper and the failure details are passed from the body as read (a conflict's item_id is not normalized to null here), both of which are code-structure or upstream matters rather than a domain fact stated differently from a node.

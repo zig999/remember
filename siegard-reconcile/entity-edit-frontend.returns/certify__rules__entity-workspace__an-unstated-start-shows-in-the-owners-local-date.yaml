@@ -1,0 +1,23 @@
+certified:
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    state: partial
+    tests:
+      - file: src/features/entities/components/__tests__/EntityForm.validity-local-date.spec.tsx
+      - file: src/features/entities/components/__tests__/EntityForm.review-local-date.spec.tsx
+    why: >-
+      Both tests fix the browser clock at 23:30 on 2026-01-31 in America/Sao_Paulo, an instant
+      where UTC has already reached 2026-02-01. They assert that the today shown for an unstated
+      start reads 2026-01-31 and not 2026-02-01: one checks the field's today note, the other
+      checks the review listing. So a today read in UTC would fail them, and so would any date
+      not taken from the browser clock. But both tests run under only one time zone, so they
+      cannot tell the zone the browser reports apart from a zone written into the code. An
+      implementation that pinned America/Sao_Paulo or a fixed UTC-3 offset would pass both,
+      and the "as the browser reports it" part of the fact is not exercised. Nothing in the set
+      tests a zone east of UTC either, where the local date is ahead of the UTC date.
+    remainder: testable
+    remainder_why: >-
+      Fix the same kind of instant under a second time zone the browser reports, one that is
+      ahead of UTC. For example, use Asia/Tokyo at 08:30 local on 2026-02-01, when UTC is still
+      on 2026-01-31. The today shown for an unstated start, in both the field note and the
+      review, should read 2026-02-01 and not 2026-01-31. That checks the shown date follows the
+      zone the browser reports rather than a fixed one.

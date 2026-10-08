@@ -1,0 +1,268 @@
+findings:
+  - file: src/features/entities/components/__tests__/EntityForm.review-listing.spec.tsx
+    where: >-
+      the first test of "entity form review listing of changed fields", lines 49-53, the expected order of the listed entries
+    evidence: >-
+      expect(listed.map(({ key, previous, next }) => ({ key, previous, next }))).toEqual([ { key: "tag", previous: "Alpha", next: "Alpha-edited" }, { key: "tag", previous: "Beta", next: "Beta-edited" }, { key: "title", previous: "Alpha", next: "Gamma" }, ]);
+    cost: >-
+      The test fixes an order for the review's entries: both tag fields come before title, although the catalog lists title first (CATALOG = [catalogKey("title"), temporalKey("role"), catalogKey("note"), multiKey("tag")]). No node of the set states how the review orders its entries, so this order is a decision that lives only in the test. The next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Either a node gives the review's order of entries, with review-lists-each-changed-field-once as the natural home, or the assertion stops depending on an order the specification does not decide.
+    node: rules/entity-workspace/review-lists-each-changed-field-once
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: nowhere
+    evidence: >-
+      The file renders the form and reads the review (`reviewedFieldsIn(container)`). It sends no request and names no edit endpoint or failure.
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      The file only calls `renderForm(NODE, CATALOG)` with fixtures. It states no read request.
+  - node: contracts/entity-workspace/entity-screen
+    held_at: >-
+      the show-review assertions of the second describe block, lines 77-107, covering the validity start and end stated in the review and the previous and next values
+    evidence: >-
+      expect(listed.find(({ key }) => key === "role")?.start ?? "").toContain( "2026-03-01", ); expect(listed.find(({ key }) => key === "role")?.end ?? "").toContain( "2026-12-31", );
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      The file states nothing of the knowledge base's edit-entity answer; it reads the review of the form only.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file states no retrieval read; the node is built from the fixture `nodeHolding([...])`.
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the field. It only uses the fixtures `heldAttribute("title", "Alpha")` and `catalogKey("title")`.
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      The file declares no session shape. It only drives a rendered form through `typeInto(container, "title", "Alpha", "Beta")`.
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      The file builds no change and sends none; it reads only what `reviewedFieldsIn` returns.
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      No test asserts an effect (first value, addition, succession, correction or removal); the listed entries are read only as `{ key, previous, next }`, `start` and `end`.
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      The file states nothing of a refresh or a session. Its describe blocks cover only the review listing and the review validity.
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: nowhere
+    evidence: >-
+      The file makes no request and states no timeout.
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      The file renders the form directly with `renderForm(NODE, CATALOG)`. It states no address or layout.
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      The file states no 401 and no token refresh.
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      No assertion judges an effect against the loaded node. The tests assert only which fields are listed and their values and validity.
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      The file sends no save and reads no payload.
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      The review validity tests use only the temporal key `role`. No test asserts that a stable key offers no validity.
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      `setDate(startInputOf(container, "role"), "2026-03-01")` only sets a validity the form already offers. No test asserts that the form offers a start and an optional end.
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file states no closed key; every catalog entry is `catalogKey`, `temporalKey` or `multiKey`.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      The file states no conflict answer.
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      The file states no deleted node and no alert.
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      The file states no disputed key and no curation link.
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      The file states no disputed attribute; every `heldAttribute(...)` is a plain held value.
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no save and no failure.
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      The file states no value of the wrong type; every typed value is text.
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      The file adds no field to the multi-valued key; it edits only the held `tag` values with `typeInto(container, "tag", "Alpha", "Alpha-edited")`.
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      The file adds no field to a multi-valued key, so no test covers an added field that equals a held value.
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: >-
+      the second and third tests of the first describe block, lines 56-74, which assert that a field returned to its starting value is not listed, whatever validity it holds
+    evidence: >-
+      await typeInto(container, "role", "Closed", "Open"); const listed = await reviewedFieldsIn(container); expect(listed.map(({ key }) => key)).toEqual(["title"]);
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      The file states no help text.
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      The `tag` fixtures (`heldAttribute("tag", "Alpha")`, `heldAttribute("tag", "Beta")` and `multiKey("tag")`) are used as input, and no test asserts one field per current attribute or adding and removing fields.
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      The file states no save failure.
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      The file states no save and no reload.
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no type message.
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      The file states no listing narrowing.
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: >-
+      the last test, lines 98-106, which asserts that an unstated validity start shows as today in the review; the file never asserts the sent-empty half
+    evidence: >-
+      await typeInto(container, "role", "Open", "Closed"); const listed = await reviewedFieldsIn(container); expect(listed.find(({ key }) => key === "role")?.start ?? "").toContain( "2026-06-15", );
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: >-
+      line 99, the clock fixed to a local-time date, with the assertion on lines 103-105 reading its calendar date
+    evidence: >-
+      fixClockAt(new Date(2026, 5, 15, 12, 0));
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      The file states no attribute outside the catalog; `NODE` holds only the keys title, role, note and tag, and the catalog holds all four.
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      The file states no request and no header.
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      The file states no check of a field's starting value. The `previous` values it reads in the review ("Alpha", "Beta") are only the review's pair, and the test types over them with `typeInto(container, "title", "Alpha", "Beta")`.
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: >-
+      the first test, lines 42-54, which asserts each changed field appears once with its previous value beside its new value
+    evidence: >-
+      await typeInto(container, "title", "Alpha", "Beta"); await typeInto(container, "title", "Beta", "Gamma"); ... { key: "title", previous: "Alpha", next: "Gamma" },
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      No test reads or asserts an effect wording. The entries are read only as `key`, `previous`, `next`, `start` and `end`.
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      No test asserts that the review is withheld while no field differs. Every test changes at least one field before reading the review.
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      The file states no reason.
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      No test asserts the effect each changed field is stated with.
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      The file states no save and no sent change.
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      The file states no undo and no five-second wait.
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      The file asserts no field group of the form. The catalog `CATALOG = [catalogKey("title"), temporalKey("role"), catalogKey("note"), multiKey("tag")]` is only input.
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      The file states no node status; `nodeHolding([...])` is the only node it builds.
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      The file states no listing, no page state and no notice wording.
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      The file states no listing request.
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      The file states no node-type listing.
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      The file states no node listing.
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      The file states no address.
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      The tests set a start "2026-03-01" and an end "2026-12-31" only as input, and no test asserts the start-before-end refusal or its message.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file states no value parsing; every typed value is text.
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      The file states no effect and no recording by the knowledge base.
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      The file states no effect and no recording by the knowledge base.
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      The file states no effect and no recording by the knowledge base.
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      The file states no removal.
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      The file states no effect and no recording by the knowledge base.
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      The file states no conflict.
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      The file shows the start as today in the review (`toContain( "2026-06-15", )`), but it never confirms the review or reads a sent change.
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      The file states no undo.
+looked_past: >-
+  The tests lean on support helpers (renderForm, typeInto, reviewedFieldsIn, fixClockAt) that sit outside the file set, and how those helpers are built is not part of this judgment.

@@ -1,0 +1,276 @@
+findings:
+  - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+    where: >-
+      the test at line 101 and the last catalog entry of the test at line 34, which treat an allowed value whose label is the empty string as one that has no label
+    evidence: >-
+      it("shows an allowed value whose label is the empty string by its own value, not as an empty option", ... allowed("venus-code", ""), ... "venus-code",
+    cost: >-
+      The node and its decision log say a value "that has no label" is shown by its own value. Neither says whether an empty-string label counts as no label, and the domain node allowed-value only declares `label` as an optional string. This test makes that choice. An owner and a later reader see the rule only here. If the catalog ever ships an empty label on purpose, the form and the specification will disagree and no node says which one was decided.
+    kind: unstated
+    correction: >-
+      Give the fact a node, either by extending rules/entity-workspace/a-closed-key-offers-only-its-allowed-values or by stating in domain/knowledge-base/allowed-value that an empty label is no label. Otherwise remove the assertion.
+    node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+  - file: src/features/entities/components/__tests__/EntityForm.closed-keys.spec.tsx
+    where: >-
+      the test at line 67, "keeps the order the catalog delivers the allowed values in, whatever their sort orders and whatever alphabetical order would give"
+    evidence: >-
+      allowed("k", "Medium", 30), allowed("c", "Urgent", 10), allowed("t", "High", 20), allowed("a", "Low", 40), ... toEqual(["Medium", "Urgent", "High", "Low"])
+    cost: >-
+      The node says only "in their order". The allowed-value domain node gives each value a `sort_order` ("its place in the key's order"), and the retrieval listing is stated elsewhere to give values in ascending string order. This test decides that the form shows the listing's delivery order and ignores `sort_order`. That decides what order the owner sees for every closed key, for example the status of a Task, and no node states it. The next reader would look in the specification for which order is meant and find two candidates.
+    kind: unstated
+    correction: >-
+      State in the node which order the form shows, either the order the catalog listing delivers or `sort_order`. Then this test follows the node.
+    node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+read:
+  - node: contracts/entity-workspace/bff-entity-edit
+    held_at: nowhere
+    evidence: >-
+      the file is a component test; it sends no edit request (imports only form render helpers from "./entity-form-support")
+  - node: contracts/entity-workspace/bff-entity-reads
+    held_at: nowhere
+    evidence: >-
+      the file issues no read request; it renders the form with `renderForm(nodeHolding([]), catalog)`
+  - node: contracts/entity-workspace/entity-screen
+    held_at: nowhere
+    evidence: >-
+      the tests exercise only the closed-key choice of the form: `(await openChoice(container, "stage")).offered`. They cover no list, review or save state.
+  - node: contracts/knowledge-base/entity-editing
+    held_at: nowhere
+    evidence: >-
+      the file states no edit-entity answer or refusal; it holds no `BUSINESS_` or `VALIDATION_` code
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      the file reads no catalog operation; `closedKey("stage", STAGES)` only builds a fixture
+  - node: domain/entity-workspace/attribute-field
+    held_at: nowhere
+    evidence: >-
+      the file declares no shape; it only passes `heldAttribute("stage", "review")` and `closedKey(...)` to the form helpers
+  - node: domain/entity-workspace/entity-edit-session
+    held_at: nowhere
+    evidence: >-
+      the file declares no session shape; it renders and unmounts forms with `unmountForms()`
+  - node: domain/knowledge-base/attribute-change
+    held_at: nowhere
+    evidence: >-
+      the file builds no change; it reads only the shown choices
+  - node: domain/knowledge-base/edit-effect
+    held_at: nowhere
+    evidence: >-
+      the file names no effect
+  - node: rules/application-shell/a-failed-refresh-ends-the-session
+    held_at: nowhere
+    evidence: >-
+      the file has no refresh or session handling
+  - node: rules/application-shell/a-request-is-cut-off-after-thirty-seconds
+    held_at: nowhere
+    evidence: >-
+      the file has no request or cutoff
+  - node: rules/application-shell/every-other-address-is-guarded
+    held_at: nowhere
+    evidence: >-
+      the file has no layout or address
+  - node: rules/entity-workspace/a-401-refreshes-the-token-and-repeats-the-request-once
+    held_at: nowhere
+    evidence: >-
+      the file has no request
+  - node: rules/entity-workspace/a-change-is-judged-against-the-node-as-loaded
+    held_at: nowhere
+    evidence: >-
+      the file judges no effect
+  - node: rules/entity-workspace/a-change-writes-an-empty-member-as-null
+    held_at: nowhere
+    evidence: >-
+      the file builds no payload
+  - node: rules/entity-workspace/a-changed-stable-field-offers-no-validity
+    held_at: nowhere
+    evidence: >-
+      the file asserts nothing about validity fields
+  - node: rules/entity-workspace/a-changed-temporal-field-offers-its-validity
+    held_at: nowhere
+    evidence: >-
+      the file asserts nothing about validity fields
+  - node: rules/entity-workspace/a-closed-key-offers-only-its-allowed-values
+    held_at: nowhere
+    evidence: >-
+      the file verifies the rule from outside and implements none of it; the implementation lives in other files. The test asserts `expect((await openChoice(container, "stage")).offered).toEqual(STAGE_LABELS);` and `toEqual(["Mercury", "venus-code", "Mars"])`. Two points the assertions add are filed as findings.
+  - node: rules/entity-workspace/a-conflict-keeps-the-typed-values
+    held_at: nowhere
+    evidence: >-
+      the file performs no save or conflict
+  - node: rules/entity-workspace/a-deleted-node-shows-its-own-alert
+    held_at: nowhere
+    evidence: >-
+      the file renders no deleted node
+  - node: rules/entity-workspace/a-disputed-key-links-to-the-curation-queue
+    held_at: nowhere
+    evidence: >-
+      the file has no disputed key
+  - node: rules/entity-workspace/a-disputed-key-shows-without-a-field-and-points-to-curation
+    held_at: nowhere
+    evidence: >-
+      the file has no disputed key
+  - node: rules/entity-workspace/a-failed-save-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      the file has no save alert
+  - node: rules/entity-workspace/a-field-accepts-only-its-value-type
+    held_at: nowhere
+    evidence: >-
+      the file does not refuse a value; it only reads `acceptedFlagOf(container)` once, expecting "true" for a picked allowed value of a number key
+  - node: rules/entity-workspace/a-field-added-to-a-multi-valued-key-starts-empty
+    held_at: nowhere
+    evidence: >-
+      the file verifies without implementing; `await addValue(container, "stage"); ... toEqual({ offered: STAGE_LABELS, selected: [] })`
+  - node: rules/entity-workspace/a-field-added-with-a-held-value-is-not-changed
+    held_at: nowhere
+    evidence: >-
+      the file decides no changed state
+  - node: rules/entity-workspace/a-field-is-changed-only-by-its-value
+    held_at: nowhere
+    evidence: >-
+      the file decides no changed state
+  - node: rules/entity-workspace/a-field-shows-its-key-description-as-help-text
+    held_at: nowhere
+    evidence: >-
+      the file asserts no help text
+  - node: rules/entity-workspace/a-multi-valued-key-is-a-list-of-fields
+    held_at: nowhere
+    evidence: >-
+      the file verifies without implementing; `removeChoiceShowing(container, "stage", "Em revisão"); expect(shownLabelsIn(container, "stage")).toEqual(["Rascunho", "Concluído"]);`
+  - node: rules/entity-workspace/a-save-failure-is-classified-by-its-code
+    held_at: nowhere
+    evidence: >-
+      the file has no save failure
+  - node: rules/entity-workspace/a-saved-edit-reloads-the-entity
+    held_at: nowhere
+    evidence: >-
+      the file has no save
+  - node: rules/entity-workspace/a-value-of-the-wrong-type-reads-its-wording
+    held_at: nowhere
+    evidence: >-
+      the file shows no type message
+  - node: rules/entity-workspace/an-empty-narrowing-is-a-narrowing-not-given
+    held_at: nowhere
+    evidence: >-
+      the file has no listing
+  - node: rules/entity-workspace/an-unstated-start-shows-as-today-and-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      the file has no validity start
+  - node: rules/entity-workspace/an-unstated-start-shows-in-the-owners-local-date
+    held_at: nowhere
+    evidence: >-
+      the file has no date
+  - node: rules/entity-workspace/attributes-outside-the-catalog-show-without-a-field
+    held_at: nowhere
+    evidence: >-
+      the file renders no attribute outside the catalog; its held "legacy-code" value belongs to a key the catalog holds: `heldAttribute("stage", "legacy-code")`
+  - node: rules/entity-workspace/entity-workspace-requests-carry-the-access-token
+    held_at: nowhere
+    evidence: >-
+      the file has no request
+  - node: rules/entity-workspace/fields-start-from-the-current-values
+    held_at: nowhere
+    evidence: >-
+      the file verifies without implementing; `heldAttribute("stage", "review") ... .selected).toEqual(["Em revisão"])`
+  - node: rules/entity-workspace/review-lists-each-changed-field-once
+    held_at: nowhere
+    evidence: >-
+      the file has no review
+  - node: rules/entity-workspace/review-names-each-effect-in-its-wording
+    held_at: nowhere
+    evidence: >-
+      the file has no review
+  - node: rules/entity-workspace/review-needs-a-changed-field
+    held_at: nowhere
+    evidence: >-
+      the file has no review
+  - node: rules/entity-workspace/review-requires-a-trimmed-reason
+    held_at: nowhere
+    evidence: >-
+      the file has no reason
+  - node: rules/entity-workspace/review-states-the-effect-of-each-change
+    held_at: nowhere
+    evidence: >-
+      the file has no review
+  - node: rules/entity-workspace/save-sends-one-change-per-changed-field
+    held_at: nowhere
+    evidence: >-
+      the file has no save
+  - node: rules/entity-workspace/saving-waits-for-undo
+    held_at: nowhere
+    evidence: >-
+      the file has no undo
+  - node: rules/entity-workspace/the-form-has-a-field-group-per-catalog-key
+    held_at: nowhere
+    evidence: >-
+      the file verifies without implementing; `renderForm(node, [catalogKey("note"), closedKey("stage", STAGES)])`
+  - node: rules/entity-workspace/the-form-is-offered-only-for-an-active-node
+    held_at: nowhere
+    evidence: >-
+      the file renders only active nodes through `nodeHolding(...)`
+  - node: rules/entity-workspace/the-listing-and-page-states-read-their-wording
+    held_at: nowhere
+    evidence: >-
+      the file asserts no listing or page wording
+  - node: rules/entity-workspace/the-listing-request-carries-its-narrowings-by-name
+    held_at: nowhere
+    evidence: >-
+      the file has no listing
+  - node: rules/entity-workspace/the-node-listing-stands-without-the-node-types
+    held_at: nowhere
+    evidence: >-
+      the file has no listing
+  - node: rules/entity-workspace/the-screen-lists-nodes-by-prefix-and-type
+    held_at: nowhere
+    evidence: >-
+      the file has no listing
+  - node: rules/entity-workspace/the-screen-lives-at-the-entities-addresses
+    held_at: nowhere
+    evidence: >-
+      the file has no address
+  - node: rules/entity-workspace/validity-start-precedes-the-end
+    held_at: nowhere
+    evidence: >-
+      the file has no validity
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      the file parses no value
+  - node: rules/knowledge-base/entity-edit-addition
+    held_at: nowhere
+    evidence: >-
+      the file records no change
+  - node: rules/knowledge-base/entity-edit-correction
+    held_at: nowhere
+    evidence: >-
+      the file records no change
+  - node: rules/knowledge-base/entity-edit-first-value
+    held_at: nowhere
+    evidence: >-
+      the file records no change
+  - node: rules/knowledge-base/entity-edit-removal
+    held_at: nowhere
+    evidence: >-
+      the file records no change
+  - node: rules/knowledge-base/entity-edit-succession
+    held_at: nowhere
+    evidence: >-
+      the file records no change
+  - node: scenarios/entity-workspace/a-conflict-keeps-what-the-owner-typed
+    held_at: nowhere
+    evidence: >-
+      the file has no conflict
+  - node: scenarios/entity-workspace/an-unstated-start-is-sent-empty
+    held_at: nowhere
+    evidence: >-
+      the file has no validity start
+  - node: scenarios/entity-workspace/undo-within-five-seconds-sends-nothing
+    held_at: nowhere
+    evidence: >-
+      the file has no undo
+looked_past: >-
+  The assertions that a closed key renders a choice and no text input, and that an owner can return a held closed value to nothing selected, read as the usual reading of "offer only those values" and of an emptied field counting as a removal, so I filed no finding for them.
+candidates_opened:
+  - domain/knowledge-base/allowed-value
