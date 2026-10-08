@@ -1,10 +1,10 @@
-// Public surface of the curation module — the bootstrap (`app.ts`)
-// consumes only what is re-exported here.
-
 export {
   registerCurationRoutes,
 } from "./routes/curation.routes.js";
 export type { CurationRouteDeps } from "./routes/curation.routes.js";
+
+export { registerEditEntityRoute } from "./routes/edit-entity.routes.js";
+export type { EditEntityRouteDeps } from "./routes/edit-entity.routes.js";
 
 export {
   CURATION_TOOL_NAMES,
@@ -17,6 +17,5 @@ export type {
   CurationToolsetDeps,
 } from "./mcp/curation-toolset.js";
 
-// MCP curation transport — POST /api/v1/mcp/curation (TC-mcc-03, BR-29).
 export { registerCurationMcpTransport } from "./mcp/curation-transport.js";
 export type { CurationMcpTransportDeps } from "./mcp/curation-transport.js";

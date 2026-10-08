@@ -20,6 +20,7 @@ import {
   registerCurationMcpTransport,
   registerCurationRoutes,
   registerCurationToolset,
+  registerEditEntityRoute,
 } from "./modules/curation/index.js";
 import {
   registerComplianceAuditRoutes,
@@ -135,6 +136,11 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
           },
           { prefix: "/curation" }
         );
+        await registerEditEntityRoute(scoped, {
+          pool,
+          logger,
+          catalog: ingestionCatalog,
+        });
         await registerCurationMcpTransport(scoped, {
           logger,
           mcp,
