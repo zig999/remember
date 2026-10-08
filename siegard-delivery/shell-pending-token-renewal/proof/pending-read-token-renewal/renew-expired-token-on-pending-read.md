@@ -1,98 +1,101 @@
 ---
-title: Proof for renewing an expired token on the pending curation read
-summary: Fourteen tests over the shell's pending curation and health reads cover every criterion, the four nodes a finite test decides, and the five underdetermined entries. Two tests that read the total before the repeated read had rendered now wait for it.
+title: Proof for the pending read's token renewal and the shell's read cadence
+summary: What proves task/pending-read-token-renewal/renew-expired-token-on-pending-read in src/shell/api/__tests__/use-shell-status.spec.ts. This re-delivery adds one test, which runs the health and pending reads under the application's own query client and shows that neither failed read is repeated before the next interval.
 target: frontend
 implementation: sha256:580a840775cf6ab74d929483c781cbd71001cbdcb09159aff5e5ced2d7f06b03
 standard:
   at: ../standards/frontend-react.yaml
   pin: sha256:2b03615161995450265523de6bdd9c464b2ca633976e832e36586c1ab1aa2cf7
-run: run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite-2
+run: run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite-3
 tests:
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > asks the identity provider once with the session cookie and repeats the read with the fresh token
-  proves: A 401 on the pending curation read makes the shell ask the identity provider for a fresh access token exactly once; the request is sent with the owner's session cookie; the repeated read carries the fresh token as its bearer and not the expired one. Also decides the rule 'A 401 on the pending curation read MUST make the shell ask the identity provider once for a fresh access token with the session cookie and ask the read once more with it.'
-  fails_when: the sequence of requests is anything other than the stale-bearer pending read, one token request with credentials include, then the fresh-bearer pending read. That covers no renewal, two renewals, a renewal without the cookie, a repeat with the stale bearer, and no repeat.
+  proves: 'Criteria 1 to 4: a 401 on the pending curation read makes the shell ask the identity provider for a fresh token exactly once, with the session cookie (credentials include), and the repeated read carries the fresh bearer and not the expired one.'
+  fails_when: The shell asks for the token zero or two times, omits the session cookie, repeats the read with the expired bearer, or does not repeat it.
   demonstrates: rules/application-shell/an-expired-token-is-renewed-by-the-pending-read
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > shows the total of the repeated read's answer
-  proves: After a successful renewal, the pending curation total is the total of the repeated read's answer.
-  fails_when: the footer total comes from the first 401 answer, a default, or anything other than the repeated read's total
+  proves: 'Criterion 5: after a successful renewal, the pending total is the total of the repeated read''s answer.'
+  fails_when: The shown total comes from the 401 answer, from a stored value, or is not the repeated read's total.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > does not ask the identity provider a second time when the repeated read is also answered 401
-  proves: A 401 on the repeated pending curation read does not ask the identity provider for a token a second time.
-  fails_when: a 401 on the repeated read triggers a second token request
+  proves: 'Criterion 6: a 401 on the repeated read does not ask the identity provider for a token a second time.'
+  fails_when: A second token request is sent after the repeated read is answered 401.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > does not send a third pending read before the next interval when the repeated read is also answered 401
-  proves: 'UNDERDETERMINED entry 1: no criterion stops a third read after the repeated read is itself answered 401.'
-  fails_when: after the repeated read is answered 401, the shell sends the pending read a third time, or keeps sending it, before the next 20-second interval
+  proves: The UNDERDETERMINED entry on a third read after the repeated read is itself answered 401.
+  fails_when: The shell sends a third pending read, or keeps sending, before 20,000 ms pass after the repeated read is answered 401.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > asks the repeated read as the queue listing with limit 1
-  proves: 'UNDERDETERMINED entry 2: the repeated read is GET /api/v1/curation/queue?limit=1, not another form.'
-  fails_when: the repeated read asks the queue listing with no limit, a different limit, or another path
+  proves: 'The UNDERDETERMINED entry on the form of the repeated read: the queue listing with limit 1.'
+  fails_when: The repeated read asks the queue listing with no limit or a different one.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read answered 401 > shows 0 pending, not the total shown before, when the repeated read's answer has no total
-  proves: 'UNDERDETERMINED entry 3: an answer without a total counts as 0, here when the repeated read''s answer is also a 401. The test also asserts that the three pending reads were sent, so the 0 comes from the repeated read''s answer.'
-  fails_when: the shell keeps the total shown before the renewal, or shows nothing, instead of 0 when the repeated read's answer has no total; or the repeated read is not sent
+  proves: 'The UNDERDETERMINED entry on a repeated read with no total: it counts as 0 (the-pending-total-needs-a-token), and the total shown before the renewal is not kept.'
+  fails_when: After the repeated read comes back with no total, the shell keeps the earlier total or shows nothing instead of 0.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read > is not asked again before the next 20-second interval when it fails without a 401
-  proves: A pending curation read that fails without a 401 is not asked again before the next 20-second interval, and is asked at the interval.
-  fails_when: a non-401 failure of the pending read is retried at once, or is not asked again at 20 seconds
+  proves: 'Criterion 7: a pending read that fails without a 401 is not asked again before the next 20-second interval.'
+  fails_when: A second pending read is sent before 20,000 ms after a 500, or none is sent at the interval.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read > is not made while no access token is held
-  proves: No pending curation read is made while no access token is held.
-  fails_when: any pending read is sent while the auth store holds no token, at mount or at the 20-second interval
+  proves: 'Criterion 8: no pending curation read is made while no access token is held.'
+  fails_when: A pending read is sent while no token is held, at mount or at an interval.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the pending curation read > is the queue listing with limit 1 and the token as bearer, made only with a token, and an answer without a total counts as 0
-  proves: The pending curation total is the queue listing's total requested with limit 1 and the access token as a bearer, no request being made without a token and an answer without a total counting as 0. After the token is held, the test waits for the interval's second answer to render before reading the total.
-  fails_when: a request is made with no token, the request is not queue?limit=1 with Bearer of the held token, the answer's total is not shown, or an answer without a total is not shown as 0
+  proves: 'The fact of the-pending-total-needs-a-token, whole: queue listing with limit 1, the token as bearer, no request without a token, and an answer without a total counted as 0.'
+  fails_when: The request has another path or limit, drops or alters the bearer, is made without a token, or an answer without a total counts as anything but 0.
   demonstrates: rules/application-shell/the-pending-total-needs-a-token
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the health read > carries no Authorization header while a token is held
-  proves: The health read carries no Authorization header.
-  fails_when: GET /health is sent with an Authorization header while the shell holds a token
+  proves: 'Criterion 9: the health read carries no Authorization header.'
+  fails_when: The health read sends any Authorization header while a token is held.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the health read > does not ask the identity provider for a token when it is answered 401
-  proves: A failed health read does not ask the identity provider for a token.
-  fails_when: a 401 on the health read causes a token request
+  proves: 'Criterion 10: a failed health read does not ask the identity provider for a token.'
+  fails_when: A token request is sent after the health read is answered 401.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the health read > is not repeated at once after the request fails
-  proves: 'UNDERDETERMINED entry 5: a failed health read is not repeated at once.'
-  fails_when: after a failed health read the shell repeats the health read before the next 20-second interval
+  proves: The UNDERDETERMINED entry on repeating a failed health read at once.
+  fails_when: A second health request is sent before 20,000 ms after a failed health read.
+- file: src/shell/api/__tests__/use-shell-status.spec.ts
+  name: the shell reads under the application's own query client > repeats neither a health read that fails by network error nor a pending read answered 500 before the next interval, and asks the identity provider for nothing
+  proves: 'The remainder: under createQueryClient(), the application''s own client (default retry 1, not retry false), a health read that fails by network error and a pending read answered 500, after 19,999 ms, leave exactly one health request, one pending request, and no request to the identity provider.'
+  fails_when: A health or pending read is repeated before the interval, or the identity provider is asked for a token. In particular, the health hook stops turning retries off itself and falls back to the application client's default retry, so the failed health read is retried after the default 1,000 ms retry delay.
+  demonstrates: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the shell reads > asks the health and the pending total every 20 seconds when the reads succeed
-  proves: 'UNDERDETERMINED entry 4: the cadence of successful reads is 20 seconds, for both reads.'
-  fails_when: either read is asked before 20 seconds, for example every 5 seconds, or is not asked again at 20 seconds
+  proves: 'The UNDERDETERMINED entry on cadence: both reads are asked once at mount and again at 20,000 ms, never earlier.'
+  fails_when: Either read is asked before 20,000 ms (for example every 5 seconds), or is not asked again at 20,000 ms.
 - file: src/shell/api/__tests__/use-shell-status.spec.ts
   name: the shell reads > asks each every 20 seconds, retries no failure except the one repeat after a renewed token, and sends the health without the token
-  proves: The health and the pending curation total are each asked every 20 seconds and not retried on failure other than the one repeat after a renewed token, health without the token.
-  fails_when: either read is asked at another cadence, a failed health or pending read is retried before its interval, the renewal repeat is missing or doubled, or the health read carries an Authorization header
-  demonstrates: rules/application-shell/health-and-pending-are-asked-every-twenty-seconds
+  proves: 'Over a mixed timeline: one repeat after the renewed token and no other retry, an interval of 20 seconds for both reads, and a health request that never carries the token.'
+  fails_when: A failed read is retried inside its interval, the renewal repeat is repeated, the interval changes, or a health request carries an Authorization header.
 not_applicable:
-- edge_case: a network failure (rejected fetch) on the pending read
-  why: No criterion or node distinguishes it from a non-401 failure, which the 500 test covers; a second test would be the same evidence.
-- edge_case: the renewal request itself failing (identity provider unreachable or answering no token)
-  why: That is the failed-renewal refusal, which belongs to the sibling task end-session-on-failed-pending-renewal. No criterion of this task states it.
-- edge_case: result.total as the wrapped form of the total
-  why: The wrapped form is an alternative spelling of one fact and does not change what any obligation requires. The plain total is the one representative.
-- edge_case: two operations on one subject at once, such as overlapping interval fires
-  why: No criterion or node states concurrent behavior.
+- edge_case: A token request that fails or a session with no cookie on the pending read
+  why: That is the failed-renewal behavior, which belongs to the sibling task task/pending-read-token-renewal/end-session-on-failed-pending-renewal and its own proof file, which is not edited here. This task's criteria cover the successful renewal only.
+- edge_case: Two pending reads at once, or a read that answers slowly
+  why: No criterion or node states concurrent or latency behavior for the shell reads. A test would assert a guarantee nobody made.
+- edge_case: A health answer that is not JSON, or a pending answer with an empty collection
+  why: No criterion of this task reaches them. The health-is-judged-by-the-database-field rule is not implemented by this task, and an answer without a total is covered by the test on the-pending-total-needs-a-token.
+- edge_case: A duplicate or boundary of the limit parameter other than 1
+  why: The fact fixes limit 1. Other limits are one class that two tests already fail over, and a further representative would be the same evidence again.
 untested:
-- 'scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown: its three consequences (the token is asked once, the read is repeated with the fresh token, the footer shows that answer''s total) are each exercised by a separate test above, none of which carries the whole scenario. One combined test would repeat the same evidence. The scenario''s given of a still-valid session cookie is not exercised, since the identity provider is a stub.'
-- 'contracts/application-shell/bff-shell-reads: its refusal ''rules/application-shell/a-failed-renewal-on-the-pending-read-ends-the-session'' (answer: the sign-in address with reason session_expired) is the sibling task''s. The other operations and refusals are exercised only piecewise by tests that demonstrate the rules above, so no finite test decides the contract whole.'
-- 'domain/application-shell/application-shell: an aggregate with operations (open-address, toggle-palette, choose-as-of, show-failure) and attributes this task does not touch. No finite test decides it whole.'
-- 'Implementation inference: when the renewal fails, the read returns the 401 body and the shell keeps showing 0 without clearing the store or redirecting. No node decides it, and the sibling task owns that behavior.'
-- 'Implementation inference: the fresh token is written to the auth store with setToken for later reads. The task''s ADVISORY says the specification does not decide it, so it is left unpinned.'
-- 'Implementation inference: the repeated read''s body is returned without inspecting its status, so a 401 on the repeat becomes 0. The criteria and the rule ''answer without a total counts as 0'' cover the observable result, and the choice of not inspecting the status is arrangement.'
-- The REMAINDER in the task Notes (the failed-renewal rule and scenario) belongs to the sibling task and no criterion here reaches it.
-contested:
-- what: The diagnostician's cause (both failing tests asserted before the second pending answer was rendered) is accepted. The implementation is not contested.
-  why: 'From reading use-shell-status.ts, useCurationCount derives the total from the query''s current data. A refetch whose queryFn resolves with a body that has no total replaces the previous data (TanStack''s structural sharing returns the new object) and gives 0, so 5 would not persist after a correct wait. I did not run anything. The probable mechanism is in the fake timers: the interval fires inside a tick, and TanStack Query''s notification scheduling uses setTimeout(0). That timer is taken as 1 ms when set during a tick and falls outside the following advance(0). Both tests now advance a further 100 ms, well short of the next 20-second interval, and keep the expected 0.'
+- 'scenarios/application-shell/an-expired-token-is-renewed-and-the-total-shown: the node is finite, but no single test here asserts all three of its outcomes (identity provider asked once, read repeated once, total of that answer shown). The first and second tests of the 401 group split them, so nothing is claimed whole. The remainder named one assertion only, so no combined test was added.'
+- 'contracts/application-shell/bff-shell-reads: read-health and read-pending-curation with a renewed token are exercised, but the contract''s refusal for the failed renewal (a-failed-renewal-on-the-pending-read-ends-the-session) belongs to the sibling task''s proof. No test of this file holds the contract whole, so it is not claimed.'
+- 'domain/application-shell/application-shell: an aggregate whose attributes and operations no finite test of this task enumerates. It carries no fact of its own beyond what its constraining rules state, so it is left to the rules above.'
+- 'In the new test, the pending half cannot fail on a retry default: the pending query function does not reject on a 500 (readBody returns the body), so no query-level retry arises from it either way. Only the health half, which fails by a rejected request, catches a hook that stops disabling retries. The test states the remainder assertion as written.'
+- 'The inference that a failed renewal leaves the shell showing 0 and does not redirect: the implementation recorded it as a choice, and the sibling task has since replaced it. It is not pinned here.'
+- The inference that the fresh token is written to the auth store (setToken) is behavior no criterion or node of this task states (the node's ADVISORY says as much). No test pins it.
+- 'The inference that the repeated read''s body is returned without inspecting its status: the observable half, a 0 shown after a 401 on the repeat, is covered by the test above on a repeated read with no total, which rests on the rule that an answer without a total counts as 0. The status-blindness itself is a choice of arrangement and is not pinned.'
 ---
 ## What it is
-Fourteen tests over the shell's pending curation and health reads prove the criteria of the task, the four nodes a finite test decides and the five underdetermined entries.
+Fourteen tests over the shell's pending curation and health reads prove the criteria of the task, the nodes a finite test decides and the five underdetermined entries, and one of them runs the reads under the application's own query client.
 
 ## Notes
-The first suite run, run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite, failed in the test step on two tests of this proof, with the diagnosis cause test: both read the total before the repeated read had rendered.
-The test author rewrote the file whole with the expected values unchanged, and run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite-2 passed typecheck, lint and test.
-The test author and the diagnosis both inferred the cause from reading, and the suite was not run by either; the second run is what decided it.
-The test author ran nothing, and the suite runs above were captured afterwards by the delivery.
+This is a proof-only re-delivery: the implementation record and the source were not touched, and the proof was rewritten whole.
+The remainder it closes was left by the review recorded in siegard-reconcile/shell-pending-token-renewal.md, over rules/application-shell/health-and-pending-are-asked-every-twenty-seconds, whose certification came back partial because every earlier test mounted the hooks under a client with retries off.
+The first suite run of the earlier proof failed on two of its tests with the diagnosis cause test, and its rewrite passed run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite-2; the present proof passed run/pending-read-token-renewal-renew-expired-token-on-pending-read-suite-3.
+The sibling task end-session-on-failed-pending-renewal changed src/shell/api/use-shell-status.ts after this task's implementation record was written, and its delivery and the review restamped the bindings; the implementation record of this task is left as it is.
+The test author returned a files entry naming the test file itself, which holds a test and was left out of the record.
+The test author ran nothing, and the run above was captured afterwards by the delivery.

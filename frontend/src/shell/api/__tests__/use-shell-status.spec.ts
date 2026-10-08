@@ -9,6 +9,19 @@ vi.mock("../../../lib/env", () => ({
   getEnv: () => ({ VITE_BFF_URL: urls.bff, VITE_NEON_AUTH_URL: urls.auth }),
 }));
 
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), warning: vi.fn() },
+}));
+
+vi.mock("@/router/router", () => ({
+  router: { navigate: vi.fn(() => Promise.resolve()) },
+}));
+
+vi.mock("../../../router/router", () => ({
+  router: { navigate: vi.fn(() => Promise.resolve()) },
+}));
+
+import { createQueryClient } from "../../../lib/query-client";
 import { useAuthStore } from "../../../state/auth";
 import { useCurationCount, useHealth } from "../use-shell-status";
 
@@ -103,7 +116,10 @@ function useBoth() {
   return { health: useHealth(), count: useCurationCount() };
 }
 
-function mount<T>(useHook: () => T): () => T {
+function mount<T>(
+  useHook: () => T,
+  client: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+): () => T {
   const box: { current?: T } = {};
   function Probe(): null {
     const value = useHook();
@@ -114,7 +130,6 @@ function mount<T>(useHook: () => T): () => T {
   }
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
   act(() => {
     root.render(createElement(QueryClientProvider, { client }, createElement(Probe)));
@@ -302,6 +317,20 @@ describe("the health read", () => {
     await advance();
     await advance(19_999);
     expect(count(sent, "health")).toBe(1);
+  });
+});
+
+describe("the shell reads under the application's own query client", () => {
+  it("repeats neither a health read that fails by network error nor a pending read answered 500 before the next interval, and asks the identity provider for nothing", async () => {
+    const sent = stubFetch({
+      health: () => new Error("unreachable"),
+      pending: () => reply(500),
+    });
+    hold(STALE);
+    mount(useBoth, createQueryClient());
+    await advance();
+    await advance(19_999);
+    expect(counts(sent)).toEqual({ health: 1, pending: 1, token: 0 });
   });
 });
 
