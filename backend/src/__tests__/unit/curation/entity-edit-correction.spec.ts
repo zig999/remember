@@ -7,6 +7,7 @@ import type {
   KnowledgeNodeLockedRow,
 } from "../../../modules/curation/repository/curation.repository.js";
 import { recordCorrection } from "../../../modules/curation/service/entity-edit-correction.js";
+import { recordNewAttribute } from "../../../modules/curation/service/entity-edit-new-attribute.js";
 import type { OperatorNoteRecord } from "../../../modules/curation/service/entity-edit-note.js";
 import type { AttributeKeyRow } from "../../../modules/ingestion/catalog/catalog.js";
 
@@ -20,8 +21,10 @@ const CHUNK_ID = "11111111-0000-4000-8000-000000000003";
 const FRAGMENT_ID = "11111111-0000-4000-8000-000000000004";
 const OLD_FRAGMENT_ID = "11111111-0000-4000-8000-000000000005";
 const OLDER_FRAGMENT_ID = "11111111-0000-4000-8000-000000000006";
+const BYSTANDER_FRAGMENT_ID = "11111111-0000-4000-8000-000000000007";
 const OTHER_RUN_ID = "99999999-0000-4000-8000-000000000001";
 const PREDECESSOR_ID = "88888888-0000-4000-8000-000000000001";
+const BYSTANDER_ID = "88888888-0000-4000-8000-000000000009";
 
 const EDITED_AT = new Date("2026-10-07T14:35:09.000Z");
 const PREDECESSOR_END = "2026-06-30";
@@ -33,7 +36,8 @@ const NEW_DEADLINE = "2026-12-15";
 const LIVE_STATUSES: readonly string[] = ["active", "uncertain", "disputed"];
 const INSERT_PATTERN =
   /^\s*INSERT INTO (\w+)\s*\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i;
-const COPY_PATTERN = /^\s*INSERT INTO provenance\b[\s\S]*?\bSELECT\b/i;
+const COPY_PATTERN =
+  /^\s*INSERT INTO provenance\s*\(\s*(\w+)\s*,\s*(\w+)[^)]*\)\s*SELECT\s+(\$\d+)\s*,\s*(\w+)\s*,[\s\S]*?FROM provenance\s+WHERE\s+(\w+)\s*=\s*(\$\d+)/i;
 const UPDATE_PATTERN = /^\s*UPDATE node_attribute\b/i;
 const PARAMETER_PATTERN = /^\$(\d+)/;
 
@@ -141,14 +145,33 @@ function addProvenance(store: Store, values: Row): number {
   return 1;
 }
 
-function copyStatement(store: Store, params: unknown[]): QueryResult {
-  const [predecessorId, successorId] = params;
-  const fragments = store.provenance
-    .filter((row) => row.attribute_id === predecessorId)
-    .map((row) => row.fragment_id);
-  const copied = fragments.filter(
-    (fragmentId) =>
-      addProvenance(store, { attribute_id: successorId, fragment_id: fragmentId }) === 1
+function parameterValue(token: string | undefined, params: unknown[]): unknown {
+  const parameter = PARAMETER_PATTERN.exec(token ?? "");
+  if (parameter === null) {
+    throw new Error(`expected a parameter, found: ${token}`);
+  }
+  return params[Number(parameter[1]) - 1];
+}
+
+function copyStatement(
+  store: Store,
+  statement: { sql: string; params: unknown[] }
+): QueryResult {
+  const match = COPY_PATTERN.exec(statement.sql);
+  if (match === null) {
+    throw new Error(`copy outside the correction's records: ${statement.sql}`);
+  }
+  const [, ownerColumn = "", fragmentColumn = "", ownerToken, sourceColumn = ""] = match;
+  const [whereColumn = "", whereToken] = match.slice(5);
+  const owner = parameterValue(ownerToken, statement.params);
+  const wanted = parameterValue(whereToken, statement.params);
+  const selected = store.provenance.filter((row) => row[whereColumn] === wanted);
+  const copied = selected.filter(
+    (row) =>
+      addProvenance(store, {
+        [ownerColumn]: owner,
+        [fragmentColumn]: row[sourceColumn],
+      }) === 1
   );
   return { rows: copied.map(() => ({ id: "provenance" })), rowCount: copied.length };
 }
@@ -186,7 +209,7 @@ function buildClient(
     params: unknown[] = []
   ): Promise<QueryResult> => {
     if (UPDATE_PATTERN.test(sql)) return supersedeStatement(store, params);
-    if (COPY_PATTERN.test(sql)) return copyStatement(store, params);
+    if (COPY_PATTERN.test(sql)) return copyStatement(store, { sql, params });
     return insertStatement(store, { sql, params }, nextId);
   };
   return { client: { query } as unknown as PoolClient, store };
@@ -234,12 +257,19 @@ function recordedRowOf(store: Store): Row {
   return row;
 }
 
+function seededProvenance(predecessorFragments: readonly string[]): Row[] {
+  return [
+    ...fragmentsOf(PREDECESSOR_ID, predecessorFragments),
+    ...fragmentsOf(BYSTANDER_ID, [BYSTANDER_FRAGMENT_ID]),
+  ];
+}
+
 async function runCorrection(scenario: Scenario): Promise<Outcome> {
   const key = scenario.key ?? CNPJ_KEY;
   const predecessor = lockedRow(key, scenario.predecessor ?? {});
   const { client, store } = buildClient(
     [{ ...predecessor, created_by_run_id: OTHER_RUN_ID, supersedes_attribute_id: null }],
-    fragmentsOf(PREDECESSOR_ID, scenario.predecessorFragments ?? [OLD_FRAGMENT_ID])
+    seededProvenance(scenario.predecessorFragments ?? [OLD_FRAGMENT_ID])
   );
   const change = AttributeChangeSchema.parse({
     attribute_key: "any",
@@ -260,10 +290,26 @@ async function runCorrection(scenario: Scenario): Promise<Outcome> {
   };
 }
 
-function fragmentsHeldBy(store: Store, attributeId: unknown): unknown[] {
+function recordFirstValue(): Promise<{ store: Store; attributeId: string }> {
+  const { client, store } = buildClient([], seededProvenance([OLD_FRAGMENT_ID]));
+  const change = AttributeChangeSchema.parse({
+    attribute_key: "any",
+    kind: "set",
+    value: NEW_CNPJ,
+  });
+  return recordNewAttribute(client, {
+    target: { node: NODE, attributeKey: CNPJ_KEY },
+    change,
+    note: NOTE,
+    editedAt: EDITED_AT,
+  }).then((attributeId) => ({ store, attributeId }));
+}
+
+function fragmentsHeldBy(store: Store, attributeId: unknown): string[] {
   return store.provenance
     .filter((row) => row.attribute_id === attributeId)
-    .map((row) => row.fragment_id);
+    .map((row) => String(row.fragment_id))
+    .sort();
 }
 
 describe("the status of the attribute a correction supersedes", () => {
@@ -318,15 +364,20 @@ describe("an organization's active cnpj with no validity, corrected to another c
   });
 });
 
-describe("the provenance of the new attribute a correction records", () => {
-  it("holds the edit's information fragment and every provenance of the superseded attribute", async () => {
-    const outcome = await runCorrection({
+describe("the provenance of the new attribute an entity edit records", () => {
+  it("holds the edit's information fragment, and for a correction every provenance of the superseded attribute and no other", async () => {
+    const firstValue = await recordFirstValue();
+    const correction = await runCorrection({
       predecessorFragments: [OLD_FRAGMENT_ID, OLDER_FRAGMENT_ID],
     });
 
-    expect(fragmentsHeldBy(outcome.store, outcome.recorded.id)).toEqual(
-      expect.arrayContaining([FRAGMENT_ID, OLD_FRAGMENT_ID, OLDER_FRAGMENT_ID])
-    );
+    expect({
+      firstValue: fragmentsHeldBy(firstValue.store, firstValue.attributeId),
+      correction: fragmentsHeldBy(correction.store, correction.recorded.id),
+    }).toEqual({
+      firstValue: [FRAGMENT_ID],
+      correction: [FRAGMENT_ID, OLD_FRAGMENT_ID, OLDER_FRAGMENT_ID],
+    });
   });
 });
 
