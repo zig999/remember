@@ -9,6 +9,7 @@ import {
 } from "./entity-form-schema";
 import { OutsideCatalogValues } from "./entity-outside-catalog-values";
 import { EntityReview } from "./entity-review";
+import { EntitySaveAlert } from "./entity-save-alert";
 import { useEntityEditForm } from "./use-entity-edit-form";
 
 export interface EntityFormProps {
@@ -62,6 +63,7 @@ export const EntityForm: FC<EntityFormProps> = ({ node, attributeKeys }) => {
       ))}
       <OutsideCatalogValues groups={outsideCatalog} />
       <EntityReview review={review} onConfirm={save.confirm} />
+      <EntitySaveAlert outcome={save.outcome} />
     </form>
   );
 };
