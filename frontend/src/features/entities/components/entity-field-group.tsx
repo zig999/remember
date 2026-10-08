@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import type { AttributeKey } from "../types";
+import { ClosedChoice } from "./entity-closed-choice";
 import type { EntityFormValues, GroupField } from "./entity-form-schema";
 
 export interface EntityFieldGroupProps {
@@ -33,6 +34,7 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
   const first = fields[0];
   const listed = attributeKey.allowsMultiple;
   const numbered = listed && fields.length > 1;
+  const allowedValues = attributeKey.allowedValues;
 
   const removeField = (index: number): void => {
     onRemove(index);
@@ -46,7 +48,7 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
       data-testid={`entity-group-${key}`}
       className="flex flex-col gap-xs"
     >
-      {first === undefined ? (
+      {first === undefined || allowedValues !== null ? (
         <p id={titleId} className="text-sm font-medium text-foreground">
           {key}
         </p>
@@ -71,17 +73,31 @@ export const EntityFieldGroup: FC<EntityFieldGroupProps> = ({
                 .join(" ");
               return (
                 <div className="flex min-w-0 flex-1 flex-col gap-xs">
-                  <Input
-                    {...field}
-                    id={`entity-field-${id}`}
-                    type="text"
-                    aria-label={
-                      numbered ? `${key} (valor ${position + 1})` : undefined
-                    }
-                    aria-invalid={message === undefined ? undefined : true}
-                    aria-describedby={described === "" ? undefined : described}
-                    data-testid={`entity-field-${key}`}
-                  />
+                  {allowedValues === null ? (
+                    <Input
+                      {...field}
+                      id={`entity-field-${id}`}
+                      type="text"
+                      aria-label={
+                        numbered ? `${key} (valor ${position + 1})` : undefined
+                      }
+                      aria-invalid={message === undefined ? undefined : true}
+                      aria-describedby={
+                        described === "" ? undefined : described
+                      }
+                      data-testid={`entity-field-${key}`}
+                    />
+                  ) : (
+                    <ClosedChoice
+                      name={numbered ? `${key} (valor ${position + 1})` : key}
+                      fieldId={`entity-field-${id}`}
+                      testId={`entity-field-${key}`}
+                      value={field.value}
+                      allowedValues={allowedValues}
+                      describedBy={described}
+                      onChange={field.onChange}
+                    />
+                  )}
                   {message === undefined ? null : (
                     <p
                       id={errorId}
